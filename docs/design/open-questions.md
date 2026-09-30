@@ -16,11 +16,19 @@ sources:
 
 # Open questions and validation
 
-This is a decision queue, not a release plan. Resolve one coherent question at a time. The three-step probe has deliberately reduced several earlier questions instead of adding machinery.
+This is a decision queue, not a release plan. Resolve one coherent question at a time.
+
+## Settled: forward verification gate
+
+If the current step has verify, it must succeed immediately before Control Tower advances forward to the next step.
+
+Successful up records the new position first. This lets the current step's verify read the context created by that up. A failed verify leaves the developer at the same position and blocks the next up.
+
+See [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).
 
 ## Q1 — What exactly does an action publish?
 
-The concrete example currently requires only scalar values such as user_id and record_id plus an explicit way to remove them.
+The concrete example requires scalar values such as user_id and record_id plus an explicit way to remove them.
 
 Do not require nested objects, multiline strings, null semantics, a type system, or many scopes until a real authoring example needs them.
 
@@ -32,26 +40,21 @@ See [ADR-0003](../decisions/0003-session-state-and-process-io.md).
 
 ## Q2 — What happens to machine output when the process fails?
 
-The migration pointer rule is settled: a failed transition does not move the recorded position. What remains is narrower: if the executable emitted machine output before returning nonzero, should that output be merged, retained only with the failed result, or ignored?
+The pointer rule is settled: a failed up/down transition does not move the recorded position. What remains is narrower: if the executable emitted machine output before returning nonzero, should that output be merged, retained only with the failed result, or ignored?
 
 Use one example where an external create succeeds, emits an ID, and then the script exits nonzero.
 
 **Exit criterion:** the behavior is simple enough to explain in one sentence and does not pretend to recover external state.
 
-## Q3 — When does an assertion gate run?
+## Q3 — What are verify's exact I/O rules?
 
-This is the next design decision because it controls both pointer meaning and context timing.
+Verification timing is settled, but its process contract is not.
 
-The three-step probe identifies two plausible rules:
+The smallest model is that verify reads current context, emits stdout/stderr, and uses exit status as the pass/fail signal. It may be cleaner to ignore/disallow verify machine-output updates so a check cannot quietly mutate Control Tower context.
 
-1. **Arrival check:** up -> verify target -> move pointer.
-2. **Departure gate:** up -> move pointer; verify current position before the next up.
+Test whether any real example needs verify to discover/publish a value. If not, keep it read-only at the Control Tower context boundary.
 
-The original “position 2 must meet x,y before position 3” example points naturally toward a departure gate. An arrival check makes a recorded position carry stronger meaning. Both are small; they fail differently.
-
-**Exit criterion:** choose one rule, define final-step behavior, and walk a failed assertion once in each direction.
-
-See [the concrete comparison](three-step-workspace.md#4-assertions-expose-the-first-real-semantic-choice).
+**Exit criterion:** define whether verify can publish context and define final-position manual/completion verification behavior.
 
 ## Q4 — How are context inputs exposed?
 
@@ -63,28 +66,22 @@ The same authored script should remain understandable and runnable outside the w
 
 ## Q5 — What local persistence is necessary?
 
-The recorded pointer and context probably need to survive UI restarts to make the workbench pleasant, but the backend is not selected.
+The recorded pointer and context probably need to survive UI restarts, but the backend is not selected.
 
-Test closing/reopening with position 2 and two IDs. Also test what happens after the authored migration directories change order or names. A saved integer is not enough if the migration set itself changed.
+Test closing/reopening with position 2 and two IDs. Also test what happens after authored migration directories change order or names.
 
 **Exit criterion:** reopen without pretending an old pointer belongs to a changed migration set. Do not build event sourcing.
 
 ## Q6 — Does a convention-only workspace remain sufficient?
 
-The three-step example needs no YAML/TOML file: numeric directories give order; up/down names give direction; shebangs give runtimes.
+The three-step example needs no YAML/TOML file: numeric directories give order; up/down/verify names give behavior; shebangs give runtimes.
 
-Try the convention before introducing config. Write down the first requirement that genuinely cannot be expressed well by the filesystem. Likely candidates include display metadata, workspace-level environment selection, or working-directory overrides, but none is yet accepted.
+Try the convention before introducing config. Write down the first requirement that cannot be expressed well by the filesystem.
 
-**Exit criterion:** either keep convention-only authoring for the first prototype or identify a concrete metadata field that justifies a workspace config file.
-
-## What is no longer an open product question
-
-The Dagu comparison has served its main purpose. The owner tried it and found it close in capability but intentionally heavier than the desired workbench. Control Tower does not need to prove market uniqueness or become a smaller clone.
-
-Likewise, the core does not need a generic rollback guarantee, a login system, hosting, a scheduler, workers, or built-in HTTP/Postgres/Node execution types.
+**Exit criterion:** either keep convention-only authoring for the first prototype or identify a concrete metadata field that justifies workspace config.
 
 ## Validation order
 
-Resolve Q3 first because assertion timing affects when context becomes current. Then settle Q1 and Q2 together with the three-step scripts. Q4 and Q6 should fall out of that authoring exercise. Choose a persistence backend only after the runtime contract is small and stable.
+Settle Q1/Q2 next because departure-gate semantics now make context publication straightforward on successful up/down. Q3 can then stay intentionally tiny. Q4 and Q6 should fall out of authoring the three-step scripts. Choose a persistence backend only after the process contract is stable.
 
-These are research/design steps, not committed implementation phases or dated milestones.
+These are design steps, not committed implementation phases or dated milestones.

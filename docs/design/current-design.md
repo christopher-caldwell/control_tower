@@ -27,71 +27,53 @@ The governing boundary is:
 
 > You own the work. Control Tower runs it, records its own position, passes small amounts of context, and gives you controls to move through it.
 
-This is intentionally **not Dagu-lite** and not an orchestration product. No login, hosted control plane, scheduler, worker model, DAG engine, built-in HTTP/database driver layer, or generalized automation platform is required for the current product identity.
-
-## The problem
-
-A development ticket often needs a disposable fixture in a sequence of useful conditions: create a test user, create associated data, mutate it, inspect it, change application code, restore an earlier useful condition, and run the mutation again.
-
-Today that recipe can be scattered among SQL snippets, curl commands, scripts, copied IDs, and remembered ordering. Control Tower is meant to remove the coordination friction without taking ownership of the underlying operations.
-
-A representative loop is:
-
-~~~text
-0 -> create fixture -> add required data -> run mutation
-                                           |
-                                      inspect result
-                                           |
-                                  change application code
-                                           |
-                       down to useful point -> run mutation again
-~~~
-
-Running one step and walking the whole sequence are both first-class behaviors.
+This is intentionally not Dagu-lite and not an orchestration product. No login, hosted control plane, scheduler, worker model, DAG engine, built-in HTTP/database driver layer, or generalized automation platform is required.
 
 ## Core contract
 
 The accepted direction is deliberately small:
 
 1. Steps are ordered.
-2. Step N can provide an up executable that moves from recorded position N-1 to N.
-3. Step N can provide a down executable that moves from recorded position N to N-1.
-4. Moving several positions executes the required up or down files sequentially and stops on the first nonzero exit.
-5. The current position is bookkeeping owned by Control Tower. It is not a claim that the outside world has been proven to match.
-6. The author is responsible for making up, down, and any assertion executable correct. This is the same responsibility boundary expected from a database migration author.
-7. stdout, stderr, exit status, and the attempted step are visible results of execution.
-8. Assertions/checks remain part of the direction, but their exact timing relative to changing the recorded position is still unresolved.
-9. A small shared context between executables remains a leading candidate because generated IDs must survive across steps. The exact wire and storage protocol is still open.
+2. Step N up moves from recorded position N-1 to N.
+3. Step N down moves from recorded position N to N-1.
+4. Multi-step movement executes those files sequentially and stops on first nonzero exit.
+5. Successful up records the new position; failed up/down does not move the pointer.
+6. If the current step has verify, it must exit successfully immediately before any forward transition to the next step.
+7. A failed verify leaves the pointer and current context intact and blocks only the forward transition.
+8. A future/previous verify result is not treated as a durable permission token; requesting Next should run the gate again.
+9. The correctness of up, down, and verify is the author's responsibility, as with database migrations.
+10. stdout/stderr and exit status are visible execution results.
+11. Small shared context remains a leading candidate because generated IDs must survive across steps; the exact machine-output protocol is still open.
 
-If an up or down file exits nonzero, Control Tower stops and does not change the recorded position for that transition. The executable may already have caused external side effects. Control Tower reports the failure; it does not invent a rollback or maintain a second inferred model of the external system.
+The pointer records which authored migration transitions succeeded. It does not claim that external systems have been proven correct.
 
 ## Minimal concepts
 
-A **workspace** contains an ordered migration set and any auxiliary actions.
+A workspace contains an ordered migration set and optional auxiliary actions.
 
-A **step** is one ordered migration unit. Up belongs to the move into that step; down belongs to the move out of it toward the previous position.
+A step is one migration unit with up/down and optionally verify.
 
-A **position** is Control Tower's recorded migration index: 0 through N. Position 0 means no step has been applied in the current workspace/session.
+A position is Control Tower's recorded migration index. Position 0 means no step has been applied in the current workspace/session.
 
-An **auxiliary action** is an executable that can be run without changing the recorded position, such as an inspection script. Control Tower does not attempt to infer whether an auxiliary action is truly read-only.
+verify belongs to the current position and gates forward movement out of it.
 
-A **context** is the small set of authored values carried between executions, such as user_id or record_id. Context is distinct from the recorded position.
+An auxiliary action runs without changing the pointer, such as inspect. Control Tower does not enforce that it is read-only.
 
-A **result** is what Control Tower can know directly about an invocation: command, stdout, stderr, exit status, timing, and any machine-output payload defined by the eventual protocol.
+Context is a small set of values carried between executions, such as user_id and record_id.
 
-These are conceptual responsibilities, not required Rust structs or database tables.
+A result is what Control Tower directly observes: executable, stdout, stderr, exit status, timing, and eventual machine-output data.
+
+No separate controller-level “stage state machine” is required. The UI can retain the latest verify result for feedback without treating it as durable truth.
 
 ## Authoring boundary
 
-User-owned executable files remain the core authoring mechanism. A shebang can choose shell, Node, Python, or another installed interpreter. A compiled executable also fits the same process boundary.
+User-owned executable files remain the core mechanism. A shebang can choose shell, Node, Python, or another installed interpreter; compiled executables fit the same boundary.
 
-Control Tower does not need to understand SQL, HTTP, Node libraries, application repositories, or business semantics. Future helpers such as HTTP, Postgres, or TypeScript conveniences are allowed to exist as sidecars that consume the same executable/context contract. They are not core execution primitives and do not need consideration for the first version.
+Control Tower does not understand SQL, HTTP, Node libraries, or business semantics. Future helpers can exist as sidecars that consume the same executable/context contract. They are not core execution primitives.
 
-The exact filesystem convention is being tested in [Three-step workspace design probe](three-step-workspace.md). One important result is that a central configuration file has not yet earned its place: numeric directories and fixed executable names are enough to express the smallest example. This does not reject configuration; it makes metadata prove why it is needed.
+The [three-step design probe](three-step-workspace.md) suggests that a central configuration file has not yet earned its place: numeric directories and fixed executable names express the smallest example.
 
 ## Leading context and I/O direction
-
-The existing leading candidate still separates three things:
 
 ~~~text
 Control Tower context -> process input view
@@ -99,30 +81,37 @@ executable stdout/stderr -> human-visible result
 executable machine output -> context updates
 ~~~
 
-This separation avoids turning stdout into a brittle control protocol. Environment variables remain useful transport, especially for paths to context/output files, but they are not themselves durable storage.
+The verification gate now simplifies successful transition timing:
 
-The three-step probe narrows the immediate need. The concrete example only requires scalar identifiers and the ability to remove an identifier when moving down. Nested objects, multiline values, type systems, expression languages, and many variable scopes have not earned implementation scope.
+~~~text
+step N up succeeds
+  -> current context updates
+  -> recorded position N
+
+later, before N -> N+1:
+  step N verify runs
+  -> pass: allow next up
+  -> fail: stay at N
+~~~
+
+The concrete example only requires scalar identifiers and removal when walking down. Rich structured context still has not earned scope.
 
 See [ADR-0003](../decisions/0003-session-state-and-process-io.md).
 
-## What the Dagu trial established
+## Dagu lesson
 
-Dagu remains useful inspiration, especially for execution results, per-step visibility, and output-passing patterns. A local trial also clarified the product boundary: Dagu is a broader workflow/orchestration system with server state, authentication setup, workflow management, scheduling and other platform concerns. The owner found it close in capability but substantially heavier than the desired workbench.
+Dagu remains useful inspiration for execution results and output-passing patterns. The owner's local trial clarified the product boundary: Dagu solves a broader workflow/orchestration problem and felt substantially heavier than this intended workbench.
 
-That is not a criticism of Dagu and does not prove a market gap. It establishes that Control Tower is intentionally optimizing for a different interaction: walking a user-authored migration set during development.
-
-See [Existing tools](../research/existing-tools.md).
+Control Tower intentionally optimizes for walking a user-authored migration set during development.
 
 ## Scope that has not earned its way in
 
-No built-in database/HTTP action types, mandatory SDK, expression language, dependency installer, scheduler, distributed workers, generalized DAG engine, authentication system, hosted service, built-in AI agent, automatic retries, universal rollback, or exact-once execution is selected.
+No built-in database/HTTP action types, mandatory SDK, expression language, dependency installer, scheduler, distributed workers, DAG engine, authentication system, hosted service, automatic retries, universal rollback, exact-once execution, or rich external-state model is selected.
 
-No complex “external state certainty” model is selected either. The UI can say that recorded position 1 remains current and that attempt 1 -> 2 failed. That is enough to communicate what Control Tower actually knows.
-
-A managed helper ecosystem may be useful later, but the core must remain able to run ordinary user-owned executables with no helper dependency.
+The UI can simply show the recorded position, the attempted action, the latest verify result, and stdout/stderr.
 
 ## Current design probe
 
-The active concrete exercise is [Three-step workspace design probe](three-step-workspace.md): create a user, create an associated record, and mutate that record. It is intentionally small enough to reveal whether an abstraction is actually necessary.
+The active exercise remains [Three-step workspace design probe](three-step-workspace.md): create a user, create an associated record, and mutate that record.
 
-The main unresolved issue exposed by that example is assertion timing. That question should be resolved before the context commit/failure protocol because it determines when a generated identifier must become visible and when a position is considered advanced.
+Verification timing is now settled. The next meaningful design work is the smallest context publication contract, especially what happens to machine output emitted by a process that later exits nonzero.

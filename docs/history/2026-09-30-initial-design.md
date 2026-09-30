@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T19:46:29Z'
+  end: '2026-09-30T20:13:30Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -111,6 +111,14 @@ These statements simplify [ADR-0002](../decisions/0002-stage-navigation-and-veri
 The resulting [Three-step workspace design probe](../design/three-step-workspace.md) tests create-user, create-associated-record, and mutate-record as ordered steps with up/down executables plus an auxiliary inspect action.
 
 The probe finds that a convention-only directory can express the minimum example, that context needs assignment and removal, and that assertion timing is the first unresolved semantic choice that materially affects the runtime contract.
+
+## E14: Verification gates before advancing
+
+**20:13:30Z — Explicit user decision.** Verification is crucial before advancing to the next step. In the three-step example, `002-create-associated-record/verify` needs to run before step 3 is allowed to execute. The user also called out the need to make the ergonomics of stateful work within the current step comfortable.
+
+The refined model records successful `up` first, making the new position and its context available. `verify` then gates the next forward transition. A failed verify leaves the developer at the same recorded position so they can inspect, change application code, rerun verify, or move backward.
+
+The documentation intentionally does not introduce a persisted entered/verified sub-state machine. The latest verify result is useful feedback; a request to advance should run the current verify again so an old pass is not treated as a durable permission token.
 
 ## Corrections introduced over the discussion
 

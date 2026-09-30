@@ -13,25 +13,26 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../history/2026-09-30-initial-design.md#e13-three-step-design-probe
+- ../history/2026-09-30-initial-design.md#e14-verification-gates-before-advancing
 ---
 
 # Three-step workspace design probe
 
 ## Purpose
 
-This is a concrete design exercise, not accepted syntax. Its job is to make abstractions earn their place.
+This is a concrete design exercise, not accepted filesystem syntax. Its job is to make abstractions earn their place.
 
-The example models a common development loop:
+The example models:
 
 1. Create a test user.
 2. Create an associated record in the state required by the ticket.
 3. Invoke the mutation under development.
 
-The developer can inspect the fixture at any point, change application code outside Control Tower, move down to an earlier position, and run forward again.
+The developer can inspect at any point, change application code outside Control Tower, move down to an earlier position, and run forward again.
 
 ## Candidate workspace shape
 
-The smallest useful filesystem may need no central configuration file at all:
+The smallest useful filesystem may need no central configuration file:
 
 ~~~text
 workspace/
@@ -55,13 +56,11 @@ workspace/
     inspect
 ~~~
 
-The names up, down, verify, the numeric ordering, and the actions directory are illustrative. They are intentionally boring because the shebang inside each executable chooses how the operation runs.
+The names and layout are illustrative. The shebang inside each executable chooses how it runs.
 
-A convention-first layout is worth testing before introducing YAML/TOML. A config file may later earn its place for display labels, environment selection, working-directory overrides, parameters, hidden/disabled steps, or other metadata that cannot be expressed cleanly by convention.
+A convention-first layout is worth testing before YAML/TOML. A config file may later earn its place for metadata that the filesystem cannot express cleanly.
 
-## Position and context through the example
-
-The recorded position and authored context are separate:
+## Position and context
 
 | Recorded position | Meaning in this example | Context that may be useful |
 | --- | --- | --- |
@@ -70,135 +69,164 @@ The recorded position and authored context are separate:
 | 2 | create-associated-record up succeeded | user_id, record_id |
 | 3 | mutate-record up succeeded | user_id, record_id |
 
-The table describes Control Tower bookkeeping, not a guarantee about an external API or database.
+The position is migration bookkeeping, not a proof about external state.
 
 ### Step 1 — create user
 
 up creates the fixture user and publishes user_id.
 
-down removes that user and should remove user_id from the carried context.
+down removes that user and should remove user_id from carried context.
 
-verify, if this convention survives, checks whatever the author considers necessary about the user.
+verify checks whatever the author requires before allowing forward movement from position 1.
 
 ### Step 2 — create associated record
 
 up uses user_id, creates the required associated data, and publishes record_id.
 
-down removes or otherwise compensates for that record and should remove record_id from context.
+down removes or compensates for that record and should remove record_id from context.
 
-verify can check the preconditions that make the fixture useful for the next operation.
+verify is a mandatory forward gate when present. It can check the conditions that must hold before step 3 is allowed to run.
 
 ### Step 3 — mutate record
 
 up uses record_id to invoke the operation under development.
 
-down is the author's chosen compensating operation: perhaps reopen the same record, reset fields, or call a project-specific repair script. Control Tower does not know whether it is a true inverse.
+down is the author's chosen compensation: reopen the record, reset fields, call a project-specific repair script, or anything else suitable.
 
-This step may not need to publish any new context.
+verify can be run manually to inspect the final position. Whether a full “run to end” automatically runs the final verify is still open because there is no subsequent forward transition to gate.
 
 ### Auxiliary inspect action
 
-actions/inspect reads the current context, queries whatever systems the author wants, and prints useful state to stdout. Running it does not change Control Tower's recorded position.
+actions/inspect reads the current context, queries whatever systems the author wants, and prints useful state to stdout. It does not change the recorded position.
 
-Control Tower does not enforce that inspect is actually read-only. The no-position-change rule is bookkeeping, not a sandbox or semantic guarantee.
+Control Tower does not enforce that inspect is read-only.
 
-## Walking the migration set
+## Walking forward
 
 From position 0 to position 3:
 
 ~~~text
-run step 1 up
-  success -> record position 1
+step 1 up
+  success -> position 1
 
-run step 2 up
-  success -> record position 2
+step 1 verify
+  success -> step 2 may run
 
-run step 3 up
-  success -> record position 3
+step 2 up
+  success -> position 2
+
+step 2 verify
+  success -> step 3 may run
+
+step 3 up
+  success -> position 3
 ~~~
+
+The key semantic is now settled: **verify belongs to the current position and gates the next forward transition.**
+
+This creates a useful interactive pause inside a step:
+
+~~~text
+position 2
+  |
+  +-- inspect
+  +-- verify -> fail
+  +-- change application code
+  +-- verify -> pass
+  +-- next
+       |
+       +-- step 2 verify runs again
+       +-- step 3 up
+~~~
+
+Running verify manually is useful feedback. Requesting Next should run verify again immediately before advancing rather than treating an old pass as a durable permission token.
+
+## Walking backward
 
 From position 3 back to position 1:
 
 ~~~text
-run step 3 down
-  success -> record position 2
+step 3 down
+  success -> position 2
 
-run step 2 down
-  success -> record position 1
+step 2 down
+  success -> position 1
 ~~~
 
-Any nonzero exit stops the walk. The position does not move for the failed transition. The external system may nevertheless have been partly changed; that is the same category of author responsibility as a failed migration.
+The current leading interaction does not require verify before down. A failing verify should not trap the user in the current position.
 
-A missing down file means that path cannot be traversed backward through the normal migration mechanism. Control Tower should not silently decrement the position.
+Any nonzero down exit stops the walk. A missing down file means the normal backward path is unavailable.
 
 ## What this example teaches us
 
-### 1. A separate “stage” abstraction is probably unnecessary
+### 1. “Stage” does not need to be a second domain object
 
-The migration index already gives us the useful model. Step N is the move between positions N-1 and N. Introducing both stages and steps adds vocabulary without adding capability in this example.
+The position plus the ordered step is enough. “Stage” can remain conversational UI language if useful, but the core model does not need separate stage and step entities.
 
-### 2. Central configuration has not earned its way in yet
+### 2. Central configuration has not earned its way in
 
-Order comes from the numeric prefix. Direction comes from up/down file names. Runtime comes from the shebang. The workspace directory itself is already a configuration surface.
+Order comes from numeric prefixes. Direction comes from up/down names. Runtime comes from shebangs.
 
-This is not a decision to ban configuration. It means the first config field should solve a concrete problem rather than exist because workflow products usually have one.
+This is not a ban on config. The first config field should solve a demonstrated problem.
 
-### 3. Context needs both set and remove
+### 3. Context needs set and remove
 
-Forward execution needs to carry user_id and record_id. Backward execution needs to discard values that no longer identify the current fixture.
+Forward execution needs user_id and record_id. Backward execution needs to discard identifiers that no longer belong to the recorded position.
 
-That means the eventual output protocol needs an unambiguous removal operation in addition to assignment. This requirement is stronger than the current evidence for nested JSON, multiline values, or typed variables.
+The eventual machine-output protocol therefore needs unambiguous assignment and removal. Rich structured state still has not earned scope.
 
-### 4. Assertions expose the first real semantic choice
+### 4. Verification ergonomics are simpler than an internal state machine
 
-The user originally described assertions as gates:
+We do not need persisted entered/unverified/verified sub-states.
 
-~~~text
-0 -> 1 -> 2 [must meet x,y] -> 3
-~~~
-
-Two small interpretations survive the example.
-
-**Arrival check:** run step 2 up, run step 2 verify, and only then record position 2.
-
-- Advantage: a recorded position can mean its configured check passed.
-- Cost: verify may need user_id/record_id produced by the just-finished up before the position is committed. If verify fails, the external mutation and generated IDs may already exist while the recorded position remains 1.
-
-**Departure gate:** step 2 up succeeds and records position 2. Before allowing step 3 up, run step 2 verify.
-
-- Advantage: the migration pointer remains very simple and the check matches the original “must meet x,y before 3” wording.
-- Cost: being at position 2 does not imply verification has passed. The final position also needs an explicit Verify action or an end-of-run check if postconditions matter.
-
-Neither has been accepted. This choice should be made before finalizing how action outputs are committed.
-
-### 5. We can keep failure handling dumb
-
-The example does not require Control Tower to model “unknown external state” as a separate state-machine branch.
-
-A sufficient failure display can be:
+At position 2, the UI can display:
 
 ~~~text
-Recorded position: 1
-Last attempt: 1 -> 2
-Result: failed (exit 1)
+Current position: 2
+Last verify: failed
+[Verify] [Back] [Next]
 ~~~
 
-The author decides whether to inspect, repair, retry, run a compensating action manually, or start over.
+or after a pass:
 
-### 6. The first context protocol can be smaller than we were assuming
+~~~text
+Current position: 2
+Last verify: passed
+[Verify] [Back] [Next]
+~~~
 
-This example needs two scalar identifiers plus deletion. It does not yet justify arbitrary nested data, an expression language, a type system, many scopes, or event-sourced state.
+The last result explains what happened. Next still reruns verify before invoking step 3 up, so the displayed result is not a lock or token that Control Tower must keep authoritative.
 
-A context file plus a separate output file remains a good candidate, but the output encoding should be chosen against this small need first.
+### 5. Departure gating simplifies context publication
 
-## What is intentionally absent
+step 2 up can publish record_id and position 2 can become current immediately after successful up execution. step 2 verify then reads the ordinary current context.
 
-There is no login, scheduler, server/worker distinction, DAG, retry policy, database adapter, HTTP adapter, Node runtime adapter, or workflow expression engine in this probe.
+There is no need to keep a hidden “candidate context” waiting for verification before the pointer advances.
 
-Future helpers can make common authoring jobs pleasant, but they should remain executables that consume the same core contract.
+### 6. Failure handling stays dumb
+
+If verify fails:
+
+~~~text
+Recorded position: 2
+Verify step 2: failed
+Next: not run
+~~~
+
+The context remains available. The author decides whether to inspect, change code, verify again, or go down.
+
+If up/down itself fails, the pointer does not move for that transition. The unresolved question is only what happens to machine output emitted by a process that later exits nonzero.
+
+## What remains open
+
+- Does “run to end” verify the final position as a completion check?
+- Can verify publish context, or is its machine-output channel ignored/read-only by convention?
+- What machine-output encoding handles set/remove with the least authoring friction?
+- What happens to machine output emitted by a failed up/down process?
+- Does the convention-only filesystem survive the first real project recipe?
+
+These are narrower questions than the workflow semantics we started with.
 
 ## Next design decision
 
-Resolve the assertion timing choice above. It directly determines when generated context becomes current, what a recorded position means, and how a full run behaves at the final step.
-
-After that, return to [Open questions and validation](open-questions.md) for the smallest set/unset output protocol.
+With verification timing settled, return to [Open questions and validation](open-questions.md). The next useful decision is the small context publication contract, especially failed-process output.

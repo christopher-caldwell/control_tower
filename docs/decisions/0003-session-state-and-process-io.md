@@ -20,91 +20,97 @@ sources:
 
 The owner endorsed the general separation as the leading candidate for exploration: Control Tower owns small shared context, an executable receives an input view, stdout/stderr remain ordinary visible output, and a separate machine-output channel can update context.
 
-The exact protocol is still unaccepted. File names such as WB_CONTEXT or WB_OUTPUT, JSON shapes, persistence backend, environment projection, and failure-publication rules remain working ideas.
+The exact protocol is still unaccepted. File names, encoding, persistence backend, environment projection, and failed-process output rules remain working ideas.
 
-## What the three-step probe actually requires
+## What the three-step probe requires
 
 The first concrete workspace only needs:
 
 ~~~text
-after step 1:
+after step 1 up:
   user_id
 
-after step 2:
+after step 2 up:
   user_id
   record_id
 
-after step 3:
+after step 3 up:
   user_id
   record_id
 ~~~
 
-Walking down step 2 must be able to remove record_id. Walking down step 1 must be able to remove user_id.
+Walking down step 2 needs to remove record_id. Walking down step 1 needs to remove user_id.
 
-This is important evidence: assignment and removal are required. Nested objects, multiline values, arbitrary typing, variable precedence, and an expression language are not yet required.
+Assignment and removal are therefore required. Rich nested state, variable precedence, an expression language, and a large type system are not.
 
 ## Distinct responsibilities
 
 | Information | Owner | Current direction |
 | --- | --- | --- |
 | Recorded migration position | Control Tower | Internal bookkeeping; scripts do not set it directly. |
-| Shared authored context | Control Tower plus explicit script outputs | Small values intentionally carried between actions. |
-| Process configuration | Author/environment | Do not silently copy the entire inherited environment into durable context. |
+| Shared authored context | Control Tower plus explicit script outputs | Small values carried between actions. |
+| Process configuration | Author/environment | Do not copy the entire inherited environment into durable context. |
 | stdout/stderr | Executable | Human-visible execution result. |
 | Machine output | Executable through a defined channel | Candidate context set/remove operations. |
-| Large files/artifacts | Author/filesystem | No managed artifact system has earned scope. |
+| Verify result | Verify executable exit status | Gate forward movement; latest result can be displayed. |
 
-The table is conceptual. It does not imply separate databases or a large state subsystem.
+## Successful up/down and context timing
+
+The verification decision removes one earlier complication.
+
+When up N exits successfully, Control Tower records position N and applies the successful action's context updates according to the eventual output protocol. verify N runs later, immediately before any forward move to N+1.
+
+Therefore verify N sees the normal current context. There is no need for a hidden candidate-context layer waiting for verification.
+
+Similarly, successful down N can apply its context removals and then record position N-1.
+
+Exact ordering between durable pointer write and durable context write is a persistence/atomicity implementation question, not a reason to add workflow semantics.
 
 ## Input candidates
 
-Environment variables are excellent for simple scalar transport and for pointing to a context file, but they are not a parent-process storage mechanism. Command-line arguments work well for existing executables but make generic binding verbose. stdin is structured but consumes a useful stream. A read-only context snapshot file remains a strong language-neutral candidate.
+Environment variables are convenient scalar transport and can point to a context file, but they are not durable parent-process storage. Command-line arguments fit existing executables but make generic binding verbose. stdin consumes a useful stream. A read-only context snapshot file remains a strong language-neutral candidate.
 
-The three-step example does not yet prove that every scalar context value should be automatically projected into the environment. That convenience can be tested later.
+Automatic projection of every scalar into environment variables still has not earned acceptance.
 
 ## Output candidates
 
-The strongest decision so far is to keep machine output separate from stdout/stderr.
+The strongest direction remains a separate machine-output channel from stdout/stderr.
 
-The smallest real requirement is now:
+The first real requirement is:
 
 - set a scalar key,
 - remove a scalar key,
-- detect malformed/incomplete output,
+- detect malformed output,
 - keep normal stdout/stderr untouched.
 
-A KEY=value-style file is attractive for shell authoring but needs a deletion convention. A JSON document can express set/remove clearly but introduces a parser and structure that may be more than v0 needs. JSON Lines and SDK/RPC mechanisms remain unjustified by the example.
-
-Do not choose a format merely because another workflow product uses it.
-
-## Assertion timing affects context timing
-
-The three-step probe surfaced a dependency between ADR-0002 and this proposal.
-
-If assertions are **arrival checks**, step 1 up may create user_id and step 1 verify must see it before Control Tower records position 1.
-
-If assertions are **departure gates**, step 1 up can publish user_id and record position 1 immediately; verification happens only before walking onward.
-
-That choice should be resolved before specifying exactly when machine output is merged into active context.
+KEY=value is shell-friendly but needs deletion syntax. A small JSON change document expresses set/remove clearly but may be more ceremony. Choose against real scripts, not feature breadth.
 
 ## Failed process output remains the hard edge
 
-A process can change an external system, write an identifier, and then exit nonzero. The migration-runner philosophy says Control Tower does not need to infer external truth, but it still must choose what to do with any machine output it received.
+A process can change an external system, emit an identifier, and then exit nonzero. The migration-runner philosophy says the pointer does not advance, but it still leaves a narrow machine-output decision.
 
-The minimum honest options are:
+Options remain:
 
-- keep failed output visible as part of the result but do not merge it,
-- merge some/all failed output into context,
-- or require the author to use a separate recovery mechanism.
+- retain failed output only with the result,
+- merge it into current context,
+- or ignore it and require external recovery.
 
-No choice is accepted yet. This is a much smaller question than building a generalized recovery state machine.
+No choice is accepted yet.
+
+## Verify output is a separate question
+
+The smallest verify contract is read current context, print results, and signal pass/fail through exit status.
+
+Allowing verify to publish context would make a gate also mutate Control Tower state. That may be useful in some edge case, but the three-step example does not require it. Treat verify context publication as unearned until a concrete case demonstrates it.
 
 ## Persistence
 
-Restart persistence for the pointer/context is still a candidate, not a decided storage implementation. JSON files, SQLite, or another local mechanism can be evaluated later.
+Restart persistence for pointer/context remains a candidate. JSON files, SQLite, or another local mechanism can be evaluated later.
 
-The process protocol must not decide the persistence backend by accident. Likewise, local execution does not make the context a secret store.
+The process protocol must not accidentally choose the storage backend, and local execution does not make context a secrets store.
 
 ## Confirmation
 
-After assertion timing is settled, test the protocol against the three-step workspace using one shell step and one Node step. Require only scalar set/remove behavior first. Add structured values only when a concrete authoring case cannot be expressed cleanly without them.
+Test the protocol against the three-step workspace using shell and Node. Require scalar set/remove first. Include a successful up followed by failed verify, and confirm the pointer/context remain usable for inspect -> code change -> verify again.
+
+Then test a failed up that emitted an ID before exiting nonzero. That is now the main unresolved context edge.
