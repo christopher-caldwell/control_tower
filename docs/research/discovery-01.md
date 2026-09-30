@@ -3,7 +3,7 @@ id: CT-RESEARCH-DISCOVERY-01
 title: First collaborative discovery — source review and findings
 type: research
 status: recorded
-discovery_status: in-progress
+discovery_status: handoff-ready
 created: '2026-09-30'
 updated: '2026-09-30'
 verified_on: '2026-09-30'
@@ -80,26 +80,11 @@ If `03/up` exits successfully but `03/verify-up` fails, the CLI must be able to 
 
 The exclusion of crash recovery concerns a crashed Control Tower process. It is not a reason to discard ordinary child-process failures or verification results. This distinction adds no crash journal or external repair mechanism.
 
-### F4 — One ordinary failure path is still a product question
+### F4 — Failed-mutation recovery is intentionally deferred
 
-The existing model explicitly covers successful mutation followed by failed verification. Its failed-mutation language says to stop without completing the step; it does not clearly say whether the user may then invoke that same step's down operation.
+A nonzero up/down result must stop automatic movement and be reported. The owner explicitly chose not to resolve richer partially-effective-mutation recovery before a first implementation exists.
 
-Concrete trace, not an executed test:
-
-```text
-02 completed; UUID file contains "hello"
-03/up writes " to you", then exits 1
-03/verify-up does not run
-02 remains the last completed step
-
-Can the developer explicitly invoke 03/down now?
-```
-
-This is different from recovering a crashed Rust process or automatically determining whether the mutation worked.
-
-**Recommendation, pending owner decision:** allow the explicit matching down operation using the already-known UUID, followed by optional verify-down. Do not automatically invoke cleanup, mark the failed up successful, rerun it, or try to reconstruct an identifier that was never captured. This keeps the author in control while preserving the familiar back-out action.
-
-A narrower v0 that leaves cleanup after a nonzero mutation entirely to a terminal is also possible. The tradeoff is an interrupted workbench loop. B1 in the [decision queue](../design/open-questions.md#b1--manual-down-after-up-itself-fails) asks the owner to choose; no new recovery requirement is accepted here.
+Therefore the first handoff does not require automatic cleanup, recovery inference, a special same-stage down path after a failed mutation, or a generalized recovery state machine. Those behaviors can be revisited after the basic UUID-file loop is working.
 
 ### F5 — Keep mutations and checks separate in the fixture
 
@@ -119,10 +104,14 @@ These are prospective checks, not test results or a frozen requirement set. Exac
 | Successful up, failed verify-up | The target is not completed; a later explicit verifier retry does not rerun the mutation. Backing out uses the same stage's down. |
 | Successful down, failed verify-down | The lower position is not prematurely recorded as complete; a later verifier retry does not rerun down. |
 | Omit a verifier | Successful execution completes the direction without requiring a placeholder verifier. |
-| A normal script exits nonzero | The result is visible and no later stage runs. Matching-down behavior remains B1. |
+| A normal script exits nonzero | The result is visible, the direction does not complete, and no later stage runs automatically. Richer recovery is deferred. |
 
 An implementation should exercise the actual scripts and SQLite path, not only simulate this table. These tests have not been run because no implementation exists in the reviewed baseline.
 
-## Next collaborative decision
+## Discovery closeout
 
-Resolve B1 only: should explicit same-stage down remain available after up itself returns failure? Continue independent discovery afterward. Do not package unresolved implementation authority or silently substitute the recommendation for the owner's answer.
+The owner requested that the first implementation be allowed to answer remaining edge-case questions rather than extending pre-build analysis indefinitely.
+
+This collaborative Discovery source is therefore ready for packaging with no blockers. The implementation handoff should preserve the agreed v0 behavior and UUID-file acceptance fixture, while leaving deferred failure-recovery details outside binding authority.
+
+No application implementation or runtime fixture execution occurred during this Discovery; those become Build evidence.

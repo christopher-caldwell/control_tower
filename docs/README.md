@@ -23,9 +23,9 @@ The project is intentionally not an orchestration platform. No login, hosting se
 
 ## Start here
 
-Read [Current design](design/current-design.md) for the distilled direction and [First formal discovery brief](design/discovery-brief.md) for the discovery seed. The first collaborative discovery is now in progress; its inspected revisions, findings, and evidence limits are in [First discovery record](research/discovery-01.md).
+Read [Current design](design/current-design.md) for the distilled direction and [First formal discovery brief](design/discovery-brief.md) for the discovery seed. The first collaborative discovery is now handoff-ready; its inspected revisions, findings, and evidence limits are in [First discovery record](research/discovery-01.md).
 
-[Open questions and validation](design/open-questions.md) tracks the current product decision. [Three-step workspace design probe](design/three-step-workspace.md) preserves earlier conceptual pressure tests, not additional v0 obligations. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
+[Open questions and validation](design/open-questions.md) now tracks implementation experiments and deliberately deferred edge cases rather than pre-build blockers. [Three-step workspace design probe](design/three-step-workspace.md) preserves earlier conceptual pressure tests, not additional v0 obligations. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
 
 ## Structure and responsibilities
 

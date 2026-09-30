@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T22:17:04Z'
+  end: '2026-09-30T22:33:13Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -213,6 +213,14 @@ This does not restore the previously rejected durability machinery. SQLite is pr
 If the Rust process crashes during an operation, v0 makes no promise to recover/reconcile the external effects. The next invocation uses whatever Control Tower state was last successfully stored.
 
 The storage port decision remains unchanged and becomes more important: transition logic must stay independent of SQLite, with the SQLite adapter selected at the composition root.
+
+## E24: Close first formal discovery without edge-case expansion
+
+**22:33:13Z — Explicit discovery-scope correction.** The owner asked to stop expanding pre-implementation edge cases and instead package the planned v0 so a working implementation can supply evidence.
+
+The ordinary nonzero-mutation recovery question is therefore not a blocker. V0 must report the failed executable, stop automatic movement, and avoid running later stages automatically; richer cleanup/recovery behavior is deferred until implementation experience demonstrates a need.
+
+The collaborative Discovery source is ready for a Chat Discovery handoff using the agreed UUID-file fixture and current Rust/CLI/SQLite boundaries. Build remains separately authorized.
 
 ## Corrections introduced over the discussion
 

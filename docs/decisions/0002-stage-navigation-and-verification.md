@@ -59,7 +59,7 @@ Do not rerun the mutation automatically when retrying its verifier. The author r
 
 A nonzero mutation exit does not complete the directional transition. Record the attempt, do not automatically invoke its verifier, and stop the walk.
 
-Whether an explicit matching down is available after up itself failed is unresolved in [B1](../design/open-questions.md#b1--manual-down-after-up-itself-fails). The earlier statement that recovery could be deferred did not explicitly settle this ordinary manual operation. This record does not silently decide it.
+No richer recovery semantics are required for the first implementation. Special handling for a partially effective failed mutation—including whether to expose a matching down as an explicit cleanup action—is deliberately deferred until a working vertical slice demonstrates a concrete need.
 
 ## Session scope
 
@@ -75,4 +75,4 @@ The runtime remains local and serial. It needs enough bookkeeping for completed 
 
 ## Documentation correction during discovery
 
-The source-review pass found obsolete memory-only session wording in this accepted record after SQLite had already been selected. That wording is corrected here to match the owner's later instruction, not to introduce a new storage decision. The first-discovery record preserves the finding and inspected baseline. No unresolved mutation-failure behavior is promoted to accepted authority by this correction.
+The source-review pass found obsolete memory-only session wording in this accepted record after SQLite had already been selected. That wording is corrected here to match the owner's later instruction, not to introduce a new storage decision. The first-discovery record preserves the finding and inspected baseline. The discovery closeout also moved mutation-failure recovery details out of the pre-implementation blocker set so the first vertical slice can be built before those edge cases are generalized.
