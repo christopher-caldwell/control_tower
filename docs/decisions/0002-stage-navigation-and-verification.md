@@ -45,7 +45,7 @@ down -> verify-down -> complete lower step
 
 If the relevant verifier is absent, mutation exit 0 completes the transition.
 
-verify-down remains technically a proposal until the owner accepts it, but no gauntlet case exposed a reason to collapse the two verifiers back into one.
+The owner has confirmed this four-role shape as the **leading mechanism for formal discovery**, explicitly subject to change as the real fixture is exercised. It is not being treated as an irreversible public contract.
 
 ## Active directional transition
 

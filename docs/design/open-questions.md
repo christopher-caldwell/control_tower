@@ -9,7 +9,7 @@ owner: christopher-caldwell
 authored_by: assistant
 sources:
 - current-design.md
-- three-step-workspace.md
+- discovery-brief.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
@@ -18,11 +18,11 @@ sources:
 
 # Open questions and validation
 
-The v0 storage implementation is memory, but storage is already architecturally isolated behind an application-owned port so SQLite can follow without rewriting transition logic.
+The project is ready for its first formal discovery round. These questions should be investigated through the concrete UUID-file fixture rather than answered abstractly first.
 
-## Q1 — Accept directional verify-down?
+## Q1 — Does the four-role step remain the right convention?
 
-The current candidate is:
+Leading candidate:
 
 ~~~text
 up
@@ -31,65 +31,51 @@ verify-up     # optional
 verify-down   # optional
 ~~~
 
-The gauntlet did not expose a problem with verify-down, and it keeps directional checks simple.
+The owner considers this the leading mechanism, subject to change.
 
-**Exit criterion:** owner accepts/rejects the four-role step as the default convention.
+Test it rather than adding more roles.
 
-## Q2 — What patch encoding is smallest?
+## Q2 — How should memory-only state coexist with CLI-only v0?
 
-The session context model needs:
+This is the most important unresolved architectural/interaction question.
 
-- set scalar values,
-- occasionally unset inherited values,
-- preserve normal stdout/stderr,
-- parse deterministically.
+A one-shot CLI process loses the in-memory adapter when it exits.
 
-Compare a tiny line protocol against a small JSON patch document.
+Discovery should compare the smallest plausible interaction models, especially a long-lived CLI session versus pulling durable storage forward.
 
-## Q3 — How are source and candidate context exposed?
+Do not assume the illustrative command syntax is binding.
 
-Directional verifiers can need both.
+## Q3 — What is the smallest UUID handoff?
 
-Choose the smallest language-neutral transport after the patch format is clear.
+The discovery fixture only needs one stage-1 UUID to be available to stages 2 and 3 and their verifiers.
 
-## Q4 — Can auxiliary actions mutate Control Tower context?
+Use the smallest implementation that works. Do not design a generalized context platform first.
 
-Read-only inspection is simple.
+## Q4 — Does filesystem-only authoring hold up?
 
-Allowing arbitrary actions to change context raises the question of which checkpoint or candidate they mutate.
+Start with numbered directories and fixed executable-role filenames.
 
-Keep auxiliary context output disabled unless a concrete workflow requires it.
+Add config only if the actual fixture exposes a concrete need.
 
-## Not an open architecture question
+## Q5 — Does the hexagonal boundary remain clean?
 
-The v0 entry boundary is settled:
+Validate that:
 
-- CLI is the only driving adapter,
-- the CLI invokes application use cases rather than containing business logic,
-- the executable entry point is the composition root,
-- future Tauri/HTTP entry layers are additional adapters over the same application layer,
-- no generic frontend/transport abstraction is required now.
+- CLI remains a driving adapter,
+- transition behavior stays in application/core,
+- state storage remains behind the core-owned port,
+- process execution remains an outbound concern,
+- memory can later be swapped for SQLite without moving business rules.
 
-The storage boundary is also settled:
+## Removed from the first discovery
 
-- application/core owns the state port,
-- memory adapter is v0,
-- SQLite adapter is a fast follow,
-- entry point chooses and injects the adapter.
-
-Exact port method signatures should be derived from implementation use cases; do not predesign a generic CRUD repository.
-
-## Explicitly out of scope for v0
-
+- auxiliary action abstraction,
 - SQLite implementation,
-- durable crash recovery,
-- structural drift detection,
-- migration history/checksums,
-- multi-instance locking,
-- automatic external-state reconciliation.
+- Tauri/HTTP,
+- generalized source/candidate context contract,
+- crash recovery,
+- structural drift protection,
+- concurrency/multi-instance behavior,
+- workspace reset semantics.
 
-A future workspace-level reset executable remains a deferred idea.
-
-## Validation order
-
-Settle Q1, then choose the patch encoding against one shell action and one Node action. Source/candidate transport should follow from that.
+See [First formal discovery brief](discovery-brief.md) for the complete seed.

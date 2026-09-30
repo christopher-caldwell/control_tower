@@ -14,6 +14,7 @@ sources:
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
 - ../decisions/0005-cli-first-driving-adapter.md
+- discovery-brief.md
 - three-step-workspace.md
 ---
 
@@ -185,14 +186,15 @@ The application logic decides how a forward patch builds a candidate context and
 
 The storage adapter does **not** calculate those transitions. It stores the application state through the port.
 
-## Source and candidate context
+## V0 state handoff is intentionally minimal
 
-A directional verifier may need:
+Earlier exploration considered a generalized source/candidate context model.
 
-- source context — before the mutation,
-- candidate context — what would become current on verification success.
+That is **not** a v0 requirement.
 
-Exact process transport remains open.
+The first formal discovery fixture only requires Control Tower to carry one opaque UUID from stage 1 into later stages. Discovery should use the smallest mechanism that makes that work and generalize only when a real use case demands it.
+
+Source/candidate views may still turn out to be useful implementation concepts for directional verification, but they should earn their way through the concrete fixture rather than be treated as product requirements.
 
 ## Failure policy for v0
 
@@ -228,9 +230,8 @@ It remains deferred.
 
 No scheduler, authentication, hosting, DAG, built-in drivers, retries, crash recovery, concurrency control, structural-drift protection, transaction emulation, or expression language is required.
 
-The remaining design work is small:
+The high-level pre-discovery work is now sufficiently complete.
 
-1. whether verify-down becomes the default optional convention,
-2. exact context patch/output encoding,
-3. source/candidate context transport,
-4. whether auxiliary actions can change session context.
+Use [First formal discovery brief](discovery-brief.md) for the next round. The most important unresolved point is the interaction between an in-memory state adapter and CLI process lifetime: a one-shot CLI command cannot preserve memory state for a later command after the process exits. Formal discovery should test the smallest CLI interaction that preserves the intended workbench loop.
+
+The four-role step remains the leading mechanism subject to discovery. The initial proof requires only one UUID handoff, filesystem-only authoring, and no auxiliary-action abstraction.

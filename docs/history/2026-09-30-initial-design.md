@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T22:04:07Z'
+  end: '2026-09-30T22:13:41Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -183,6 +183,24 @@ CLI-specific concerns stay at the edge. Transition rules, context/session behavi
 The v0 executable entry point can act as the composition root, wiring the memory state adapter and other concrete adapters into the application service before the CLI invokes it.
 
 A later Tauri desktop UI or HTTP server should be added as another driving adapter over the same application use cases. No generic frontend abstraction, Tauri dependency, HTTP server, or command schema needs to be designed during this high-level discovery phase.
+
+## E22: First formal discovery seed
+
+**22:13:41Z — User answers to pre-discovery questions.** The four executable roles per stage remain the leading mechanism, explicitly subject to change.
+
+The first concrete proof should avoid a generalized context system. Stage 1 creates a UUID-named file and passes only that UUID forward. Stage 2 writes `hello`; stage 3 extends it to `hello to you`; directional down operations reverse only their own contribution. Directional verifiers assert each expected state. The correction remains that mutation belongs in up/down and verify-up/verify-down should only check the result.
+
+The user does not want to prescribe implementation mechanics such as “source context” versus “candidate context” unless there is a product reason. Discovery should choose and test those mechanics.
+
+The previously discussed auxiliary-action abstraction is not understood/required by the owner and is removed from first-discovery scope unless a concrete need appears.
+
+Filesystem-only authoring should be tried first. Configuration should be introduced only if the real fixture earns it.
+
+CLI syntax is intentionally loose; an illustrative target-stage command is acceptable but not binding.
+
+A significant constraint surfaced from these choices: memory-only storage cannot survive separate one-shot CLI process invocations. The first formal discovery must therefore test how a CLI-only v0 preserves the workbench interaction—likely through a long-lived CLI session or by revisiting when durable storage is introduced—without prematurely committing to either solution.
+
+The project is now considered ready for formal discovery using [the discovery brief](../design/discovery-brief.md).
 
 ## Corrections introduced over the discussion
 

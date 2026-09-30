@@ -1,110 +1,91 @@
 ---
 id: ADR-0003
-title: Use session context checkpoints plus an active-transition patch
+title: Keep v0 state handoff minimal and storage-independent
 type: decision
 status: proposed
 created: '2026-09-30'
 updated: '2026-09-30'
 owner: christopher-caldwell
 authored_by: assistant
-decision_authority: user-endorsed-candidate-with-scope-reduction
+decision_authority: discovery-leading-candidate
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
-- ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
-- ../history/2026-09-30-initial-design.md#e19-reject-unneeded-safety-machinery
-- ../history/2026-09-30-initial-design.md#e20-storage-is-an-adapter-concern
+- ../history/2026-09-30-initial-design.md#e22-first-formal-discovery-seed
 - ../decisions/0004-session-storage-port-and-adapters.md
-- ../design/three-step-workspace.md
+- ../design/discovery-brief.md
 ---
 
-# ADR-0003: Use session context checkpoints plus an active-transition patch
+# ADR-0003: Keep v0 state handoff minimal and storage-independent
 
 ## Standing
 
-The strongest current session-state candidate is:
+Earlier exploration considered context checkpoints, source/candidate views, and mutation patches.
 
-- one context checkpoint per completed step,
-- one optional active directional transition,
-- a small mutation-output patch used to build candidate context,
-- stdout/stderr separate from machine state.
+Those remain useful hypotheses, but they are **not v0 requirements**.
 
-The state model belongs to application/core logic. **How that state is stored is an adapter concern covered by ADR-0004.**
+The first formal discovery fixture has one concrete handoff requirement: stage 1 creates an opaque UUID and later stages/verifiers need access to that same UUID.
 
-## Storage-independent semantics
+Discovery should implement the smallest mechanism that supports that requirement and only generalize when a concrete use case forces it.
 
-Do not define this ADR in terms of “a Vec in memory,” SQLite rows, or any other adapter representation.
+## Architectural boundary
 
-The application needs logical state such as:
+Whatever state representation discovery chooses, application/core behavior must remain independent of the concrete storage adapter.
 
-~~~text
-completed checkpoints
-optional active transition
-source context
-candidate context
-recent execution result needed by current interaction
-~~~
+ADR-0004 governs that boundary:
 
-The application-owned storage port should expose whatever operations the capability actually needs. Concrete adapters decide how to represent those values.
+- application/core owns the semantic state port,
+- memory adapter is v0,
+- SQLite is the fast-follow adapter.
 
-## V0 memory behavior
+This ADR concerns the logical data that needs to flow, not how the adapter stores it.
 
-The initial injected adapter is in-memory. Therefore session state disappears with the Rust process.
+## Initial proof requirement
 
-That is an adapter behavior, not a dependency of the transition algorithm.
-
-A later SQLite adapter may preserve the same logical state beyond process lifetime without rewriting the up/down/verification logic.
-
-## Forward context
-
-From completed checkpoint C(N-1):
+The fixture needs a token such as:
 
 ~~~text
-N/up -> patch P
-candidate C(N) = apply(C(N-1), P)
+workspace/run identifier:
+  550e8400-e29b-41d4-a716-446655440000
 ~~~
 
-verify-up receives candidate C(N). On success it becomes the next completed checkpoint.
+Stage 1 creates a file named by that UUID.
 
-## Backward context
+Stages 2 and 3 and their directional verifiers need to operate on that same file.
 
-From completed C(N), the lower C(N-1) checkpoint is the target baseline:
+That is sufficient for the first discovery round.
 
-~~~text
-N/down -> optional patch D
-candidate C(N-1) = apply(saved C(N-1), D)
-~~~
+## Do not predesign a generic context system
 
-verify-down can validate that candidate. On success, the application state settles at C(N-1).
+Do not require, before evidence:
 
-Most down scripts need no Control Tower state output.
+- arbitrary nested values,
+- typed key/value storage,
+- merge/patch languages,
+- multiple variable scopes,
+- source/candidate files as public contract,
+- expression interpolation,
+- an SDK.
 
-## Why patches still matter
+Discovery may use an internal state object or temporary protocol as needed. Any mechanism that proves broadly useful should be documented afterward with the concrete reason.
 
-A down may reestablish the lower logical state using replacement identifiers.
+## Directional-transition implication
 
-An override patch keeps checkpoint rewind ergonomic without forcing the adapter to understand application semantics.
+If a mutation succeeds and verification fails, Control Tower may need to remember the UUID while the stage remains in progress so verification can be retried without rerunning the mutation.
 
-## Source and candidate views
+That is a genuine behavioral need.
 
-Directional verifiers may need both source and candidate context.
+How it is represented is an implementation/discovery question.
 
-Exact process transport remains open.
+## CLI/process-lifetime implication
 
-## Mutation failure
+With the memory adapter, state survives only while the owning Rust process remains alive.
 
-If up/down exits nonzero:
+Therefore a one-shot CLI invocation cannot provide cross-invocation session state by itself.
 
-- do not change completed state,
-- do not automatically verify,
-- show stdout/stderr/exit status,
-- stop.
+Discovery must resolve the CLI interaction model before treating command examples as requirements.
 
-No v0 recovery/adoption state machine is required.
+## Remaining question
 
-## Remaining decisions
+After the concrete UUID fixture works end-to-end, revisit whether the observed implementation warrants a richer context contract.
 
-- patch encoding,
-- exact process representation of source/candidate context,
-- whether auxiliary actions can mutate session context.
-
-Persistence mechanism is **not** an open application-design question: memory is the v0 adapter and SQLite is the planned fast-follow adapter.
+Until then, keep the product requirement at “pass the identifier needed by later stages.”

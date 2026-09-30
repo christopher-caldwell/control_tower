@@ -22,7 +22,7 @@ The project is intentionally not an orchestration platform. No login, hosting se
 
 ## Start here
 
-Read [Current design](design/current-design.md) for the distilled direction. Then read [Three-step workspace design probe](design/three-step-workspace.md) for the smallest concrete example we have used to challenge it. [Open questions and validation](design/open-questions.md) contains what still needs to earn acceptance. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
+Read [Current design](design/current-design.md) for the distilled direction. The project is now ready for a first formal discovery round; use [First formal discovery brief](design/discovery-brief.md) as its seed. [Three-step workspace design probe](design/three-step-workspace.md) contains the earlier conceptual pressure tests, while [Open questions and validation](design/open-questions.md) tracks what remains unresolved. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
 
 ## Structure and responsibilities
 
@@ -31,6 +31,7 @@ docs/
   README.md
   design/
     current-design.md
+    discovery-brief.md
     three-step-workspace.md
     open-questions.md
   decisions/
