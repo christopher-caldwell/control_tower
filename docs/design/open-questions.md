@@ -13,6 +13,7 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
+- ../decisions/0005-cli-first-driving-adapter.md
 ---
 
 # Open questions and validation
@@ -61,7 +62,15 @@ Keep auxiliary context output disabled unless a concrete workflow requires it.
 
 ## Not an open architecture question
 
-The storage boundary is settled:
+The v0 entry boundary is settled:
+
+- CLI is the only driving adapter,
+- the CLI invokes application use cases rather than containing business logic,
+- the executable entry point is the composition root,
+- future Tauri/HTTP entry layers are additional adapters over the same application layer,
+- no generic frontend/transport abstraction is required now.
+
+The storage boundary is also settled:
 
 - application/core owns the state port,
 - memory adapter is v0,

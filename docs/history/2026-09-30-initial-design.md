@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T21:57:37Z'
+  end: '2026-09-30T22:04:07Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -173,6 +173,16 @@ The v0 composition root should construct an in-memory adapter and inject it into
 This is a justified abstraction because the second implementation is already anticipated. It must remain narrow: no DI framework, generic repository, service locator, infrastructure-owned business rules, or speculative SQLite schema in the first pass. Exact port methods should follow the actual application use cases.
 
 The memory adapter preserves the currently accepted v0 behavior that a Rust-process restart loses session state. SQLite durability/resume behavior is deferred until the SQLite adapter is actually designed.
+
+## E21: CLI-first entry adapter
+
+**22:04:07Z — Explicit architecture decision.** Discovery remains high-level. The CLI will be the first and only v0 entry layer, serving as the outer/driving adapter of the hexagonal architecture.
+
+CLI-specific concerns stay at the edge. Transition rules, context/session behavior, process execution policy, and storage semantics remain inside application/core or behind outbound ports.
+
+The v0 executable entry point can act as the composition root, wiring the memory state adapter and other concrete adapters into the application service before the CLI invokes it.
+
+A later Tauri desktop UI or HTTP server should be added as another driving adapter over the same application use cases. No generic frontend abstraction, Tauri dependency, HTTP server, or command schema needs to be designed during this high-level discovery phase.
 
 ## Corrections introduced over the discussion
 

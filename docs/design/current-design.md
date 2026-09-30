@@ -13,6 +13,7 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
+- ../decisions/0005-cli-first-driving-adapter.md
 - three-step-workspace.md
 ---
 
@@ -44,6 +45,40 @@ backward: down -> verify-down -> complete lower step
 ~~~
 
 The author remains responsible for the semantics of every executable.
+
+## V0 entry architecture: CLI only
+
+The CLI is the first and only driving adapter for v0.
+
+Conceptually:
+
+~~~text
+user
+  |
+  v
+CLI adapter
+  |
+  | invokes application use cases
+  v
+application/core
+  |
+  +--> process execution port/adapter
+  |
+  +--> session-state port
+          |
+          +--> memory adapter (v0)
+          +--> SQLite adapter (later)
+~~~
+
+The CLI owns command-line concerns: parsing arguments, selecting an application use case, and rendering results/errors for a terminal.
+
+The CLI does **not** own transition rules, checkpoint/context behavior, verification semantics, or storage mechanics.
+
+The executable entry point can also act as the composition root: construct the concrete adapters, construct the application capability/service, and pass that service to the CLI-facing layer.
+
+No abstraction for “all possible frontends” is needed now. When a Tauri or HTTP entry layer is added later, it should become another driving adapter calling the same application use cases.
+
+See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
 ## Session-state architecture follows the Rust playbook
 
