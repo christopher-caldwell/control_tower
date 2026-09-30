@@ -67,6 +67,18 @@ Its [outputs contract](https://docs.dagu.sh/writing-workflows/outputs) provides 
 
 **Implication.** Persistence scope is an important question. A platform resource model and SDK are not necessary merely to retain a few fixture IDs.
 
+## Database migration runners
+
+**Flyway.** Current Flyway documentation describes a schema-history table that records migration versions, checksums and success/failure state, and separately supports optional undo migrations in reverse applied order. Its checksum validation is useful evidence that persisted migration bookkeeping must be tied to migration identity. Control Tower should borrow the structural-identity concern, but hard checksum enforcement on executable contents would conflict with its intended edit-and-retry development loop.
+
+Sources: [schema history](https://documentation.red-gate.com/fd/flyway-schema-history-table-273973417.html), [undo migrations](https://documentation.red-gate.com/fd/undo-migrations-273973334.html).
+
+**dbmate.** dbmate uses numerically ordered migrations with explicit up/down sections and a very small applied-version table. Its documentation notes that only the migration version is recorded and recommends rolling a migration back before changing its applied contents.
+
+Source: [dbmate repository documentation](https://github.com/amacneil/dbmate).
+
+**Implication.** The migration analogy holds up well: explicit author-owned reverse operations and small applied-state bookkeeping are established patterns. Control Tower differs intentionally in two places: verification is first-class in the interactive lifecycle, and editing executable content during development is expected rather than treated as a production migration-integrity violation.
+
 ## Cross-tool findings that survive
 
 | Pattern | Useful lesson | Limit |

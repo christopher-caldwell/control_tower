@@ -12,15 +12,12 @@ sources:
 - ../decisions/0001-user-owned-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
-- ../history/2026-09-30-initial-design.md#e13-three-step-design-probe
-- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
+- ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
 ---
 
 # Three-step workspace design probe
 
-## Four-file candidate
-
-The current probe gives each step up to four executables:
+## Candidate authoring shape
 
 ~~~text
 workspace/
@@ -47,195 +44,285 @@ workspace/
     inspect
 ~~~
 
-up and down are the mutations. verify-up and verify-down are optional directional checks.
+Both verifiers are optional. The filenames remain illustrative.
 
-The exact filenames are not accepted syntax yet.
+## Runtime model
 
-## Forward lifecycle
-
-From completed 02 toward 03:
+Completed steps form a stack of context checkpoints:
 
 ~~~text
-03/up
-  |
-  | success
-  v
-03 / up direction in progress
-  |
-  | 03/verify-up
-  v
-completed 03
+0  {}
+1  { user_id }
+2  { user_id, record_id }
 ~~~
 
-If verify-up fails:
+At most one directional transition can be active.
+
+### Forward
 
 ~~~text
-completed: 02
-active transition:
-  step: 03
-  direction: up
-  mutation: passed
-  verify: failed
+source checkpoint 02
+    |
+    | 03/up
+    v
+candidate 03 context
+    |
+    | 03/verify-up
+    v
+push completed checkpoint 03
 ~~~
 
-The developer can inspect, change application code, and rerun verify-up without rerunning up.
-
-To abandon the in-progress forward transition, 03/down is the natural authored operation. If verify-down exists, it can validate that reversal before clearing the active transition and returning to the completed-02 baseline.
-
-This is slightly stronger than the previous “down success immediately clears pending 03” rule and is exactly what the four-file proposal is intended to test.
-
-## Backward lifecycle from a completed step
-
-From completed 03 toward 02:
+### Backward
 
 ~~~text
-03/down
-  |
-  | success
-  v
-03 / down direction in progress
-  |
-  | 03/verify-down
-  v
-completed 02
+source checkpoint 03
+    |
+    | 03/down
+    v
+candidate 02 context
+    |
+    | 03/verify-down
+    v
+pop 03 and settle checkpoint 02
 ~~~
 
-If verify-down fails:
+## How candidate context is built
+
+### Forward candidate
+
+Start from the source completed checkpoint and apply the up mutation's context patch.
 
 ~~~text
-completed: 03
-active transition:
-  step: 03
-  direction: down
-  mutation: passed
-  verify: failed
+candidate_N = checkpoint_(N-1) + up_patch_N
 ~~~
 
-The pointer remains on the last fully completed state until the directional transition verifies.
+### Backward candidate
 
-This mirrors the forward rule without requiring verify-up and verify-down to assert the same conditions.
-
-## Why not reuse 02/verify-up after 03/down?
-
-The operation being validated is 03/down, so the author who wrote 03/down is best positioned to define what counts as its success.
-
-03/verify-down can also use source-step identifiers that 02 would not naturally own.
-
-This avoids making every stage verifier a universal description of the entire external state.
-
-## Optional means genuinely optional
-
-A step can have:
+Start from the already-saved target checkpoint and apply any down mutation patch.
 
 ~~~text
-up only
+candidate_(N-1) = saved_checkpoint_(N-1) + down_patch_N
 ~~~
 
-and complete forward when up exits zero.
+The down patch is optional.
 
-Or:
+This is the key compromise that survived the gauntlet: automatic restoration for the normal case, but an escape hatch when down reconstructs an equivalent lower state with new identifiers.
+
+## Why both source and candidate are needed
+
+Consider:
 
 ~~~text
-up
-verify-up
+02 checkpoint:
+  user_id: 123
+  record_id: 456
 ~~~
 
-for verified forward completion.
+02/down deletes record 456.
 
-Or the full:
+The candidate 01 context should not contain record_id. But 02/verify-down may need 456 to query:
 
 ~~~text
-up
-down
-verify-up
-verify-down
+does record 456 no longer exist?
 ~~~
 
-for checked movement in both directions.
+So verify-down needs the source context even though it validates the candidate lower state.
 
-Control Tower should not require placeholder files.
+The same issue can happen in the up direction when an up replaces an existing identifier.
 
-Whether down itself is optional remains a separate authoring question; a missing down simply means normal backward navigation through that step is unavailable.
+The exact process API is open, but both logical views are justified:
 
-## Failure ergonomics
+~~~text
+source context
+candidate context
+~~~
 
-The interesting cases are now symmetric.
+## Gauntlet
 
-### Forward verification fails
+### 1. Happy path forward
+
+~~~text
+01/up
+01/verify-up
+commit 01
+
+02/up
+02/verify-up
+commit 02
+~~~
+
+**Result:** clean. Push a context checkpoint after each verified transition.
+
+### 2. verify-up fails
 
 ~~~text
 02 completed
 03/up succeeds
 03/verify-up fails
-
-options:
-  Inspect
-  Verify Up Again
-  Down
 ~~~
 
-If Down is chosen and verify-down exists:
+Keep completed 02. Keep active up transition 03 with its candidate context.
+
+Allowed recovery:
 
 ~~~text
-03/down
-03/verify-down
-=> return to completed 02
+Inspect
+Verify Up Again
+Down
 ~~~
 
-### Backward verification fails
+Do not rerun 03/up automatically.
+
+**Result:** clean.
+
+### 3. Back out an in-progress up
+
+~~~text
+02 completed
+03/up succeeds
+03/verify-up fails
+03/down succeeds
+03/verify-down succeeds
+~~~
+
+Discard the 03 candidate and return to completed 02. If down emitted a patch, apply it to the saved 02 checkpoint before settling.
+
+**Result:** clean.
+
+### 4. Normal completed down
+
+~~~text
+03 completed
+03/down
+03/verify-down
+=> 02 completed
+~~~
+
+Restore the 02 checkpoint, patched by any outputs from 03/down.
+
+**Result:** clean.
+
+### 5. verify-down fails
 
 ~~~text
 03 completed
 03/down succeeds
 03/verify-down fails
-
-options:
-  Inspect
-  Verify Down Again
 ~~~
 
-A possible “Up to restore 03” escape hatch is symmetric, but it has not earned UI scope yet. The author can always choose recovery behavior once we test a real scenario.
+Keep completed pointer at 03. Keep an active down transition with source 03 and candidate 02 contexts.
 
-## Context insight
+Allow Inspect and Verify Down Again.
 
-Directional down verification changes the context question.
+Do not rerun 03/down automatically.
 
-Suppose completed 02 includes record_id and 02/down deletes that record. 02/verify-down may still need record_id to verify the record is gone. Therefore the workbench should keep the source/effective context available while the down transition is in progress.
+**Result:** clean, but recovery beyond verifier retry remains intentionally manual.
 
-Only after verify-down succeeds should the workbench settle context for completed 01.
+### 6. Down creates replacement target data
 
-This makes per-completed-step context snapshots attractive:
+Old 02 checkpoint:
 
 ~~~text
-completed 01 snapshot:
-  user_id
-
-completed 02 snapshot:
-  user_id
-  record_id
+record_id: 456
 ~~~
 
-A verified 02/down could restore the stored 01 snapshot automatically.
+03/down cannot restore 456 and instead creates 789.
 
-That would remove a common burden from down authoring: down would not need to tell Control Tower to unset record_id merely because it deleted the associated external record.
+Down output patch:
 
-This is a design candidate, not yet a decision. It should be compared with explicit down output mutations.
+~~~text
+record_id: 789
+~~~
 
-## What the four-file model earns
+Candidate 02 checkpoint becomes the historical 02 checkpoint overlaid with 789.
 
-It gives up and down equal treatment without adding a controller assertion language.
+**Result:** pure snapshot restore would fail; checkpoint + patch survives.
 
-It also produces a stable rule:
+### 7. Higher step overwrites an existing key
 
-> A directional mutation changes the completed pointer only after its optional directional verifier succeeds.
+~~~text
+01: user_id = A
+02/up changes user_id = B
+~~~
 
-That rule is easy to explain and test.
+The 02 checkpoint records B. A verified 02/down can restore 01 checkpoint A unless down emits an override.
 
-## Next exercise
+**Result:** checkpoint stack handles shadowing naturally.
 
-Use step 02 to compare the two context strategies:
+### 8. Mutation exits nonzero after partial external work
 
-1. **snapshot restore:** 02/down + 02/verify-down succeeds, then Control Tower restores the saved step-01 context;
-2. **explicit output:** 02/down publishes whatever set/unset operations are needed for the step-01 context.
+Example: create succeeds remotely, script prints an ID, then exits 1.
 
-The better option should minimize authoring work without making Control Tower infer application semantics.
+Do not advance the pointer or automatically create a normal active transition. Preserve the execution result and any captured machine output as recovery evidence.
+
+A later “adopt/verify anyway” recovery feature may be useful, but it is not required to keep the core model sound.
+
+**Result:** unavoidable external-side-effect edge; not a design failure.
+
+### 9. Control Tower crashes during mutation
+
+Persist transition intent before process launch. On restart, mark the attempt interrupted/unknown and never auto-retry.
+
+The developer can inspect external state and choose recovery.
+
+**Result:** requires durable local bookkeeping, not orchestration machinery.
+
+### 10. Control Tower crashes after mutation succeeds but before verifier completes
+
+The active transition and candidate context must already be persisted. Restart can resume with Verify Up/Down Again.
+
+**Result:** checkpoint/active-transition model handles it.
+
+### 11. Step scripts change while debugging
+
+Changing verify-up after it failed is expected. Hard checksums on executable contents would fight the intended workflow.
+
+Record execution details if useful, but do not block merely because file contents changed.
+
+**Result:** intentionally differs from production migration tooling.
+
+### 12. Step structure changes
+
+Adding/removing/reordering numbered step directories can invalidate saved checkpoint meaning.
+
+Persist the step sequence identity and detect structural drift.
+
+**Result:** needs a guardrail, but no central config is required.
+
+### 13. Two app instances operate the same workspace
+
+Without a lock, both could mutate the pointer/checkpoint stack.
+
+Use one local writer lock.
+
+**Result:** small implementation requirement.
+
+### 14. Verifier absent
+
+Mutation exit 0 completes the directional transition immediately.
+
+**Result:** optional verification remains coherent.
+
+### 15. Down absent
+
+Backward navigation through that step is unavailable.
+
+**Result:** coherent; no fake rollback.
+
+## Verdict
+
+The four-role step survives the gauntlet.
+
+The **pure snapshot** context model does not. The stronger version is:
+
+> completed context checkpoints + one active directional transition + optional mutation patch.
+
+This stays small while handling repeated navigation, directional verification, replacement IDs, failed verification, and context rewind.
+
+## Remaining pressure tests
+
+- exact patch/output encoding,
+- auxiliary actions publishing context,
+- explicit recovery after interrupted/nonzero mutation,
+- storage backend and retention,
+- how structural drift is surfaced in the UI.

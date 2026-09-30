@@ -16,76 +16,68 @@ sources:
 
 # Open questions and validation
 
-This is a decision queue, not a release plan.
+The four-role directional transition model survived the current design gauntlet. The context candidate has narrowed to completed checkpoints plus an active-transition patch.
 
-## Under evaluation: four executable roles per step
+## Q1 — Accept directional verify-down?
 
-The current proposal is:
+No tested case exposed a problem with optional verify-down. It improves symmetry and lets the author validate the exact operation that ran.
 
-~~~text
-up
-down
-verify-up     # optional
-verify-down   # optional
-~~~
-
-A directional mutation would change the completed pointer only after its optional directional verifier succeeds.
-
-This looks cleaner than reusing a single verifier for both directions, but it remains a design candidate until the backward/context exercise confirms it.
-
-## Q1 — Snapshot restoration or explicit down context output?
-
-The four-file model makes this the first question.
-
-For completed 02 -> 01, compare:
-
-**Snapshot restoration**
+The proposed rule is:
 
 ~~~text
-02/down
-02/verify-down
-restore saved completed-01 context
-commit 01
+down -> verify-down -> commit lower step
 ~~~
 
-against:
+with verify-down optional.
 
-**Explicit down output**
+**Exit criterion:** owner accepts/rejects the four-role step as the default convention.
 
-~~~text
-02/down publishes context set/unset changes
-02/verify-down checks effective target
-commit 01 with those changes
-~~~
+## Q2 — What patch encoding is smallest?
 
-**Exit criterion:** record_id can remain available during verify-down but cannot remain stale after 01 becomes completed. Authoring should stay simple.
+The context model now needs:
 
-## Q2 — What exactly can happen during a failed verify-down?
+- set scalar values,
+- occasionally unset inherited values,
+- preserve normal stdout/stderr,
+- parse deterministically.
 
-If 02/down succeeds but 02/verify-down fails, completed remains 02 and a down transition remains active.
+Compare a small line protocol against a small JSON change document.
 
-Confirm the minimum useful controls: Inspect and Verify Down Again. Determine whether an explicit Up-to-restore action needs first-class UI support or can remain manual/recovery behavior.
+Checkpoint rewind means down scripts usually need no state output, which should keep this protocol small.
 
-## Q3 — What happens to output when a mutation itself fails?
+## Q3 — How much recovery UI after mutation failure/interruption?
 
-If up or down emits values and later exits nonzero, decide whether they become working recovery context or attempt evidence only.
+Normal behavior is clear: stop and keep the completed pointer.
 
-## Q4 — Are both verifiers read-only?
+Decide whether first version needs an explicit “verify/adopt interrupted mutation” recovery path or whether inspection/manual cleanup is sufficient.
 
-No current example requires verify-up or verify-down to publish context.
+Avoid automatic retry.
 
-Prefer read-only unless a real use case appears.
+## Q4 — Can auxiliary actions mutate Control Tower context?
 
-## Q5 — What exact machine-output encoding is smallest?
+Read-only inspection is easy.
 
-Defer JSON versus text set/unset until the snapshot-vs-explicit context decision is made. Snapshot restoration may dramatically reduce how much output syntax down needs.
+Allowing arbitrary actions to change context raises the question of which completed checkpoint or active candidate they mutate.
 
-## Q6 — Does convention-only authoring remain sufficient?
+Keep auxiliary context output disabled until a concrete workflow requires it.
 
-Four fixed filenames still fit the filesystem-first model. Do not add central config merely to list them.
+## Q5 — Persistence backend
+
+The minimum durable state is small:
+
+- ordered structural identity,
+- completed step/checkpoint stack,
+- optional active transition,
+- recent result metadata.
+
+Compare one atomic local state file with SQLite on implementation ergonomics.
+
+## Q6 — Structural drift UX
+
+Define the smallest behavior when step directories are inserted, removed, renamed, or reordered around persisted state.
+
+Do not block normal edits to executable contents.
 
 ## Validation order
 
-Compare the two context strategies first using step 02. Then test verify-down failure ergonomics. Only after that choose the machine-output encoding.
-
-These are design steps, not implementation milestones.
+Settle Q1, then choose the patch encoding against one shell up and one Node up/down. Recovery and persistence can follow without changing the user-facing migration contract.

@@ -1,131 +1,134 @@
 ---
 id: ADR-0003
-title: Separate completed context, active-transition context, and process I/O
+title: Use completed context checkpoints plus an active-transition patch
 type: decision
 status: proposed
 created: '2026-09-30'
 updated: '2026-09-30'
 owner: christopher-caldwell
 authored_by: assistant
-decision_authority: user-endorsed-candidate-with-unapproved-details
+decision_authority: user-endorsed-candidate-with-gauntlet-refinement
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
-- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
+- ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
 - ../research/existing-tools.md
 - ../design/three-step-workspace.md
 ---
 
-# ADR-0003: Separate completed context, active-transition context, and process I/O
+# ADR-0003: Use completed context checkpoints plus an active-transition patch
 
 ## Standing
 
-The general context/output separation remains the leading candidate.
+The original “one mutable state bag” idea has been narrowed.
 
-The possible verify-down hook makes one refinement useful: “in-progress context” should be understood as **active-transition context**, because a transition can now be moving either up or down.
+The strongest current candidate is:
 
-The exact persistence and wire formats remain undecided.
+- one context checkpoint for each completed step on the current migration stack,
+- one optional active directional transition,
+- a small mutation-output patch used to build that transition's candidate context,
+- stdout/stderr kept separate from machine state.
 
-## Logical context layers
+This survived the design gauntlet better than pure snapshot restoration or fully explicit down bookkeeping.
 
-- **completed snapshot** — the context associated with the last accepted completed position;
-- **active-transition working values** — values needed while an up or down mutation awaits directional verification;
-- **effective context** — the view supplied to the current transition's verifier and relevant inspection actions.
+## Forward context
 
-The process boundary still points toward:
-
-~~~text
-effective context -> executable
-stdout/stderr -> human-visible result
-machine output -> proposed/working context changes
-exit status -> operation result
-~~~
-
-## Forward example
+From completed checkpoint C(N-1):
 
 ~~~text
-completed 02 snapshot:
-  user_id
-  record_id
+N/up -> patch P
 
-03/up produces:
-  mutation_id
-
-03/verify-up fails
-
-effective context:
-  user_id
-  record_id
-  mutation_id
+candidate C(N) = apply(C(N-1), P)
 ~~~
 
-If verify-up later passes, the resulting effective context can become the completed-03 snapshot.
+verify-up receives the candidate context. If it succeeds, push candidate C(N) as the completed checkpoint.
 
-## Backward example
+## Backward context
 
-Suppose completed 02 contains record_id.
-
-02/down may delete the external record, but 02/verify-down may still need record_id to prove the deletion happened.
-
-Therefore do not remove record_id from the verifier's context merely because down exited zero.
-
-After verify-down succeeds, the workbench needs a context appropriate to completed 01.
-
-## Snapshot restoration candidate
-
-One attractive mechanism is to save the context snapshot at each completed position.
-
-Then:
+From completed checkpoint C(N), the saved target checkpoint C(N-1) is already available.
 
 ~~~text
-completed 01 snapshot:
-  user_id
+N/down -> optional patch D
 
-completed 02 snapshot:
-  user_id
-  record_id
+candidate C(N-1) = apply(saved C(N-1), D)
 ~~~
 
-A successful verified 02/down can simply restore the saved 01 snapshot.
+verify-down validates that candidate. On success, pop C(N) and settle the candidate as the current C(N-1).
 
-Advantages:
+Most down scripts need no Control Tower context output at all. Their normal context rewind is automatic.
 
-- down scripts do not need boilerplate to unset every value introduced by up;
-- verify-down can still see the source-step identifiers during verification;
-- up/down navigation naturally mirrors the migration stack.
+## Why down patches remain necessary
 
-Costs:
+The previous logical step may be reestablished with different identifiers.
 
-- snapshots consume some local storage, though expected context is tiny;
-- if down intentionally establishes a different context than the historical 01 snapshot, the model needs an override mechanism or explicit output policy;
-- changing migration definitions may invalidate saved snapshots.
+Example:
 
-This candidate now deserves comparison against explicit down-published set/unset changes.
+~~~text
+old C02:
+  record_id: 456
 
-## Explicit down-output candidate
+03/down creates replacement:
+  record_id: 789
+~~~
 
-Alternatively, 02/down can publish context changes itself.
+Restoring 456 would be stale. Down can publish an override patch with 789.
 
-That is maximally explicit but makes the action author responsible for external compensation **and** Control Tower bookkeeping cleanup.
+This is the escape hatch that makes checkpoints general enough for arbitrary user-owned operations.
 
-It may also require verify-down to see a pre-commit effective view that preserves identifiers the down output intends to remove.
+## Source and candidate views
+
+A verifier may need both.
+
+verify-down often needs a source identifier to prove an object was deleted even though that identifier correctly does not belong in the candidate lower-step context.
+
+The future process protocol should therefore expose conceptually:
+
+- source context,
+- candidate context.
+
+Exact file names/env variables remain open.
+
+## Mutation patch semantics
+
+The first examples still primarily need scalar set operations. Checkpoint rewind removes much of the earlier need for down to publish explicit unsets.
+
+An unset operation is still useful when a forward mutation intentionally removes an inherited key or a down override needs to remove something from the target checkpoint.
+
+The exact encoding remains open.
 
 ## Failed mutation output
 
-An up or down can emit machine output and later exit nonzero. The policy for those values remains open.
+If a mutation exits nonzero after emitting machine output, preserve that output with the failed attempt as recovery evidence. Do not automatically merge it into a completed checkpoint.
 
-That is separate from a mutation exiting zero followed by failed verification; in the latter case active-transition context clearly has a role.
+Whether an explicit recovery/adoption operation later promotes those values is outside the normal transition contract.
 
-## Verify output
+This is the current recommendation from the gauntlet; it remains subject to owner approval.
 
-No current example requires verify-up or verify-down to publish Control Tower context.
+## Durability
 
-The leading simplification is for both verifiers to be read-only at the context boundary: read effective context, print useful output, and communicate pass/fail via exit status.
+Persist active-transition intent before launching mutation work.
 
-## Next validation
+Persist mutation result/patch before starting its verifier.
 
-Implement the conceptual 01 -> 02 -> 01 example on paper using both:
+This lets a restart distinguish:
 
-1. saved completed snapshots,
-2. explicit down set/unset output.
+- no transition,
+- mutation interrupted,
+- mutation succeeded and verifier pending/failed.
 
-Choose the mechanism that keeps authoring small while preserving enough context for directional verification.
+The storage backend is still open.
+
+## Structural identity
+
+Context checkpoints are meaningful only relative to the ordered migration structure.
+
+Persist enough structural identity to detect renames/reorders/removals around completed steps.
+
+Do not hard-lock executable contents: changing scripts while debugging is an intended use case.
+
+## Remaining decisions
+
+- patch encoding,
+- storage backend,
+- whether auxiliary actions can mutate context,
+- recovery UX for interrupted/nonzero mutation,
+- retention of old attempt history after checkpoints are popped.

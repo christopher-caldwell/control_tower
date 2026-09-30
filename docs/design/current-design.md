@@ -19,146 +19,158 @@ sources:
 
 ## Product identity
 
-Control Tower is a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the operations; Control Tower provides ordered navigation, process execution, visible results, and a small amount of working context.
+Control Tower remains a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the work. Control Tower owns ordered navigation, execution bookkeeping, visible results, and a small context protocol.
 
-It is intentionally not an orchestration product. No login, hosting, scheduler, workers, DAG engine, built-in HTTP/database action model, or generalized automation platform is part of the current identity.
+It is intentionally not an orchestration product.
 
-## Core migration model
+## Core model after the gauntlet
 
-The accepted core remains:
-
-- ordered steps,
-- author-owned up and down executables,
-- optional verification before a forward step becomes completed,
-- one last completed step,
-- a narrow in-progress transition when a mutation has run but verification has not completed,
-- stop on failure rather than inventing rollback guarantees.
-
-The author owns semantic correctness, just as with database migrations.
-
-## Four-executable step candidate
-
-The current design candidate is deliberately symmetric:
+The four-role step survives as the strongest current design:
 
 ~~~text
-003-mutate-record/
+step/
   up
   down
-  verify-up
-  verify-down
+  verify-up     # optional
+  verify-down   # optional
 ~~~
 
-Both verification executables are optional.
-
-The naming is illustrative; the four responsibilities are the important part.
-
-### Forward
+A directional mutation changes the completed step only after its optional directional verifier succeeds.
 
 ~~~text
-completed 02
-    |
-    | 03/up
-    v
-03 up transition in progress
-    |
-    | 03/verify-up
-    v
-completed 03
+forward:  up   -> verify-up   -> commit higher step
+backward: down -> verify-down -> commit lower step
 ~~~
 
-If verify-up is absent, successful up completes 03 immediately.
+The runtime needs only:
 
-### Backward
+- the stack of completed steps and their context checkpoints,
+- at most one active directional transition,
+- recent execution results.
+
+The author remains responsible for the semantics of every executable.
+
+## Context checkpoints
+
+The strongest result of the design gauntlet is a **context checkpoint per completed step**.
+
+Example:
 
 ~~~text
-completed 03
-    |
-    | 03/down
-    v
-03 down transition in progress
-    |
-    | 03/verify-down
-    v
-completed 02
+step 01 checkpoint:
+  user_id: 123
+
+step 02 checkpoint:
+  user_id: 123
+  record_id: 456
 ~~~
 
-If verify-down is absent, successful down completes the move to 02 immediately.
+This is Control Tower metadata only. It is not a snapshot of the external database or API.
 
-This avoids overloading one verifier with two potentially different contracts. verify-up asks whether up established the intended forward state. verify-down asks whether down established the intended backward state.
+A forward transition starts from the current completed checkpoint. Its mutation output becomes a transition-local patch, producing a candidate target context. verify-up sees that candidate. On success, the candidate is pushed as the next completed checkpoint.
 
-The owner has proposed this symmetric model; verify-down remains under evaluation rather than recorded as a finalized decision.
+A backward transition starts from the current completed checkpoint but has an existing lower-step checkpoint as its target baseline. Its down output can optionally patch that baseline. verify-down sees the candidate lower-step context before the completed pointer changes.
 
-## Runtime bookkeeping implication
+This solves the ordinary stale-ID problem without forcing every down script to publish unsets.
 
-“In progress” can no longer mean only “the next step is moving upward.”
+## Why down still needs optional context output
 
-A more general conceptual model is:
+Pure checkpoint restoration is not general enough.
+
+Suppose step 03/down returns to the logical conditions of step 02 by **creating a replacement record** rather than restoring the exact old record. The old step-02 checkpoint may contain record_id=456, but down produces a valid replacement record_id=789.
+
+Therefore the candidate lower-step context is:
 
 ~~~text
-last completed step
+saved target checkpoint
 +
-optional active transition:
-  step
-  direction: up | down
-  mutation result
-  verification result
-  working context
+down output patch
+=
+candidate target context
 ~~~
 
-For the original failure example:
+If down emits no context changes, ordinary checkpoint restoration is automatic.
+
+This keeps common down authoring minimal while preserving arbitrary user-owned behavior.
+
+## Source and candidate context
+
+A directional verifier can need information from both sides of the transition.
+
+Example: down deletes record_id=456. verify-down may need the old ID to prove it no longer exists, even though the candidate lower-step context correctly omits it.
+
+Therefore the process contract should eventually expose conceptually:
+
+- **source context** — context before the directional mutation,
+- **candidate context** — context that would become current if verification succeeds.
+
+Exact environment variable/file names remain open, but both views have now earned their way into the design.
+
+## Active transition
+
+An active transition is narrow bookkeeping:
 
 ~~~text
-completed: 02
-active:
-  step: 03
-  direction: up
-  up: passed
-  verify-up: failed
+step: 03
+direction: up | down
+phase: mutation | verification
+source checkpoint
+mutation output patch
+candidate context
+latest results
 ~~~
 
-For a downward verification failure from completed 03:
+If verify-up or verify-down fails, the transition remains active and can be inspected or reverified without rerunning the mutation.
 
-~~~text
-completed: 03
-active:
-  step: 03
-  direction: down
-  down: passed
-  verify-down: failed
-~~~
+This is not generalized workflow state; it is the minimum needed to avoid repeating non-idempotent mutations.
 
-This is still narrow migration bookkeeping, not a workflow engine.
+## Failure rules that survived
 
-## Why directional verification is attractive
+### Mutation exits nonzero
 
-Up and down do not necessarily produce mirror-image states.
+Do not change the completed step. Do not automatically run its verifier. Record stdout/stderr/exit result and stop.
 
-For example, 03/up might close a record while 03/down reopens it. verify-up can assert “closed”; verify-down can assert “open.” A single generic verify file would need to infer direction or implement both meanings itself.
+The mutation may have caused external side effects. That remains the author's recovery problem.
 
-Separating the checks keeps each executable dumb and independently runnable.
+### Mutation succeeds; verifier fails
 
-It also preserves the author-responsibility boundary: Control Tower only uses exit status; it does not interpret what “open” or “closed” means.
+Keep an active transition. Retain its source, output patch, and candidate context. Allow verifier retry without rerunning the mutation.
 
-## Context implication
+### Down verifier fails
 
-Directional verification makes a context-snapshot approach more interesting.
+Keep the original completed pointer and the active down transition. The external world may already resemble the lower step; Control Tower simply has not accepted the transition.
 
-During a forward transition, verify-up may need values created by up.
+### Tool/process interruption
 
-During a backward transition, verify-down may still need values from the completed source step to prove they were removed or changed externally.
+Persist transition intent before launching a mutation so a restart can tell that execution was interrupted. Do not automatically retry an interrupted mutation.
 
-Therefore Control Tower should not eagerly delete context merely because down returned zero. Context should remain available through verify-down and only settle after the whole directional transition succeeds.
+A future recovery action may allow the developer to verify or repair an interrupted transition, but automatic inference is not required for the initial model.
 
-One candidate is to keep a context snapshot for each completed position and restore the prior snapshot after a verified down. Another is to require down to publish explicit context changes. That choice remains open in ADR-0003.
+## Structural drift
 
-## Authoring boundary
+Persisted migration state must be tied to the ordered step structure.
 
-All four files are ordinary user-owned executables. A shebang chooses the runtime. Control Tower does not understand SQL, HTTP, Node, or the meaning of the assertions.
+Renaming, removing, inserting, or reordering step directories below the completed position can invalidate the meaning of saved checkpoints.
 
-Future helpers may exist as sidecars but are not core primitives.
+Control Tower should detect structural drift and stop automatic navigation until the developer explicitly resets/adopts a new structure.
 
-## Scope still excluded
+Do **not** checksum executable contents as a hard gate. Editing verify/up/down scripts during development is part of the intended workflow. Database migration systems often validate migration identity/checksums; Control Tower should borrow structural-drift detection without making normal script editing hostile.
 
-No scheduler, authentication, hosting, DAG execution, automatic retry, distributed state, built-in drivers, universal rollback, or external-state certainty model has earned scope.
+## Concurrency
 
-The next design exercise is to run the three-step example in both directions with optional verify-up/verify-down and determine which context model makes down authoring simplest.
+One workspace should have a single writer. A local file lock or storage-level lock is enough.
+
+This is not distributed coordination; it simply prevents two Control Tower instances from mutating the same pointer/checkpoint stack concurrently.
+
+## What still has not earned scope
+
+No scheduler, authentication, hosted control plane, DAG, built-in action drivers, retries, transaction emulation, external snapshots, expression language, or helper ecosystem is required for the core.
+
+The remaining hard design edges are small:
+
+1. exact mutation-output patch encoding,
+2. how much recovery UI to expose after a mutation itself fails/interruption,
+3. whether auxiliary actions can mutate Control Tower context,
+4. concrete persistence backend.
+
+See [Three-step workspace design probe](three-step-workspace.md) for the gauntlet cases.

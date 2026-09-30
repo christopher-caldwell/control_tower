@@ -13,92 +13,75 @@ sources:
 - ../history/2026-09-30-initial-design.md#e03-migration-like-navigation
 - ../history/2026-09-30-initial-design.md#e04-assertion-gates
 - ../history/2026-09-30-initial-design.md#e12-core-identity-settled
-- ../history/2026-09-30-initial-design.md#e15-verify-before-step-commit
-- ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
-- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
+- ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
 - ../design/three-step-workspace.md
 ---
 
 # ADR-0002: Use migration-style steps with verified completion
 
-## Accepted decision
+## Accepted core
 
-Control Tower uses an ordered migration model.
+Control Tower uses an ordered migration model. User-owned executables perform the mutations. Control Tower does not guarantee those mutations are semantically correct or reversible.
 
-A forward step N becomes completed only after N/up and its optional forward verification succeed.
+Forward completion already requires the target step's optional verification before the completed pointer advances.
 
-The runtime can therefore record a last completed step plus one active/in-progress transition. The author owns the semantic correctness of all executables.
+## Directional-verification recommendation
 
-## Current directional-verification proposal
-
-The owner has proposed giving each step four possible executables:
+The four-role design survived the current gauntlet:
 
 ~~~text
 up
 down
-verify-up
-verify-down
+verify-up     # optional
+verify-down   # optional
 ~~~
 
-with both verifiers optional.
-
-This extension is under evaluation and is not yet promoted to a separate accepted decision.
-
-It would make the transition rule symmetric:
+The recommended directional rule is:
 
 ~~~text
-forward:  N/up   -> N/verify-up   -> commit N
-backward: N/down -> N/verify-down -> commit N-1
+up   -> verify-up   -> complete higher step
+down -> verify-down -> complete lower step
 ~~~
 
-If the relevant verifier is absent, a successful mutation completes the directional transition immediately.
+If the relevant verifier is absent, mutation exit 0 completes the transition.
 
-## Why it fits the core boundary
+verify-down remains technically a proposal until the owner accepts it, but no gauntlet case exposed a reason to collapse the two verifiers back into one.
 
-verify-up and verify-down remain ordinary executables. Control Tower only cares about their exit status and output.
+## Active directional transition
 
-The split avoids requiring one generic verifier to infer which direction just ran or to describe the entire state of the world.
-
-## Active transition model
-
-If the directional verifier fails after the mutation succeeds, the completed pointer does not move.
-
-A compact active-transition record is enough:
+After mutation success but before verification success, keep one active transition:
 
 ~~~text
-step: N
+step
 direction: up | down
-mutation: passed
-verification: failed
-working context: ...
+source context
+mutation output patch
+candidate context
+latest mutation/verifier result
 ~~~
 
-For an up failure, the previous completed step remains current.
+Do not rerun the mutation automatically while that transition exists.
 
-For a down verification failure, the source completed step remains current until the down transition is accepted.
+Retrying the verifier is safe from Control Tower's perspective because the author explicitly supplied a verifier; its external side effects remain the author's responsibility.
 
-This does not mean the external world is unchanged. It is only Control Tower's migration bookkeeping.
+## Failed mutation
 
-## Recovery
+A nonzero mutation exit does not advance or create a normal successful mutation transition.
 
-A failed verify-up can be retried without rerunning up.
+Record the attempt and stop.
 
-A failed verify-down can be retried without rerunning down.
+This is deliberately stricter than trying to infer success from partial external effects. Recovery after a broken mutation can be added later without contaminating the normal state model.
 
-Backing out a failed verify-up naturally uses the same step's down operation. Under the four-file proposal, verify-down can validate that cleanup before the active transition is cleared.
+## Structural drift
 
-Do not automatically retry directional mutations; they may not be idempotent.
+Persisted completed-step identity must be compared with the discovered ordered step structure.
 
-## Context consequence
+Block automatic navigation if the migration structure changed incompatibly.
 
-Directional verification means context needed to check a mutation must remain available until its verifier completes.
+Do not make executable-content checksums a hard validity condition. Editing scripts during active development is expected.
 
-In particular, down verification may need source-step identifiers even when the external objects have already been removed.
+## Consequence
 
-This strengthens the case for retaining completed context snapshots or an equivalent context-history mechanism. The exact context policy remains ADR-0003's concern.
+The runtime remains serial and small: completed stack + one optional active transition.
 
-## What remains accepted regardless of this proposal
-
-The core stays serial, local, user-authored, and migration-style.
-
-No DAG, scheduler, hosted control plane, automatic retry engine, transaction emulation, or universal rollback guarantee follows from adding a second optional verifier.
+No DAG, scheduler, retries, distributed workers, or external transaction engine is implied.

@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T21:07:00Z'
+  end: '2026-09-30T21:34:25Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -143,6 +143,16 @@ That no-verification-on-down conclusion was reopened immediately afterward.
 This suggests a symmetric directional-transition contract: up can be followed by verify-up before completing the higher step; down can be followed by verify-down before completing the lower step. The proposal also generalizes the narrow “in-progress step” into an optional active transition with a direction.
 
 This is documented as a design candidate rather than a finalized decision. The next validation is whether directional down verification simplifies the developer loop enough to justify the additional executable role, especially when combined with context restoration.
+
+## E18: Four-file model gauntlet
+
+**21:34:25Z — User request.** Run the four-executable/directional-verification idea through an adversarial design pass and see whether it survives.
+
+The model survived the examined forward/backward failure paths. The major refinement was in context handling: pure restoration of a saved lower-step context is insufficient because a down operation can reconstruct an equivalent lower state with different identifiers. The strongest candidate is therefore a checkpoint stack plus an optional directional mutation patch.
+
+The gauntlet also surfaced source-versus-candidate context as a real verifier requirement, local single-writer locking, persisted active-transition intent for crash recovery, and structural drift detection for the numbered step sequence. Hard content checksums were rejected as a default validity mechanism because editing scripts during development is an intended behavior.
+
+Directional verify-down remains a recommendation pending explicit owner acceptance rather than an accepted decision.
 
 ## Corrections introduced over the discussion
 
