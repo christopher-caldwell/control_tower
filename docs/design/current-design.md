@@ -19,141 +19,146 @@ sources:
 
 ## Product identity
 
-Control Tower is a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the operations; Control Tower gives those operations an ordered up/down/verify lifecycle, a small amount of working context, visible results, and controls for moving through the work.
+Control Tower is a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the operations; Control Tower provides ordered navigation, process execution, visible results, and a small amount of working context.
 
 It is intentionally not an orchestration product. No login, hosting, scheduler, workers, DAG engine, built-in HTTP/database action model, or generalized automation platform is part of the current identity.
 
-## Core transition model
+## Core migration model
 
-The smallest model now has two useful pieces of runtime position:
+The accepted core remains:
 
-- **completed step** — the last step whose up and verify completed successfully,
-- **in-progress step** — the next step whose up succeeded but whose verify has not succeeded yet.
+- ordered steps,
+- author-owned up and down executables,
+- optional verification before a forward step becomes completed,
+- one last completed step,
+- a narrow in-progress transition when a mutation has run but verification has not completed,
+- stop on failure rather than inventing rollback guarantees.
 
-For a forward transition into step N:
+The author owns semantic correctness, just as with database migrations.
+
+## Four-executable step candidate
+
+The current design candidate is deliberately symmetric:
 
 ~~~text
-completed N-1
+003-mutate-record/
+  up
+  down
+  verify-up
+  verify-down
+~~~
+
+Both verification executables are optional.
+
+The naming is illustrative; the four responsibilities are the important part.
+
+### Forward
+
+~~~text
+completed 02
     |
-    | N/up
+    | 03/up
     v
-N in progress
+03 up transition in progress
     |
-    | N/verify
+    | 03/verify-up
     v
-completed N
+completed 03
 ~~~
 
-If N has no verify file, successful up completes N immediately.
+If verify-up is absent, successful up completes 03 immediately.
 
-The important point is that after verify failure both of these statements are true:
+### Backward
 
 ~~~text
-completed:   N-1
-in progress: N
+completed 03
+    |
+    | 03/down
+    v
+03 down transition in progress
+    |
+    | 03/verify-down
+    v
+completed 02
 ~~~
 
-There is no ambiguity and no need to pretend the external mutation never happened.
+If verify-down is absent, successful down completes the move to 02 immediately.
 
-## Recovery from an in-progress step
+This avoids overloading one verifier with two potentially different contracts. verify-up asks whether up established the intended forward state. verify-down asks whether down established the intended backward state.
 
-If N/verify fails, the developer can inspect the effective context, change application code, and retry N/verify without rerunning N/up.
+The owner has proposed this symmetric model; verify-down remains under evaluation rather than recorded as a finalized decision.
 
-Or the developer can run N/down.
+## Runtime bookkeeping implication
 
-If N/down succeeds while N is in progress:
+“In progress” can no longer mean only “the next step is moving upward.”
+
+A more general conceptual model is:
 
 ~~~text
-completed:   N-1
-in progress: none
+last completed step
++
+optional active transition:
+  step
+  direction: up | down
+  mutation result
+  verification result
+  working context
 ~~~
 
-Control Tower returns to the already-completed N-1 baseline. It does not require N-1/verify again as part of navigation. The author owns the correctness of N/down, just as the author owns a database down migration.
-
-If N/down fails, N remains in progress and its context/results remain available.
-
-## Normal backward movement
-
-The same migration philosophy applies when the current step is fully completed.
-
-From completed N back to completed N-1:
+For the original failure example:
 
 ~~~text
-N/down
-  |
-  | success
-  v
-completed N-1
+completed: 02
+active:
+  step: 03
+  direction: up
+  up: passed
+  verify-up: failed
 ~~~
 
-No automatic target verification is required. A manual verify of N-1 can still be useful, but it is not part of the pointer-moving contract.
+For a downward verification failure from completed 03:
 
-This keeps verify focused: it validates an **up transition before the target step becomes completed**.
+~~~text
+completed: 03
+active:
+  step: 03
+  direction: down
+  down: passed
+  verify-down: failed
+~~~
 
-## Minimal concepts
+This is still narrow migration bookkeeping, not a workflow engine.
 
-A workspace contains an ordered migration set and optional auxiliary actions.
+## Why directional verification is attractive
 
-A step is one migration unit with up/down and optionally verify.
+Up and down do not necessarily produce mirror-image states.
 
-A completed step is the last fully accepted step.
+For example, 03/up might close a record while 03/down reopens it. verify-up can assert “closed”; verify-down can assert “open.” A single generic verify file would need to infer direction or implement both meanings itself.
 
-An in-progress step is the one forward target whose up has succeeded but whose verify has not yet succeeded.
+Separating the checks keeps each executable dumb and independently runnable.
 
-Context carries small authored values between executions. While a step is in progress, the effective context must include values produced by that step's up so verify, inspect, and down can use them.
+It also preserves the author-responsibility boundary: Control Tower only uses exit status; it does not interpret what “open” or “closed” means.
 
-Auxiliary actions do not change migration bookkeeping.
+## Context implication
 
-A result is what Control Tower directly observes: executable, stdout, stderr, exit status, timing, and eventual machine-output data.
+Directional verification makes a context-snapshot approach more interesting.
 
-These concepts do not imply a generalized workflow execution model.
+During a forward transition, verify-up may need values created by up.
+
+During a backward transition, verify-down may still need values from the completed source step to prove they were removed or changed externally.
+
+Therefore Control Tower should not eagerly delete context merely because down returned zero. Context should remain available through verify-down and only settle after the whole directional transition succeeds.
+
+One candidate is to keep a context snapshot for each completed position and restore the prior snapshot after a verified down. Another is to require down to publish explicit context changes. That choice remains open in ADR-0003.
 
 ## Authoring boundary
 
-User-owned executable files remain the core mechanism. A shebang can choose shell, Node, Python, or another installed interpreter; compiled executables fit the same boundary.
+All four files are ordinary user-owned executables. A shebang chooses the runtime. Control Tower does not understand SQL, HTTP, Node, or the meaning of the assertions.
 
-Control Tower does not understand SQL, HTTP, application business rules, or whether down truly reverses up. Future helpers may exist as sidecars, but they remain ordinary consumers of the executable/context contract.
+Future helpers may exist as sidecars but are not core primitives.
 
-## Leading filesystem probe
+## Scope still excluded
 
-~~~text
-workspace/
-  steps/
-    001-create-user/
-      up
-      down
-      verify
-    002-create-associated-record/
-      up
-      down
-      verify
-    003-mutate-record/
-      up
-      down
-      verify
-  actions/
-    inspect
-~~~
+No scheduler, authentication, hosting, DAG execution, automatic retry, distributed state, built-in drivers, universal rollback, or external-state certainty model has earned scope.
 
-This convention still expresses the current lifecycle without central YAML/TOML. Config remains allowed to earn its way in later.
-
-See [Three-step workspace design probe](three-step-workspace.md).
-
-## Context direction
-
-The process boundary still points toward:
-
-~~~text
-effective context -> executable
-stdout/stderr -> human-visible result
-machine output -> context changes
-exit status -> operation result
-~~~
-
-The in-progress-step model now gives a concrete reason for a committed context plus working/pending changes. The exact encoding and persistence remain proposed in ADR-0003.
-
-## Scope that has not earned its way in
-
-No built-in drivers, mandatory SDK, expression language, dependency installer, scheduler, distributed execution, authentication, hosted service, automatic retry, universal rollback, or external-state certainty engine is selected.
-
-The next design work is the **context lifecycle while a step is in progress**, especially how inspect/down consume working values and what happens when up itself exits nonzero after producing output.
+The next design exercise is to run the three-step example in both directions with optional verify-up/verify-down and determine which context model makes down authoring simplest.

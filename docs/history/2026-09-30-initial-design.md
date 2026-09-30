@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T20:56:58Z'
+  end: '2026-09-30T21:07:00Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -134,7 +134,15 @@ This correction invalidates the previous attempt to eliminate within-step state.
 
 This gives the runtime clearer language than “ambiguous pending transition”: the workbench can simultaneously record a last completed step and one in-progress next step. A failed verify keeps the target in progress. Successful down of that in-progress target clears it and leaves the previous completed step in place.
 
-This also settles the leading backward-navigation rule: Control Tower does not automatically reverify the previous completed step after down. The author is responsible for making down establish the intended previous condition.
+That no-verification-on-down conclusion was reopened immediately afterward.
+
+## E17: Directional verification proposal
+
+**21:07:00Z — User proposal.** The user was not convinced that down should skip verification and proposed up to four executables per step: up, down, verify that up worked, and verify that down worked. Both verifiers would be optional.
+
+This suggests a symmetric directional-transition contract: up can be followed by verify-up before completing the higher step; down can be followed by verify-down before completing the lower step. The proposal also generalizes the narrow “in-progress step” into an optional active transition with a direction.
+
+This is documented as a design candidate rather than a finalized decision. The next validation is whether directional down verification simplifies the developer loop enough to justify the additional executable role, especially when combined with context restoration.
 
 ## Corrections introduced over the discussion
 

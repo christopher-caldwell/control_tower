@@ -15,127 +15,90 @@ sources:
 - ../history/2026-09-30-initial-design.md#e12-core-identity-settled
 - ../history/2026-09-30-initial-design.md#e15-verify-before-step-commit
 - ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
+- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
 - ../design/three-step-workspace.md
 ---
 
 # ADR-0002: Use migration-style steps with verified completion
 
-## Decision
+## Accepted decision
 
 Control Tower uses an ordered migration model.
 
-A forward step N is complete only after:
+A forward step N becomes completed only after N/up and its optional forward verification succeed.
 
-~~~text
-N/up
-N/verify, if present
-~~~
+The runtime can therefore record a last completed step plus one active/in-progress transition. The author owns the semantic correctness of all executables.
 
-both succeed.
+## Current directional-verification proposal
 
-The workbench therefore tracks:
-
-- the last **completed** step,
-- and optionally the next **in-progress** step.
-
-For example, if 03/up succeeds and 03/verify fails:
-
-~~~text
-completed:   02
-in progress: 03
-~~~
-
-Both facts are meaningful and sufficient.
-
-## Forward semantics
-
-From completed N-1:
-
-1. Run N/up.
-2. If up fails, N does not become in progress and N-1 remains completed.
-3. If up succeeds, N becomes in progress and its working outputs are available.
-4. Run N/verify when present.
-5. If verify succeeds, N becomes completed and the in-progress marker clears.
-6. If verify fails, N remains in progress and N-1 remains the last completed step.
-
-A step without verify completes immediately after successful up.
-
-The author owns the semantic correctness of all executables.
-
-## Working within an in-progress step
-
-The developer must be able to operate on N without rerunning N/up:
-
-- inspect using N's effective context,
-- change application code,
-- rerun N/verify,
-- run N/down to back out N.
-
-The runner should not automatically rerun N/up after it has succeeded.
-
-## Down from an in-progress step
-
-If N is in progress because up succeeded but verify did not:
-
-~~~text
-N/down
-~~~
-
-is the authored route back to completed N-1.
-
-If down succeeds, clear the in-progress step and return to the existing N-1 completed baseline.
-
-If down fails, keep N in progress and preserve its results/context for further inspection or recovery.
-
-No automatic N-1/verify is required. The correctness of N/down is the author's responsibility.
-
-## Down from a completed step
-
-The same principle applies to ordinary backward movement:
-
-~~~text
-completed N
-  |
-  | N/down
-  v
-completed N-1
-~~~
-
-A successful down changes the completed pointer to N-1. Control Tower does not require N-1/verify as part of backward navigation.
-
-verify is specifically the gate that lets an up transition become **completed**.
-
-Manual verification of the resulting step can still be exposed as a useful action.
-
-## Why this model
-
-It mirrors the developer's actual mental model:
-
-- 02 can be done,
-- 03 can be underway,
-- failed 03 verification does not erase 02,
-- 03/down backs out the underway work.
-
-This is enough statefulness to make iteration comfortable without creating a workflow/orchestration engine.
-
-## Full run
-
-A forward full run repeats for each step:
+The owner has proposed giving each step four possible executables:
 
 ~~~text
 up
-verify
-complete
+down
+verify-up
+verify-down
 ~~~
 
-and stops on the first failure.
+with both verifiers optional.
 
-If verify fails, the run stops with the previous step completed and the target step in progress.
+This extension is under evaluation and is not yet promoted to a separate accepted decision.
 
-## Consequences
+It would make the transition rule symmetric:
 
-The runtime needs a narrow in-progress record and working context.
+~~~text
+forward:  N/up   -> N/verify-up   -> commit N
+backward: N/down -> N/verify-down -> commit N-1
+~~~
 
-It does not need generalized retries, dependency resolution, distributed state, or an “external truth” model.
+If the relevant verifier is absent, a successful mutation completes the directional transition immediately.
 
-Context lifecycle for in-progress and completed down transitions is intentionally delegated to ADR-0003 and the three-step probe.
+## Why it fits the core boundary
+
+verify-up and verify-down remain ordinary executables. Control Tower only cares about their exit status and output.
+
+The split avoids requiring one generic verifier to infer which direction just ran or to describe the entire state of the world.
+
+## Active transition model
+
+If the directional verifier fails after the mutation succeeds, the completed pointer does not move.
+
+A compact active-transition record is enough:
+
+~~~text
+step: N
+direction: up | down
+mutation: passed
+verification: failed
+working context: ...
+~~~
+
+For an up failure, the previous completed step remains current.
+
+For a down verification failure, the source completed step remains current until the down transition is accepted.
+
+This does not mean the external world is unchanged. It is only Control Tower's migration bookkeeping.
+
+## Recovery
+
+A failed verify-up can be retried without rerunning up.
+
+A failed verify-down can be retried without rerunning down.
+
+Backing out a failed verify-up naturally uses the same step's down operation. Under the four-file proposal, verify-down can validate that cleanup before the active transition is cleared.
+
+Do not automatically retry directional mutations; they may not be idempotent.
+
+## Context consequence
+
+Directional verification means context needed to check a mutation must remain available until its verifier completes.
+
+In particular, down verification may need source-step identifiers even when the external objects have already been removed.
+
+This strengthens the case for retaining completed context snapshots or an equivalent context-history mechanism. The exact context policy remains ADR-0003's concern.
+
+## What remains accepted regardless of this proposal
+
+The core stays serial, local, user-authored, and migration-style.
+
+No DAG, scheduler, hosted control plane, automatic retry engine, transaction emulation, or universal rollback guarantee follows from adding a second optional verifier.

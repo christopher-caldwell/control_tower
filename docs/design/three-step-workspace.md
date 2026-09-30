@@ -13,12 +13,14 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../history/2026-09-30-initial-design.md#e13-three-step-design-probe
-- ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
+- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
 ---
 
 # Three-step workspace design probe
 
-## Candidate workspace
+## Four-file candidate
+
+The current probe gives each step up to four executables:
 
 ~~~text
 workspace/
@@ -26,209 +28,214 @@ workspace/
     001-create-user/
       up
       down
-      verify
+      verify-up
+      verify-down
 
     002-create-associated-record/
       up
       down
-      verify
+      verify-up
+      verify-down
 
     003-mutate-record/
       up
       down
-      verify
+      verify-up
+      verify-down
 
   actions/
     inspect
 ~~~
 
-This remains illustrative rather than accepted filesystem syntax.
+up and down are the mutations. verify-up and verify-down are optional directional checks.
 
-## Happy-path sequence
+The exact filenames are not accepted syntax yet.
 
-The user described the intended sequence as:
+## Forward lifecycle
+
+From completed 02 toward 03:
 
 ~~~text
-01/up
-
-02/up
-02/verify
-
 03/up
-03/verify -> FAIL
+  |
+  | success
+  v
+03 / up direction in progress
+  |
+  | 03/verify-up
+  v
+completed 03
 ~~~
 
-After 02/verify passes:
+If verify-up fails:
 
 ~~~text
 completed: 02
-in progress: none
+active transition:
+  step: 03
+  direction: up
+  mutation: passed
+  verify: failed
 ~~~
 
-After 03/up succeeds but 03/verify fails:
+The developer can inspect, change application code, and rerun verify-up without rerunning up.
 
-~~~text
-completed:   02
-in progress: 03
-~~~
+To abandon the in-progress forward transition, 03/down is the natural authored operation. If verify-down exists, it can validate that reversal before clearing the active transition and returning to the completed-02 baseline.
 
-That is the central model.
+This is slightly stronger than the previous “down success immediately clears pending 03” rule and is exactly what the four-file proposal is intended to test.
 
-02 did not become “not done” merely because 03 failed verification. 03 also did not disappear merely because it was not completed. The workbench can represent both facts directly.
+## Backward lifecycle from a completed step
 
-## Step lifecycle
-
-A step can be understood with a very small lifecycle:
-
-~~~text
-not started
-    |
-    | up succeeds
-    v
-in progress
-    |
-    | verify succeeds
-    v
-completed
-~~~
-
-verify failure keeps the step in progress.
-
-If no verify file exists, successful up can move directly to completed.
-
-Failures are recorded as execution results rather than additional permanent domain states.
-
-## Recovery after 03 verify failure
-
-The developer has two main paths.
-
-### Keep working on 03
-
-~~~text
-completed:   02
-in progress: 03
-
-[Inspect]
-[Verify 03 Again]
-~~~
-
-The effective context includes outputs produced by 03/up. The developer can change application code and rerun only 03/verify.
-
-If verify later passes:
-
-~~~text
-completed:   03
-in progress: none
-~~~
-
-### Back out 03
-
-Run:
+From completed 03 toward 02:
 
 ~~~text
 03/down
+  |
+  | success
+  v
+03 / down direction in progress
+  |
+  | 03/verify-down
+  v
+completed 02
 ~~~
 
-using the effective in-progress context.
-
-If it succeeds:
+If verify-down fails:
 
 ~~~text
-completed:   02
-in progress: none
+completed: 03
+active transition:
+  step: 03
+  direction: down
+  mutation: passed
+  verify: failed
 ~~~
 
-No 02/verify is required to make that bookkeeping change. 02 was already completed before 03 started, and the author has defined 03/down as the operation that returns to that baseline.
+The pointer remains on the last fully completed state until the directional transition verifies.
 
-If 03/down fails, keep 03 in progress and retain its working context/results.
+This mirrors the forward rule without requiring verify-up and verify-down to assert the same conditions.
 
-## Why this is useful ergonomically
+## Why not reuse 02/verify-up after 03/down?
 
-A failed verify should not force the developer to:
+The operation being validated is 03/down, so the author who wrote 03/down is best positioned to define what counts as its success.
 
-- rerun 03/up,
-- rediscover IDs produced by 03/up,
-- reconstruct 02,
-- or convince Control Tower about external truth.
+03/verify-down can also use source-step identifiers that 02 would not naturally own.
 
-The workbench only needs to preserve enough information to continue working with 03 or back it out.
+This avoids making every stage verifier a universal description of the entire external state.
 
-A plausible UI is:
+## Optional means genuinely optional
+
+A step can have:
 
 ~~~text
-✓ 001 Create User
-✓ 002 Create Associated Record
-◐ 003 Mutate Record
-    up      passed
-    verify  failed
-
-[Verify Again] [Inspect] [Down to 002]
+up only
 ~~~
 
-The exact visuals are not decided, but this is the interaction being optimized.
+and complete forward when up exits zero.
 
-## Backward movement from a completed step
+Or:
 
-If 03 had completed and the developer later wants to return to 02:
+~~~text
+up
+verify-up
+~~~
+
+for verified forward completion.
+
+Or the full:
+
+~~~text
+up
+down
+verify-up
+verify-down
+~~~
+
+for checked movement in both directions.
+
+Control Tower should not require placeholder files.
+
+Whether down itself is optional remains a separate authoring question; a missing down simply means normal backward navigation through that step is unavailable.
+
+## Failure ergonomics
+
+The interesting cases are now symmetric.
+
+### Forward verification fails
+
+~~~text
+02 completed
+03/up succeeds
+03/verify-up fails
+
+options:
+  Inspect
+  Verify Up Again
+  Down
+~~~
+
+If Down is chosen and verify-down exists:
 
 ~~~text
 03/down
-  -> success
-  -> completed becomes 02
+03/verify-down
+=> return to completed 02
 ~~~
 
-Again, automatic 02/verify is not required. verify belongs to completing an up transition, not proving a down transition.
-
-The author can manually run 02/verify if useful.
-
-## Context consequence
-
-The in-progress model implies an effective context:
+### Backward verification fails
 
 ~~~text
-committed context from completed 02
-+
-working changes from 03/up
-=
-effective context for 03/verify, inspect, and 03/down
+03 completed
+03/down succeeds
+03/verify-down fails
+
+options:
+  Inspect
+  Verify Down Again
 ~~~
 
-If 03 verifies successfully, the working changes become committed.
+A possible “Up to restore 03” escape hatch is symmetric, but it has not earned UI scope yet. The author can always choose recovery behavior once we test a real scenario.
 
-If 03/down succeeds while 03 is in progress, the working changes can be abandoned/removed as part of returning to the 02 baseline, subject to the eventual context protocol.
+## Context insight
 
-The exact mechanics still need testing.
+Directional down verification changes the context question.
 
-## What remains open
+Suppose completed 02 includes record_id and 02/down deletes that record. 02/verify-down may still need record_id to verify the record is gone. Therefore the workbench should keep the source/effective context available while the down transition is in progress.
 
-- What exact context changes are retained from successful up while verify is failing?
-- What happens to machine output if up itself exits nonzero?
-- Does down publish context changes, or can an in-progress down simply discard that step's working delta?
-- How should context move backward from a **completed** step where its outputs were already committed?
-- Does verify remain read-only from the workbench-context perspective?
-- Does convention-only authoring survive a real project?
+Only after verify-down succeeds should the workbench settle context for completed 01.
+
+This makes per-completed-step context snapshots attractive:
+
+~~~text
+completed 01 snapshot:
+  user_id
+
+completed 02 snapshot:
+  user_id
+  record_id
+~~~
+
+A verified 02/down could restore the stored 01 snapshot automatically.
+
+That would remove a common burden from down authoring: down would not need to tell Control Tower to unset record_id merely because it deleted the associated external record.
+
+This is a design candidate, not yet a decision. It should be compared with explicit down output mutations.
+
+## What the four-file model earns
+
+It gives up and down equal treatment without adding a controller assertion language.
+
+It also produces a stable rule:
+
+> A directional mutation changes the completed pointer only after its optional directional verifier succeeds.
+
+That rule is easy to explain and test.
 
 ## Next exercise
 
-Use 03 as a deliberately failing step and model these two loops:
+Use step 02 to compare the two context strategies:
 
-~~~text
-02 completed
-03/up succeeds
-03/verify fails
-change app code
-03/verify succeeds
-=> 03 completed
-~~~
+1. **snapshot restore:** 02/down + 02/verify-down succeeds, then Control Tower restores the saved step-01 context;
+2. **explicit output:** 02/down publishes whatever set/unset operations are needed for the step-01 context.
 
-and:
-
-~~~text
-02 completed
-03/up succeeds
-03/verify fails
-03/down succeeds
-=> 02 completed
-~~~
-
-Those two paths should drive the initial context-storage contract.
+The better option should minimize authoring work without making Control Tower infer application semantics.

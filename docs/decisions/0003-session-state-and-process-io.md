@@ -1,6 +1,6 @@
 ---
 id: ADR-0003
-title: Separate completed context, in-progress context, and process I/O
+title: Separate completed context, active-transition context, and process I/O
 type: decision
 status: proposed
 created: '2026-09-30'
@@ -10,99 +10,122 @@ authored_by: assistant
 decision_authority: user-endorsed-candidate-with-unapproved-details
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
-- ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
+- ../history/2026-09-30-initial-design.md#e17-directional-verification-proposal
 - ../research/existing-tools.md
 - ../design/three-step-workspace.md
 ---
 
-# ADR-0003: Separate completed context, in-progress context, and process I/O
+# ADR-0003: Separate completed context, active-transition context, and process I/O
 
 ## Standing
 
 The general context/output separation remains the leading candidate.
 
-The step model now gives the storage problem clearer names:
+The possible verify-down hook makes one refinement useful: “in-progress context” should be understood as **active-transition context**, because a transition can now be moving either up or down.
 
-- **completed context** — values associated with the last completed step,
-- **in-progress changes** — values produced by the next step's successful up before verify succeeds,
-- **effective context** — completed context plus in-progress changes.
+The exact persistence and wire formats remain undecided.
 
-The exact persistence format and process wire protocol remain undecided.
+## Logical context layers
 
-## Example
+- **completed snapshot** — the context associated with the last accepted completed position;
+- **active-transition working values** — values needed while an up or down mutation awaits directional verification;
+- **effective context** — the view supplied to the current transition's verifier and relevant inspection actions.
 
-~~~text
-completed: 02
-
-completed context:
-  user_id: 123
-  record_id: 456
-
-03/up succeeds and produces:
-  mutation_id: 789
-
-03/verify fails
-
-in progress: 03
-effective context:
-  user_id: 123
-  record_id: 456
-  mutation_id: 789
-~~~
-
-03/verify, inspection actions, and 03/down need access to that effective context.
-
-## Promotion and abandonment
-
-If 03/verify later succeeds, promote 03's working changes into completed context and set completed = 03.
-
-If 03/down succeeds while 03 is in progress, clear 03's working changes and keep the completed 02 context.
-
-This is the simplest candidate behavior for a pending/in-progress step.
-
-## The harder backward-context case
-
-Moving down from a **completed** step is different because that step's outputs are already in completed context.
-
-For example, if completed 02 introduced record_id, then 02/down returning to 01 must leave context appropriate for 01.
-
-Two approaches remain worth testing:
-
-- down explicitly publishes set/unset changes,
-- Control Tower retains enough per-step context delta/snapshot information to restore the earlier completed context after successful down.
-
-Do not select either until the three-step scripts make the ergonomics concrete. This is now a more meaningful question than JSON versus KEY=value.
-
-## Process channels
-
-The leading boundary remains:
+The process boundary still points toward:
 
 ~~~text
 effective context -> executable
 stdout/stderr -> human-visible result
-machine output -> proposed context changes
+machine output -> proposed/working context changes
 exit status -> operation result
 ~~~
 
-verify needs effective context and can use exit status as pass/fail. No real example yet requires verify to publish context changes.
+## Forward example
 
-## Failed up output
+~~~text
+completed 02 snapshot:
+  user_id
+  record_id
 
-An up may emit an identifier and then exit nonzero.
+03/up produces:
+  mutation_id
 
-That case remains distinct from a successful up followed by failed verify. The latter clearly creates an in-progress step. The former still needs a policy for whether emitted data becomes recovery evidence or usable working context.
+03/verify-up fails
 
-## Persistence
+effective context:
+  user_id
+  record_id
+  mutation_id
+~~~
 
-An in-progress step may remain while the developer edits application code, so persistence across ordinary UI restarts is increasingly useful.
+If verify-up later passes, the resulting effective context can become the completed-03 snapshot.
 
-The backend remains open. The data model should stay small: completed step, optional in-progress step, completed context, in-progress changes, and recent execution results.
+## Backward example
+
+Suppose completed 02 contains record_id.
+
+02/down may delete the external record, but 02/verify-down may still need record_id to prove the deletion happened.
+
+Therefore do not remove record_id from the verifier's context merely because down exited zero.
+
+After verify-down succeeds, the workbench needs a context appropriate to completed 01.
+
+## Snapshot restoration candidate
+
+One attractive mechanism is to save the context snapshot at each completed position.
+
+Then:
+
+~~~text
+completed 01 snapshot:
+  user_id
+
+completed 02 snapshot:
+  user_id
+  record_id
+~~~
+
+A successful verified 02/down can simply restore the saved 01 snapshot.
+
+Advantages:
+
+- down scripts do not need boilerplate to unset every value introduced by up;
+- verify-down can still see the source-step identifiers during verification;
+- up/down navigation naturally mirrors the migration stack.
+
+Costs:
+
+- snapshots consume some local storage, though expected context is tiny;
+- if down intentionally establishes a different context than the historical 01 snapshot, the model needs an override mechanism or explicit output policy;
+- changing migration definitions may invalidate saved snapshots.
+
+This candidate now deserves comparison against explicit down-published set/unset changes.
+
+## Explicit down-output candidate
+
+Alternatively, 02/down can publish context changes itself.
+
+That is maximally explicit but makes the action author responsible for external compensation **and** Control Tower bookkeeping cleanup.
+
+It may also require verify-down to see a pre-commit effective view that preserves identifiers the down output intends to remove.
+
+## Failed mutation output
+
+An up or down can emit machine output and later exit nonzero. The policy for those values remains open.
+
+That is separate from a mutation exiting zero followed by failed verification; in the latter case active-transition context clearly has a role.
+
+## Verify output
+
+No current example requires verify-up or verify-down to publish Control Tower context.
+
+The leading simplification is for both verifiers to be read-only at the context boundary: read effective context, print useful output, and communicate pass/fail via exit status.
 
 ## Next validation
 
-Exercise both:
+Implement the conceptual 01 -> 02 -> 01 example on paper using both:
 
-1. verify failure -> retry verify -> complete,
-2. verify failure -> down -> return to previous completed step.
+1. saved completed snapshots,
+2. explicit down set/unset output.
 
-Then test completed-step down to determine whether author-published context changes or stored per-step deltas produce the simpler contract.
+Choose the mechanism that keeps authoring small while preserving enough context for directional verification.

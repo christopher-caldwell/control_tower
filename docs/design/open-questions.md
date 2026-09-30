@@ -18,60 +18,74 @@ sources:
 
 This is a decision queue, not a release plan.
 
-## Settled: completed plus in-progress step
+## Under evaluation: four executable roles per step
 
-If N/up succeeds but N/verify fails:
+The current proposal is:
 
 ~~~text
-completed:   N-1
-in progress: N
+up
+down
+verify-up     # optional
+verify-down   # optional
 ~~~
 
-N/verify can be retried without rerunning up.
+A directional mutation would change the completed pointer only after its optional directional verifier succeeds.
 
-N/down can back out the in-progress step. On successful down, clear N-in-progress and remain at completed N-1.
+This looks cleaner than reusing a single verifier for both directions, but it remains a design candidate until the backward/context exercise confirms it.
 
-Backward navigation does not automatically reverify N-1.
+## Q1 — Snapshot restoration or explicit down context output?
 
-See [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).
+The four-file model makes this the first question.
 
-## Q1 — How should context move backward from a completed step?
+For completed 02 -> 01, compare:
 
-This is now the most useful unresolved storage question.
+**Snapshot restoration**
 
-When completed 02 is moved down to 01, values introduced by 02 may need to disappear or revert.
+~~~text
+02/down
+02/verify-down
+restore saved completed-01 context
+commit 01
+~~~
 
-Compare:
+against:
 
-- requiring 02/down to explicitly publish context set/unset changes,
-- retaining a per-step context delta/snapshot so Control Tower can restore the prior completed context after successful down.
+**Explicit down output**
 
-**Exit criterion:** a create-record step can go 01 -> 02 -> 01 without stale record_id and without making down authoring unnecessarily awkward.
+~~~text
+02/down publishes context set/unset changes
+02/verify-down checks effective target
+commit 01 with those changes
+~~~
 
-## Q2 — What happens to machine output when up itself fails?
+**Exit criterion:** record_id can remain available during verify-down but cannot remain stale after 01 becomes completed. Authoring should stay simple.
 
-If up emits an ID and later exits nonzero, does that value become usable recovery context or only captured attempt output?
+## Q2 — What exactly can happen during a failed verify-down?
 
-Do not conflate this with successful up followed by failed verify.
+If 02/down succeeds but 02/verify-down fails, completed remains 02 and a down transition remains active.
 
-## Q3 — What exact machine-output format is smallest?
+Confirm the minimum useful controls: Inspect and Verify Down Again. Determine whether an explicit Up-to-restore action needs first-class UI support or can remain manual/recovery behavior.
 
-Once backward context is understood, compare a tiny set/unset text protocol against a small JSON change document.
+## Q3 — What happens to output when a mutation itself fails?
 
-The actual requirements are still primarily scalar IDs and removal.
+If up or down emits values and later exits nonzero, decide whether they become working recovery context or attempt evidence only.
 
-## Q4 — Is verify read-only from the context perspective?
+## Q4 — Are both verifiers read-only?
 
-No current example requires verify to publish values.
+No current example requires verify-up or verify-down to publish context.
 
-Prefer read-only unless a concrete use case demonstrates otherwise.
+Prefer read-only unless a real use case appears.
 
-## Q5 — Does convention-only authoring remain sufficient?
+## Q5 — What exact machine-output encoding is smallest?
 
-Numeric directories plus up/down/verify still express the lifecycle. Keep config out until a real metadata need appears.
+Defer JSON versus text set/unset until the snapshot-vs-explicit context decision is made. Snapshot restoration may dramatically reduce how much output syntax down needs.
+
+## Q6 — Does convention-only authoring remain sufficient?
+
+Four fixed filenames still fit the filesystem-first model. Do not add central config merely to list them.
 
 ## Validation order
 
-Model context through 01 -> 02 -> 03-in-progress -> 02 and 02 -> 01. That should settle backward context ownership before choosing the output encoding.
+Compare the two context strategies first using step 02. Then test verify-down failure ergonomics. Only after that choose the machine-output encoding.
 
 These are design steps, not implementation milestones.
