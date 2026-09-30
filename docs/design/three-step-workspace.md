@@ -1,6 +1,6 @@
 ---
 id: CT-DESIGN-THREE-STEP
-title: Three-step workspace design probe
+title: Three-step workspace design probe — earlier hypotheses
 type: design
 status: maintained
 created: '2026-09-30'
@@ -9,6 +9,8 @@ owner: christopher-caldwell
 authored_by: assistant
 sources:
 - current-design.md
+- discovery-brief.md
+- ../research/discovery-01.md
 - ../decisions/0001-user-owned-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
@@ -16,6 +18,12 @@ sources:
 ---
 
 # Three-step workspace design probe
+
+## Status of this earlier probe
+
+The material below preserves earlier conceptual pressure tests, not an executed prototype or current implementation contract. The owner's later choices narrowed the first demonstration to a UUID-named file and moved SQLite into v0. The [discovery brief](discovery-brief.md) and [ADR-0003](../decisions/0003-session-state-and-process-io.md) describe that narrower target.
+
+In particular, the memory-only lifetime, auxiliary `actions/` directory, checkpoint/patch formulas, and source/candidate interface below are historical proposals. They must not be imported as v0 requirements. “Clean” below meant a conceptual trace appeared coherent; it did not mean a test passed. The [first-discovery record](../research/discovery-01.md) explains this correction.
 
 ## Candidate authoring shape
 

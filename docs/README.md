@@ -10,6 +10,7 @@ authored_by: assistant
 sources:
 - research/documentation-strategy.md
 - history/2026-09-30-initial-design.md#scope-and-provenance
+- research/discovery-01.md
 ---
 
 # Control Tower documentation
@@ -22,7 +23,9 @@ The project is intentionally not an orchestration platform. No login, hosting se
 
 ## Start here
 
-Read [Current design](design/current-design.md) for the distilled direction. The project is now ready for a first formal discovery round; use [First formal discovery brief](design/discovery-brief.md) as its seed. [Three-step workspace design probe](design/three-step-workspace.md) contains the earlier conceptual pressure tests, while [Open questions and validation](design/open-questions.md) tracks what remains unresolved. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
+Read [Current design](design/current-design.md) for the distilled direction and [First formal discovery brief](design/discovery-brief.md) for the discovery seed. The first collaborative discovery is now in progress; its inspected revisions, findings, and evidence limits are in [First discovery record](research/discovery-01.md).
+
+[Open questions and validation](design/open-questions.md) tracks the current product decision. [Three-step workspace design probe](design/three-step-workspace.md) preserves earlier conceptual pressure tests, not additional v0 obligations. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
 
 ## Structure and responsibilities
 
@@ -43,6 +46,7 @@ docs/
   research/
     documentation-strategy.md
     existing-tools.md
+    discovery-01.md
   history/
     2026-09-30-initial-design.md
 ~~~
@@ -54,15 +58,15 @@ docs/
 | research/ | What evidence supports or challenges the design? | Dated, sourced observations, separated from our interpretation. |
 | history/ | What was said or changed, and when? | Dated discussion summaries and explicit corrections. |
 
-Do not create one file per chat response, feature idea, or research link. Add to the existing home for a subject unless it has an independently maintainable purpose.
+Do not create one file per chat response, feature idea, or research link. Add to the existing home for a subject unless it has an independently maintainable purpose. The discovery record is one accumulating investigation record, not a separate specification or a claim of independent repeated runs.
 
 ## Decision index
 
 | Record | Status | Scope |
 | --- | --- | --- |
 | [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executable authoring; not a driver platform. |
-| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted core; directional verification under evaluation | Ordered migration-style transitions with verified forward completion; optional verify-down is the current design candidate. |
-| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; leading candidate | Session context checkpoints, active-transition patching, and process I/O. |
+| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted leading mechanism, subject to discovery | Ordered up/down transitions with optional verify-up and verify-down before completion. |
+| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; implementation choice | Minimal opaque UUID handoff for the first demonstration; richer checkpoint/patch mechanics are not v0 requirements. |
 | [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Core/application owns the session-state storage port; SQLite is the v0 runtime adapter; memory may remain useful as a test adapter. |
 | [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI is the only v0 driving adapter and composition edge; future Tauri/HTTP entry adapters call the same application use cases. |
 

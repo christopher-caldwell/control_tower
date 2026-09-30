@@ -14,7 +14,9 @@ sources:
 - ../history/2026-09-30-initial-design.md#e04-assertion-gates
 - ../history/2026-09-30-initial-design.md#e12-core-identity-settled
 - ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
-- ../design/three-step-workspace.md
+- ../history/2026-09-30-initial-design.md#e23-sqlite-moves-into-v0
+- ../design/discovery-brief.md
+- ../research/discovery-01.md
 ---
 
 # ADR-0002: Use migration-style steps with verified completion
@@ -23,11 +25,9 @@ sources:
 
 Control Tower uses an ordered migration model. User-owned executables perform the mutations. Control Tower does not guarantee those mutations are semantically correct or reversible.
 
-Forward completion already requires the target step's optional verification before the completed pointer advances.
+A directional transition becomes complete only after its mutation and any supplied directional verification succeed.
 
-## Directional-verification recommendation
-
-The four-role design survived the current gauntlet:
+## Leading directional convention
 
 ~~~text
 up
@@ -36,7 +36,7 @@ verify-up     # optional
 verify-down   # optional
 ~~~
 
-The recommended directional rule is:
+The leading directional rule is:
 
 ~~~text
 up   -> verify-up   -> complete higher step
@@ -45,45 +45,34 @@ down -> verify-down -> complete lower step
 
 If the relevant verifier is absent, mutation exit 0 completes the transition.
 
-The owner has confirmed this four-role shape as the **leading mechanism for formal discovery**, explicitly subject to change as the real fixture is exercised. It is not being treated as an irreversible public contract.
+The owner confirmed the four-role shape as the leading mechanism for formal discovery, explicitly subject to change when the real fixture is exercised. It is not an irreversible public contract.
 
 ## Active directional transition
 
-After mutation success but before verification success, keep one active transition:
+After mutation success but before verification success, retain enough information to retry the matching verifier or invoke the supported reverse action without automatically repeating the mutation.
 
-~~~text
-step
-direction: up | down
-source context
-mutation output patch
-candidate context
-latest mutation/verifier result
-~~~
+Earlier exploration illustrated that information as a completed checkpoint stack plus a transition containing source context, output patch, and candidate context. Those representations remain hypotheses, not accepted storage or public process-protocol requirements. The v0 proof only needs the UUID handoff and correct navigation results.
 
-Do not rerun the mutation automatically while that transition exists.
-
-Retrying the verifier is safe from Control Tower's perspective because the author explicitly supplied a verifier; its external side effects remain the author's responsibility.
+Do not rerun the mutation automatically when retrying its verifier. The author remains responsible for the verifier's behavior; calling a program a verifier is not a safety guarantee.
 
 ## Failed mutation
 
-A nonzero mutation exit does not advance or create a normal successful mutation transition.
+A nonzero mutation exit does not complete the directional transition. Record the attempt, do not automatically invoke its verifier, and stop the walk.
 
-Record the attempt and stop.
-
-This is deliberately stricter than trying to infer success from partial external effects. Recovery after a broken mutation can be added later without contaminating the normal state model.
+Whether an explicit matching down is available after up itself failed is unresolved in [B1](../design/open-questions.md#b1--manual-down-after-up-itself-fails). The earlier statement that recovery could be deferred did not explicitly settle this ordinary manual operation. This record does not silently decide it.
 
 ## Session scope
 
-The completed stack and active transition are in-memory session bookkeeping.
+SQLite is the v0 runtime adapter, as selected in [ADR-0004](0004-session-storage-port-and-adapters.md). Normal CLI exits retain the workbench state needed for subsequent invocations. Application behavior remains independent of the storage implementation.
 
-A Control Tower restart starts over from zero. No durable migration history, structural-drift detection, or crash recovery is required.
+An abnormal Rust-process termination has no v0 external-state recovery guarantee. This is distinct from a script or verifier returning failure while Control Tower remains able to record and report the result.
 
-Changing step structure mid-session is unsupported and left to the author.
-
-Multiple simultaneous Control Tower instances for the same workspace are also unsupported; no locking is needed.
+Changing stage-directory structure during a stored workbench run remains the author's responsibility; no detection or reconciliation is required. Multiple simultaneous instances are unsupported and require no project-specific protection.
 
 ## Consequence
 
-The runtime remains serial and small: in-memory completed stack + one optional active transition.
+The runtime remains local and serial. It needs enough bookkeeping for completed and unfinished directional work, but neither a general checkpoint/patch framework nor a crash-recovery engine is implied.
 
-No DAG, scheduler, retries, distributed workers, persistence layer, or external transaction engine is implied.
+## Documentation correction during discovery
+
+The source-review pass found obsolete memory-only session wording in this accepted record after SQLite had already been selected. That wording is corrected here to match the owner's later instruction, not to introduce a new storage decision. The first-discovery record preserves the finding and inspected baseline. No unresolved mutation-failure behavior is promoted to accepted authority by this correction.
