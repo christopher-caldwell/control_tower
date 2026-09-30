@@ -1,69 +1,88 @@
 ---
 id: ADR-0002
-title: Navigate an ordered fixture with explicit compensation and checks
+title: Use migration-style ordered up/down navigation
 type: decision
-status: proposed
+status: accepted
 created: '2026-09-30'
 updated: '2026-09-30'
 owner: christopher-caldwell
 authored_by: assistant
-decision_authority: pending-user-review-of-semantics
+decision_authority: explicit-user-direction
+decision_date: '2026-09-30'
 sources:
 - ../history/2026-09-30-initial-design.md#e03-migration-like-navigation
 - ../history/2026-09-30-initial-design.md#e04-assertion-gates
+- ../history/2026-09-30-initial-design.md#e12-core-identity-settled
+- ../design/three-step-workspace.md
 ---
 
-# ADR-0002: Navigate an ordered fixture with explicit compensation and checks
+# ADR-0002: Use migration-style ordered up/down navigation
 
-## Standing
+## Decision
 
-The user proposed migration-like up/down actions and assertion gates. This record proposes a precise interpretation and corrects gaps in the early assistant explanations. **The complete semantics below have not been accepted.**
+Control Tower uses an ordered migration model rather than a generalized workflow graph.
 
-## Proposed model
+Step N moves between recorded positions N-1 and N:
 
-Start with an ordered chain rather than a generalized dependency graph:
+~~~text
+position 0 <-- down 1 -- position 1 <-- down 2 -- position 2
+           ---  up 1 -->            ---  up 2 -->
+~~~
 
-```text
-stage 0 <--down 1-- stage 1 <--down 2-- stage 2 <--down 3-- stage 3
-        ---up 1-->         ---up 2-->         ---up 3-->
-```
+Moving forward several positions runs the necessary up executables in order. Moving backward runs the necessary down executables in reverse order. Execution stops on the first nonzero exit.
 
-`up N` attempts to establish stage N from stage N-1. `down N` attempts to reestablish stage N-1 from stage N. Moving from 6 to 2 therefore invokes down 6, down 5, down 4, and down 3. Moving from 2 to 5 invokes up 3, up 4, and up 5.
+If a transition executable succeeds, Control Tower may move its recorded pointer. If it fails, Control Tower does not move the pointer for that transition and shows the failure.
 
-This removes the need to author every pairwise transition. It does not remove the obligation to handle partial execution or external changes.
+The correctness of an up or down operation is the author's responsibility. A down action is not guaranteed undo, and Control Tower does not inspect application semantics to determine whether an external system actually matches the recorded pointer. This is intentionally analogous to a database migration runner executing author-written migrations.
 
-## Verification: useful evidence, not a proof of the world
+Assertions/checks are part of the desired workbench, but the exact timing of an assertion relative to moving the recorded pointer is not decided by this ADR. That narrower question is documented in [the three-step probe](../design/three-step-workspace.md#4-assertions-expose-the-first-real-semantic-choice).
 
-Attach reusable checks to the destination stage as the leading interpretation. They can be used after forward movement, backward movement, rebuilding, or a manual Verify action. A stage check might verify that the fixture user exists, its associated record belongs to that user, and the record is open.
+## Why this decision
 
-The user's original gates could instead be transition-specific preconditions. Stage checks are attractive because they can be reused regardless of arrival direction, but that placement is still a proposal. Verification coverage may be optional; an unchecked stage must not be labeled verified.
+The development loop is inherently sequential: establish fixture state, make a mutation, inspect, change code, move back, and repeat. A migration chain gives forward and backward navigation without requiring pairwise reset definitions or a dependency graph.
 
-Passing configured checks only establishes those observations at that time. It does not prove complete equality of external state, establish a unique stage among overlapping checks, or guarantee the state remains unchanged. Reverification after interruption, out-of-band mutation, or reopening a session is therefore a candidate rule.
+It also preserves the central product boundary. Control Tower runs user-authored operations; it does not orchestrate distributed work or claim transactional guarantees it cannot provide.
 
-## The failure correction
+## Failure semantics
 
-Suppose up 3 closes a record and then verification fails. The fixture is not safely “still at stage 2.” The previous verified checkpoint is historical information; the present condition is uncertain.
+A failed command can have external side effects before returning nonzero. Control Tower does not need a second “unknown external state” engine to represent this.
 
-The proposed UI should distinguish at least what was last verified, what transition was attempted, and whether the current condition is known. These are conceptual distinctions, not a required database schema. A failed action, failed check, or interrupted transition stops automatic navigation. Recovery may involve inspection, an authored repair, compensation, or rebuilding. Do not automatically repeat a mutation merely because its result was not accepted.
+The UI should communicate only what the tool actually knows, for example:
 
-For navigation over multiple stages, propose verifying each reached stage before continuing. Preflight the requested path for missing actions before causing side effects, while acknowledging that executable presence cannot prove reversibility. These operational rules still need the [Q3 exercise](../design/open-questions.md#q3--what-does-navigation-promise).
+~~~text
+Recorded position: 1
+Attempted: 1 -> 2
+Exit: 1
+~~~
 
-## Down and rebuild are different operations
+The developer is responsible for deciding the next operation.
 
-A down action is authored compensation. Reopening a record may restore the conditions needed for a test while leaving audit history, emitted messages, or other side effects intact. A transition may legitimately have no down action.
+This replaces the earlier proposal to model a richer “uncertain fixture state.” That proposal was technically defensible but inconsistent with the deliberately dumb migration-runner boundary later chosen by the owner.
 
-A missing down action is not an invitation to decrement a stage counter. Make the unavailable path visible without silently substituting another operation. If a real down action fails partway, stop and mark uncertainty; do not continue down the chain under a false assumption.
+## Down semantics
 
-Rebuild means running an explicit recipe that establishes a new useful fixture and verifies its target. It may include cleanup or intentionally leave an old fixture for separate cleanup. Discarding context is neither database cleanup nor a guaranteed reset. Preserve available old identifiers until the chosen cleanup policy permits discarding them.
+down N is the author-provided operation used when walking from recorded position N to N-1. It may be a true inverse, a compensating API call, a reset script, or any other operation the author considers suitable.
 
-## Individual actions and full runs
+If down N is absent, the normal backward path through that step is unavailable. Control Tower should not pretend the transition happened by changing only its pointer.
 
-An inspection can run without moving the stage, provided it does not intentionally alter the fixture. A general utility that changes fixture data or identifying context cannot automatically preserve the verified label. The authoring distinction and invalidation rule are unresolved.
+No generic rebuild/reset guarantee is part of this decision. A future convenience for starting over must still reduce to authored operations plus ordinary pointer/context management.
 
-“Continue to target” and “start fresh and run all” should have distinct meanings. The former attempts the remaining transitions; the latter requires a defined fresh-fixture recipe. Exact labels and whether both belong in the first UI remain open. Rerunning up 3 from stage 3 is also not automatically safe: first establish its source condition or use an explicitly repeatable action.
+## Full runs and individual runs
 
-## Alternatives, costs, and validation
+Both are first-class product goals.
 
-A loose action pad is simpler, but leaves the reset sequence in the developer's memory. A generalized graph offers branching, but introduces ambiguous backward paths without a demonstrated need. Snapshot-based database restoration can be useful when the author controls the environment, but is not a generic solution for external API effects.
+A full forward walk executes sequential up operations until the target/end or the first failure. Individual execution lets the developer work one transition at a time while editing application code between attempts.
 
-The linear model earns its place only if one real recipe benefits from it. Try a forward run, an intermediate rollback, a missing reverse action, failed compensation, overlapping checks, and an external mutation. If those require extensive controller machinery, simplify the promise rather than hiding it behind a stage number.
+Exact UI labels and whether “run all” means from position 0 or “continue to end from the current position” remain presentation/interaction questions, not reasons to add an orchestration model.
+
+## Assertions remain intentionally narrow
+
+The earlier discussion accepted the idea of assertions as gates, but not their exact lifecycle. The three-step example shows that arrival verification and departure gating have different context/failure consequences.
+
+Do not add an assertion DSL. The smallest direction is another user-owned executable where exit status expresses pass/fail. Resolve when it runs before implementing richer semantics.
+
+## Consequences
+
+The core can remain serial and understandable. There is no need for DAG scheduling, dependency resolution, distributed execution, retries, or transaction emulation.
+
+The cost is explicit: Control Tower may record position 1 while the external system has been partly changed by a failed attempt toward position 2. That is accepted as part of the author-responsibility boundary rather than hidden behind a false guarantee.

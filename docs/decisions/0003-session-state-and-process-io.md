@@ -11,84 +11,100 @@ decision_authority: user-endorsed-candidate-with-unapproved-details
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
 - ../research/existing-tools.md
+- ../design/three-step-workspace.md
 ---
 
 # ADR-0003: Separate persisted context from process input and output
 
-## Standing and proposal
+## Standing
 
-The user endorsed this general approach as the leading candidate for further research, not as a finished wire protocol. Persist a small workbench-owned session context; expose a snapshot to each executable; let the executable propose changes through a separate output file; capture stdout/stderr for ordinary results. Environment variables can carry paths and possibly convenient scalar inputs.
+The owner endorsed the general separation as the leading candidate for exploration: Control Tower owns small shared context, an executable receives an input view, stdout/stderr remain ordinary visible output, and a separate machine-output channel can update context.
 
-`WB_CONTEXT`, `WB_OUTPUT`, and all payload examples below are **illustrative working names**. Output encoding, merge behavior, failure publication, persistence backend, and automatic environment projection remain undecided.
+The exact protocol is still unaccepted. File names such as WB_CONTEXT or WB_OUTPUT, JSON shapes, persistence backend, environment projection, and failure-publication rules remain working ideas.
 
-## Distinct kinds of information
+## What the three-step probe actually requires
 
-| Kind | Meaning | Candidate treatment |
+The first concrete workspace only needs:
+
+~~~text
+after step 1:
+  user_id
+
+after step 2:
+  user_id
+  record_id
+
+after step 3:
+  user_id
+  record_id
+~~~
+
+Walking down step 2 must be able to remove record_id. Walking down step 1 must be able to remove user_id.
+
+This is important evidence: assignment and removal are required. Nested objects, multiline values, arbitrary typing, variable precedence, and an expression language are not yet required.
+
+## Distinct responsibilities
+
+| Information | Owner | Current direction |
 | --- | --- | --- |
-| Configuration | Inputs such as the selected API endpoint or database connection. | Author-supplied; not silently mixed into saved fixture context. |
-| Invocation inputs | Values chosen for this particular action. | A separate input view; overrides need an explicit rule. |
-| Session context | IDs and other small values intentionally carried between actions. | Persisted by the workbench if restart persistence is adopted. |
-| Controller metadata | Navigation and verification evidence. | Controlled by the workbench, not arbitrary script output. |
-| Attempt result | Logs, exit result, timestamps, and proposed outputs from one invocation. | Retained evidence, distinct from active context. |
-| Artifacts | Reports, dumps, or other substantial files. | Keep as files; a managed artifact directory is deferred. |
+| Recorded migration position | Control Tower | Internal bookkeeping; scripts do not set it directly. |
+| Shared authored context | Control Tower plus explicit script outputs | Small values intentionally carried between actions. |
+| Process configuration | Author/environment | Do not silently copy the entire inherited environment into durable context. |
+| stdout/stderr | Executable | Human-visible execution result. |
+| Machine output | Executable through a defined channel | Candidate context set/remove operations. |
+| Large files/artifacts | Author/filesystem | No managed artifact system has earned scope. |
 
-These distinctions do not require six stores or a variable-precedence hierarchy. A single small persistence mechanism could hold several categories. The distinction is who owns each value and when it is trusted.
+The table is conceptual. It does not imply separate databases or a large state subsystem.
 
-## Input alternatives
+## Input candidates
 
-| Mechanism | Strength | Cost for this tool |
-| --- | --- | --- |
-| Environment variables | Convenient for small script inputs and locating files. | Values need string encoding; names, limits, inheritance, and accidental exposure need rules. |
-| Command-line arguments | Natural interface for existing executables. | Binding every action's private argument syntax can bloat configuration. |
-| Structured stdin | One language-neutral input message. | Occupies the script's input stream and can interfere with tools that already consume it. |
-| Context file | Typed, inspectable data without consuming stdout or stdin. | Requires parsing and a defined lifecycle; shell scripts may need a utility. |
-| Live shared mutable file | Minimal initial mediation. | Unclear write ownership, partial updates, and poor attribution of changes. |
+Environment variables are excellent for simple scalar transport and for pointing to a context file, but they are not a parent-process storage mechanism. Command-line arguments work well for existing executables but make generic binding verbose. stdin is structured but consumes a useful stream. A read-only context snapshot file remains a strong language-neutral candidate.
 
-Prefer a context file as the canonical process input view, with environment-provided paths. Normal process environment inheritance is not a return channel: a child receives its own environment rather than a shared store. See the [environment model](https://man7.org/linux/man-pages/man7/environ.7.html). Runme's captured session environment is additional runner behavior, not something a plain subprocess provides automatically.
+The three-step example does not yet prove that every scalar context value should be automatically projected into the environment. That convenience can be tested later.
 
-Do not eagerly flatten every context field into environment variables. The convenient `WB_USER_ID` example raises real questions about reserved names, `user_id` versus `USER_ID`, nested values, nulls, and secrets. Start with the authoritative structured view; keep projections optional until the authoring experiment earns them.
+## Output candidates
 
-## Output alternatives
+The strongest decision so far is to keep machine output separate from stdout/stderr.
 
-| Mechanism | Strength | Cost / unresolved rule |
-| --- | --- | --- |
-| Structured stdout | Familiar Unix composition; no extra output file. | Incidental prints or child-tool output can break parsing. Still valid for scripts deliberately designed around it. |
-| `KEY=value` output file | Very easy to produce in shell. | Types, multiline values, deletion, and duplicate keys require extra conventions. |
-| One JSON output document | Familiar serializers; supports nested values and clear validation. | Whole-state replacement can lose keys; patches need defined semantics; interrupted writes can be incomplete. |
-| JSON Lines | Can retain incrementally emitted records. | Introduces ordering, partial-record, and per-record commit questions. |
-| SDK or local RPC | Rich operations and live interaction. | Adds coupling and infrastructure without a demonstrated need. |
+The smallest real requirement is now:
 
-The leading choice is the **separate output channel**, not yet a particular encoding. Dagu and GitHub Actions establish precedent for runner-provided output paths; their exact publication rules are not automatically correct for an interactive fixture workbench. See [the comparison](../research/existing-tools.md).
+- set a scalar key,
+- remove a scalar key,
+- detect malformed/incomplete output,
+- keep normal stdout/stderr untouched.
 
-For example, an explicit change document could distinguish deletion from null:
+A KEY=value-style file is attractive for shell authoring but needs a deletion convention. A JSON document can express set/remove clearly but introduces a parser and structure that may be more than v0 needs. JSON Lines and SDK/RPC mechanisms remain unjustified by the example.
 
-```json
-{
-  "set": {"user_id": "example-user", "note": null},
-  "unset": ["record_id"]
-}
-```
+Do not choose a format merely because another workflow product uses it.
 
-This illustrates a design question, not selected syntax. A full replacement document would be simpler in some cases but needs safeguards against accidentally dropping unrelated values. Implicit deep merges also need rules for arrays and deleted nested fields.
+## Assertion timing affects context timing
 
-## Candidate lifecycle and the important failure gap
+The three-step probe surfaced a dependency between ADR-0002 and this proposal.
 
-For each invocation, the workbench prepares a context snapshot and a fresh output destination. The executable can print normal results and write proposed state changes. The workbench records the attempt, parses the output as data, and decides whether to adopt it. Scripts do not directly set the controller's stage number.
+If assertions are **arrival checks**, step 1 up may create user_id and step 1 verify must see it before Control Tower records position 1.
 
-For a transition, a destination verifier may need the proposed context, including newly created IDs, before the stage can be accepted. A possible policy is to validate the proposal, run verification against that candidate context, then accept context and checkpoint together. On failure, retain the proposal as recovery evidence and mark the fixture uncertain. This is a candidate sequence, not an approved all-or-nothing guarantee.
+If assertions are **departure gates**, step 1 up can publish user_id and record position 1 immediately; verification happens only before walking onward.
 
-Consider a creation script that emits a new ID and then fails. Blindly discarding its output can lose the handle needed to clean up the created record. Blindly promoting its output can misrepresent success. Therefore distinguish **recorded evidence**, **accepted working context**, and **verified fixture conditions**. Exact promotion and manual recovery behavior are the joint [Q1/Q2 decisions](../design/open-questions.md#q1--what-exactly-does-an-action-publish).
+That choice should be resolved before specifying exactly when machine output is merged into active context.
 
-A crash after an external mutation but before any output is written cannot be repaired by local metadata alone. Authors may need an external lookup or an idempotency strategy. No rollback of the workbench's JSON can undo that API call.
+## Failed process output remains the hard edge
 
-## Ownership, safety, and persistence
+A process can change an external system, write an identifier, and then exit nonzero. The migration-runner philosophy says Control Tower does not need to infer external truth, but it still must choose what to do with any machine output it received.
 
-The input snapshot is read-only by contract; it is not a security boundary against a script running as the same user. The output channel is data, never shell code to `source` or evaluate. stdout may itself contain JSON or tables; reserving it for visible results does not require prose-only logs.
+The minimum honest options are:
 
-Local context persistence should preserve useful IDs across restarts, but restart persistence is still a candidate. A persisted verification is historical and may need rechecking. Keep runtime files separate from tracked recipe files, avoid saving the full inherited environment, and keep credentials out of fixture state by design rather than assuming that local files are secret storage.
+- keep failed output visible as part of the result but do not merge it,
+- merge some/all failed output into context,
+- or require the author to use a separate recovery mechanism.
 
-JSON on the process boundary does not imply JSON as the storage backend. SQLite, ordinary files, atomic write strategy, retention, and workspace/environment binding remain open. So does process concurrency: a simple serial mutation policy is a candidate, not a distributed-lock requirement. A second application instance must not silently bypass whatever ownership rule is chosen.
+No choice is accepted yet. This is a much smaller question than building a generalized recovery state machine.
+
+## Persistence
+
+Restart persistence for the pointer/context is still a candidate, not a decided storage implementation. JSON files, SQLite, or another local mechanism can be evaluated later.
+
+The process protocol must not decide the persistence backend by accident. Likewise, local execution does not make the context a secret store.
 
 ## Confirmation
 
-Exercise shell and Node authoring with scalar, structured, multiline, null, and deleted values. Then test invalid output, nonzero exit after publishing an ID, assertion failure, interrupted execution, restart, and a changed recipe. Prefer the smallest protocol that reports these cases honestly. Do not add live RPC, automatic retries, or an event-sourcing model merely because the failure cases exist.
+After assertion timing is settled, test the protocol against the three-step workspace using one shell step and one Node step. Require only scalar set/remove behavior first. Add structured values only when a concrete authoring case cannot be expressed cleanly without them.

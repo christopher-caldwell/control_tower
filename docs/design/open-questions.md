@@ -9,60 +9,82 @@ owner: christopher-caldwell
 authored_by: assistant
 sources:
 - current-design.md
+- three-step-workspace.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 ---
 
 # Open questions and validation
 
-This is a decision queue, not a delivery schedule, task breakdown, or request for the owner to answer everything at once. Resolve one coherent question at a time, and update the linked ADR rather than opening a new design document for every reply.
+This is a decision queue, not a release plan. Resolve one coherent question at a time. The three-step probe has deliberately reduced several earlier questions instead of adding machinery.
 
 ## Q1 — What exactly does an action publish?
 
-**First discussion.** Decide the output envelope and its semantics together: assigning values, removing keys, representing null, handling repeated keys, and recognizing incomplete output. Choose between `KEY=value`, a JSON document, or JSON Lines based on actual authoring, not compact examples alone.
+The concrete example currently requires only scalar values such as user_id and record_id plus an explicit way to remove them.
 
-Use one shell executable and one Node executable to carry a fixture ID, a nested record, a multiline string, and a value that must later be removed. Compare a whole replacement object against explicit updates. Check whether an SDK, wrapper command, or expression DSL becomes necessary. None has been accepted.
+Do not require nested objects, multiline strings, null semantics, a type system, or many scopes until a real authoring example needs them.
 
-**Exit criterion:** one unambiguous protocol handles those cases, keeps stdout/stderr available for ordinary output, and documents what counts as a complete publication. See [ADR-0003](../decisions/0003-session-state-and-process-io.md).
+Compare the smallest useful KEY=value/set-unset convention with a small JSON change document. stdout/stderr must remain ordinary process output.
 
-## Q2 — What happens after a partial mutation?
+**Exit criterion:** a shell step and a Node step can set an ID; a down step can remove it; malformed output has deterministic behavior.
 
-This question must be settled alongside Q1 before calling the protocol complete. A creation action can succeed at the API, write a useful ID, then fail. Alternatively, it can exit successfully and fail its stage assertion. A crash can occur before the ID is published at all.
+See [ADR-0003](../decisions/0003-session-state-and-process-io.md).
 
-Compare keeping outputs as recovery evidence with publishing them into the active context. A verifier may need proposed IDs before a stage can be accepted. Neither discarding evidence nor automatically trusting it is an adequate blanket rule.
+## Q2 — What happens to machine output when the process fails?
 
-**Exit criterion:** walk through nonzero exit, invalid output, verification failure, and interruption. The design must retain available recovery identifiers, avoid a false verified-stage label, and avoid silently rerunning a possibly completed mutation. No mechanism can recover an identifier that was never emitted without author-supplied external inspection.
+The migration pointer rule is settled: a failed transition does not move the recorded position. What remains is narrower: if the executable emitted machine output before returning nonzero, should that output be merged, retained only with the failed result, or ignored?
 
-## Q3 — What does navigation promise?
+Use one example where an external create succeeds, emits an ID, and then the script exits nonzero.
 
-Confirm whether checks belong to stages, transitions, or both; whether every stage needs a check; and whether reaching a target verifies each intermediate stage. Clarify the distinction between continuing from the current fixture and starting a fresh run.
+**Exit criterion:** the behavior is simple enough to explain in one sentence and does not pretend to recover external state.
 
-Use a reversible transition, a deliberately irreversible action, and a down action that fails. Include an inspection and an out-of-band mutation. Ask whether the migration-like model remains useful without turning every utility into a formal transition.
+## Q3 — When does an assertion gate run?
 
-**Exit criterion:** source/target conventions, unavailable-down behavior, uncertain-state handling, and rebuild behavior can be explained on one linear example. See [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).
+This is the next design decision because it controls both pointer meaning and context timing.
 
-## Q4 — How are inputs scoped and exposed?
+The three-step probe identifies two plausible rules:
 
-Separate environment configuration, invocation-specific inputs, session fixture values, and controller metadata. Decide whether scalar environment projections are needed at all, then define mapping and reserved names if they are. Confirm the working directory and runtime environment for UI launches.
+1. **Arrival check:** up -> verify target -> move pointer.
+2. **Departure gate:** up -> move pointer; verify current position before the next up.
 
-**Exit criterion:** the same script can be run from the workbench or manually with explicit inputs. Switching target environments cannot silently reuse fixture IDs without an explicit policy. Sensitive configuration does not automatically enter saved snapshots or logs. Session-to-workspace/environment binding remains an open design choice, not an inferred feature.
+The original “position 2 must meet x,y before position 3” example points naturally toward a departure gate. An arrival check makes a recorded position carry stronger meaning. Both are small; they fail differently.
 
-## Q5 — What persistence is necessary?
+**Exit criterion:** choose one rule, define final-step behavior, and walk a failed assertion once in each direction.
 
-Decide whether restart persistence is essential for the first experiment and where session data lives. The backend is not selected: JSON files and SQLite are both possible. A JSON process protocol does not choose a JSON database.
+See [the concrete comparison](three-step-workspace.md#4-assertions-expose-the-first-real-semantic-choice).
 
-Include closing and reopening the UI, an interrupted write, and a changed workflow definition. Define how a stored stage is associated with the recipe that gave it meaning. A saved stage number alone is insufficient after reordering stages or changing their checks.
+## Q4 — How are context inputs exposed?
 
-**Exit criterion:** define enough retained context and attempt evidence to reopen honestly, without promising durable external execution or creating a general event-sourcing system.
+Decide whether executables receive only a context-file path, automatic scalar environment variables, command-line bindings, or a small combination.
 
-## Q6 — Does the interaction justify a custom tool?
+The same authored script should remain understandable and runnable outside the workbench with explicit inputs. Avoid a variable-precedence system unless a real collision requires it.
 
-Try one generic fixture recipe in Dagu using ordinary executables, not its database/HTTP actions. Compare create, inspect, change application code, rerun one action, compensate, and rebuild. Record the installed version and actual UI steps; current documentation alone cannot establish the click experience.
+**Exit criterion:** step 2 can consume user_id from step 1 in shell and Node without an SDK.
 
-**Exit criterion:** identify specific friction the proposed Control Tower interface removes, or acknowledge that Dagu is sufficient. Do not require a market-wide uniqueness claim for a personal project. Native versus web UI should follow this exercise, not precede it.
+## Q5 — What local persistence is necessary?
 
-## Proposed validation sequence
+The recorded pointer and context probably need to survive UI restarts to make the workbench pleasant, but the backend is not selected.
 
-First settle Q1/Q2 with small authoring examples and explicit failure traces. Then use one fixture recipe to settle Q3/Q4. Decide the minimum persistence behavior from that experience. The Dagu trial can proceed independently throughout.
+Test closing/reopening with position 2 and two IDs. Also test what happens after the authored migration directories change order or names. A saved integer is not enough if the migration set itself changed.
 
-These are research steps, not committed implementation phases, acceptance criteria for a release, or dated milestones. No implementation deadline has been agreed.
+**Exit criterion:** reopen without pretending an old pointer belongs to a changed migration set. Do not build event sourcing.
+
+## Q6 — Does a convention-only workspace remain sufficient?
+
+The three-step example needs no YAML/TOML file: numeric directories give order; up/down names give direction; shebangs give runtimes.
+
+Try the convention before introducing config. Write down the first requirement that genuinely cannot be expressed well by the filesystem. Likely candidates include display metadata, workspace-level environment selection, or working-directory overrides, but none is yet accepted.
+
+**Exit criterion:** either keep convention-only authoring for the first prototype or identify a concrete metadata field that justifies a workspace config file.
+
+## What is no longer an open product question
+
+The Dagu comparison has served its main purpose. The owner tried it and found it close in capability but intentionally heavier than the desired workbench. Control Tower does not need to prove market uniqueness or become a smaller clone.
+
+Likewise, the core does not need a generic rollback guarantee, a login system, hosting, a scheduler, workers, or built-in HTTP/Postgres/Node execution types.
+
+## Validation order
+
+Resolve Q3 first because assertion timing affects when context becomes current. Then settle Q1 and Q2 together with the three-step scripts. Q4 and Q6 should fall out of that authoring exercise. Choose a persistence backend only after the runtime contract is small and stable.
+
+These are research/design steps, not committed implementation phases or dated milestones.
