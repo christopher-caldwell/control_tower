@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T20:44:59Z'
+  end: '2026-09-30T20:56:58Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -127,6 +127,14 @@ That interpretation was corrected shortly afterward.
 The corrected forward transition into step 002 is therefore: run `002/up`, run `002/verify`, and only then commit the recorded step to 002. If up succeeds but verify fails, the workbench still records 001 as the committed step but must retain a pending 002 transition and the values produced by 002/up so the developer can inspect, retry verify, or run an authored undo.
 
 This correction invalidates the previous attempt to eliminate within-step state. A narrow pending-transition lifecycle has now earned its place; it should not be generalized beyond what this workflow requires.
+
+## E16: Completed and in-progress steps
+
+**20:56:58Z — User clarification.** The desired sequence is conceptually `01/up`, `02/up | 02/verify`, `03/up | 03/verify FAIL`. At that point step 02 is completed while step 03 is in progress. Running `03/down` should return to the already-completed 02 state.
+
+This gives the runtime clearer language than “ambiguous pending transition”: the workbench can simultaneously record a last completed step and one in-progress next step. A failed verify keeps the target in progress. Successful down of that in-progress target clears it and leaves the previous completed step in place.
+
+This also settles the leading backward-navigation rule: Control Tower does not automatically reverify the previous completed step after down. The author is responsible for making down establish the intended previous condition.
 
 ## Corrections introduced over the discussion
 

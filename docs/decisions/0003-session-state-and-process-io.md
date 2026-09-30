@@ -1,6 +1,6 @@
 ---
 id: ADR-0003
-title: Separate committed context, pending transition context, and process I/O
+title: Separate completed context, in-progress context, and process I/O
 type: decision
 status: proposed
 created: '2026-09-30'
@@ -10,112 +10,99 @@ authored_by: assistant
 decision_authority: user-endorsed-candidate-with-unapproved-details
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
-- ../history/2026-09-30-initial-design.md#e15-verify-before-step-commit
+- ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
 - ../research/existing-tools.md
 - ../design/three-step-workspace.md
 ---
 
-# ADR-0003: Separate committed context, pending transition context, and process I/O
+# ADR-0003: Separate completed context, in-progress context, and process I/O
 
 ## Standing
 
-The owner endorsed the general context/output separation as the leading candidate. Verification-before-step-commit adds one concrete requirement: successful up outputs may need to exist **before** they are committed to the settled workspace context.
+The general context/output separation remains the leading candidate.
 
-The exact wire format and storage backend remain unaccepted.
+The step model now gives the storage problem clearer names:
 
-## Required context views
+- **completed context** — values associated with the last completed step,
+- **in-progress changes** — values produced by the next step's successful up before verify succeeds,
+- **effective context** — completed context plus in-progress changes.
 
-The three-step example now implies two logical context layers.
+The exact persistence format and process wire protocol remain undecided.
 
-**Committed context** belongs to the last committed step.
-
-**Pending changes** come from a successful target up whose verify has not yet passed.
-
-The effective context seen by the pending target is conceptually:
+## Example
 
 ~~~text
-committed context + pending changes
-~~~
+completed: 02
 
-For example:
-
-~~~text
-committed step: 001
-committed:
-  user_id: 123
-
-pending step: 002
-pending:
-  record_id: 456
-
-effective for 002/verify:
+completed context:
   user_id: 123
   record_id: 456
+
+03/up succeeds and produces:
+  mutation_id: 789
+
+03/verify fails
+
+in progress: 03
+effective context:
+  user_id: 123
+  record_id: 456
+  mutation_id: 789
 ~~~
 
-This is a logical distinction. It does not require two database tables or a sophisticated transaction engine.
+03/verify, inspection actions, and 03/down need access to that effective context.
 
-## Commit behavior
+## Promotion and abandonment
 
-On target up success, parse and retain its machine-output changes as pending.
+If 03/verify later succeeds, promote 03's working changes into completed context and set completed = 03.
 
-Run target verify against the effective context.
+If 03/down succeeds while 03 is in progress, clear 03's working changes and keep the completed 02 context.
 
-If verify succeeds, promote the pending changes into committed context and change the recorded step.
+This is the simplest candidate behavior for a pending/in-progress step.
 
-If verify fails, retain pending changes so verify, inspect, and a pending undo can still use them.
+## The harder backward-context case
 
-If a pending undo succeeds, discard the pending changes and keep the previous committed context.
+Moving down from a **completed** step is different because that step's outputs are already in completed context.
 
-This lifecycle is now more important than choosing JSON versus KEY=value.
+For example, if completed 02 introduced record_id, then 02/down returning to 01 must leave context appropriate for 01.
+
+Two approaches remain worth testing:
+
+- down explicitly publishes set/unset changes,
+- Control Tower retains enough per-step context delta/snapshot information to restore the earlier completed context after successful down.
+
+Do not select either until the three-step scripts make the ergonomics concrete. This is now a more meaningful question than JSON versus KEY=value.
 
 ## Process channels
 
-The leading process boundary remains:
+The leading boundary remains:
 
 ~~~text
-context input -> executable
+effective context -> executable
 stdout/stderr -> human-visible result
 machine output -> proposed context changes
 exit status -> operation result
 ~~~
 
-A context snapshot file remains a strong language-neutral candidate. Environment variables may locate it or expose convenience scalars.
-
-The machine-output channel still needs assignment and removal semantics. The three-step example does not justify richer data types yet.
-
-## Verify process contract
-
-verify must receive the effective pending context so it can inspect values created by up.
-
-The smallest useful verify contract is otherwise read-only from Control Tower's perspective: stdout/stderr for explanation and exit status for pass/fail.
-
-Whether verify is allowed to publish additional context remains open and currently has no motivating example.
+verify needs effective context and can use exit status as pass/fail. No real example yet requires verify to publish context changes.
 
 ## Failed up output
 
-A separate edge remains: an up can emit machine output and then exit nonzero.
+An up may emit an identifier and then exit nonzero.
 
-That is different from “up succeeded, verify failed.” In the latter case pending context clearly has a role. In the former case we still need to decide whether emitted values are retained as recovery evidence, promoted into pending context, or ignored.
-
-Do not conflate the two cases.
+That case remains distinct from a successful up followed by failed verify. The latter clearly creates an in-progress step. The former still needs a policy for whether emitted data becomes recovery evidence or usable working context.
 
 ## Persistence
 
-If a pending transition can survive long enough for the developer to change code and retry verify, it likely needs to survive ordinary UI refresh/restart as well. That is now stronger evidence for local persistence than before, but the backend remains undecided.
+An in-progress step may remain while the developer edits application code, so persistence across ordinary UI restarts is increasingly useful.
 
-A simple local file or SQLite can both represent committed step, pending step, pending changes, and recent results. Choose later based on implementation ergonomics, not protocol aesthetics.
+The backend remains open. The data model should stay small: completed step, optional in-progress step, completed context, in-progress changes, and recent execution results.
 
-## Confirmation
+## Next validation
 
-Use the pending-002 scenario:
+Exercise both:
 
-1. committed 001 with user_id,
-2. 002/up succeeds and produces record_id,
-3. 002/verify fails,
-4. inspect sees user_id + record_id,
-5. restart the UI/process,
-6. verify again or run 002/down,
-7. either commit 002 or return cleanly to 001.
+1. verify failure -> retry verify -> complete,
+2. verify failure -> down -> return to previous completed step.
 
-The smallest mechanism that supports that flow should become the initial context protocol.
+Then test completed-step down to determine whether author-published context changes or stored per-step deltas produce the simpler contract.

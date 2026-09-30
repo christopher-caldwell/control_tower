@@ -1,6 +1,6 @@
 ---
 id: ADR-0002
-title: Use migration-style ordered transitions verified before commit
+title: Use migration-style steps with verified completion
 type: decision
 status: accepted
 created: '2026-09-30'
@@ -14,99 +14,128 @@ sources:
 - ../history/2026-09-30-initial-design.md#e04-assertion-gates
 - ../history/2026-09-30-initial-design.md#e12-core-identity-settled
 - ../history/2026-09-30-initial-design.md#e15-verify-before-step-commit
+- ../history/2026-09-30-initial-design.md#e16-completed-and-in-progress-steps
 - ../design/three-step-workspace.md
 ---
 
-# ADR-0002: Use migration-style ordered transitions verified before commit
+# ADR-0002: Use migration-style steps with verified completion
 
 ## Decision
 
-Control Tower uses an ordered migration model rather than a generalized workflow graph.
+Control Tower uses an ordered migration model.
 
-For a forward transition into step N:
-
-~~~text
-committed N-1
-   |
-   | N/up
-   v
-pending N
-   |
-   | N/verify, if present
-   v
-commit N
-~~~
-
-The recorded step changes to N **only after** N/up succeeds and N/verify succeeds when verify exists.
-
-If N/up fails, the recorded step remains N-1.
-
-If N/up succeeds but N/verify fails, the recorded step still remains N-1, while the workbench retains a pending N transition so the developer can inspect it, retry verification, or use an authored recovery/down action.
-
-The correctness of up, down, and verify is the author's responsibility. Control Tower runs the contract; it does not guarantee semantic correctness or transactional behavior in the external system.
-
-## Why verification is part of the target transition
-
-The directory:
-
-~~~text
-002-create-associated-record/
-  up
-  down
-  verify
-~~~
-
-describes the move into the useful state represented by step 002.
-
-up attempts to establish it. verify checks it. Only then is the step committed by the workbench.
-
-This matches the explicit requirement that verify run before the step change is recorded.
-
-## Pending transition is required bookkeeping
-
-Because up can succeed before verify fails, the runtime needs a narrow pending-transition concept.
-
-It must retain enough information to:
-
-- rerun target verify without rerunning up,
-- expose outputs from up to verify and inspection,
-- allow the author to undo/abandon the pending transition,
-- commit the step and context if verify later succeeds.
-
-This does not imply retries, DAG scheduling, worker state, or a generalized orchestration execution model.
-
-## Pointer and external state
-
-The committed pointer records completed Control Tower transitions, not external truth.
-
-A failed verify can leave real external side effects from up. The workbench does not move the pointer, but it also must not pretend nothing happened. The pending transition and its results are sufficient evidence for the developer to decide what to do next.
-
-## Down semantics
-
-down remains author-owned compensation rather than guaranteed undo.
-
-The exact rule for verification during a normal backward transition is still open. Do not infer it solely from the forward rule. The three-step probe will test whether the previous step's verify should run before a backward pointer change.
-
-For a **pending forward transition**, however, using the pending target's down as an explicit “undo pending” operation is the leading candidate because that up already ran.
-
-## Full run
-
-A forward full run repeats:
+A forward step N is complete only after:
 
 ~~~text
 N/up
-N/verify
-commit N
+N/verify, if present
 ~~~
 
-for each step, stopping on first failure.
+both succeed.
 
-Because verify belongs to the target transition, the final step is verified before the full run can record it as complete. There is no special end-of-run verification rule needed.
+The workbench therefore tracks:
+
+- the last **completed** step,
+- and optionally the next **in-progress** step.
+
+For example, if 03/up succeeds and 03/verify fails:
+
+~~~text
+completed:   02
+in progress: 03
+~~~
+
+Both facts are meaningful and sufficient.
+
+## Forward semantics
+
+From completed N-1:
+
+1. Run N/up.
+2. If up fails, N does not become in progress and N-1 remains completed.
+3. If up succeeds, N becomes in progress and its working outputs are available.
+4. Run N/verify when present.
+5. If verify succeeds, N becomes completed and the in-progress marker clears.
+6. If verify fails, N remains in progress and N-1 remains the last completed step.
+
+A step without verify completes immediately after successful up.
+
+The author owns the semantic correctness of all executables.
+
+## Working within an in-progress step
+
+The developer must be able to operate on N without rerunning N/up:
+
+- inspect using N's effective context,
+- change application code,
+- rerun N/verify,
+- run N/down to back out N.
+
+The runner should not automatically rerun N/up after it has succeeded.
+
+## Down from an in-progress step
+
+If N is in progress because up succeeded but verify did not:
+
+~~~text
+N/down
+~~~
+
+is the authored route back to completed N-1.
+
+If down succeeds, clear the in-progress step and return to the existing N-1 completed baseline.
+
+If down fails, keep N in progress and preserve its results/context for further inspection or recovery.
+
+No automatic N-1/verify is required. The correctness of N/down is the author's responsibility.
+
+## Down from a completed step
+
+The same principle applies to ordinary backward movement:
+
+~~~text
+completed N
+  |
+  | N/down
+  v
+completed N-1
+~~~
+
+A successful down changes the completed pointer to N-1. Control Tower does not require N-1/verify as part of backward navigation.
+
+verify is specifically the gate that lets an up transition become **completed**.
+
+Manual verification of the resulting step can still be exposed as a useful action.
+
+## Why this model
+
+It mirrors the developer's actual mental model:
+
+- 02 can be done,
+- 03 can be underway,
+- failed 03 verification does not erase 02,
+- 03/down backs out the underway work.
+
+This is enough statefulness to make iteration comfortable without creating a workflow/orchestration engine.
+
+## Full run
+
+A forward full run repeats for each step:
+
+~~~text
+up
+verify
+complete
+~~~
+
+and stops on the first failure.
+
+If verify fails, the run stops with the previous step completed and the target step in progress.
 
 ## Consequences
 
-The model is slightly more stateful than a plain migration pointer because verification occurs after mutation but before commit.
+The runtime needs a narrow in-progress record and working context.
 
-That complexity has earned its way in: without retaining pending outputs, a failed verify could make it impossible to inspect or undo a newly created fixture without rediscovering its identifiers.
+It does not need generalized retries, dependency resolution, distributed state, or an “external truth” model.
 
-The next design work is not to generalize this state machine. It is to make the pending-transition ergonomics small and obvious.
+Context lifecycle for in-progress and completed down transitions is intentionally delegated to ADR-0003 and the three-step probe.

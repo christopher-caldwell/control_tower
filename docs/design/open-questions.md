@@ -18,84 +18,60 @@ sources:
 
 This is a decision queue, not a release plan.
 
-## Settled: target verification before step commit
+## Settled: completed plus in-progress step
 
-For forward transition N-1 -> N:
+If N/up succeeds but N/verify fails:
 
 ~~~text
-N/up
-N/verify
-commit N
+completed:   N-1
+in progress: N
 ~~~
 
-The recorded step does not change until verify passes. A successful up followed by failed verify creates a pending transition rather than a committed step.
+N/verify can be retried without rerunning up.
+
+N/down can back out the in-progress step. On successful down, clear N-in-progress and remain at completed N-1.
+
+Backward navigation does not automatically reverify N-1.
 
 See [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).
 
-## Q1 — What can the developer do while a transition is pending?
+## Q1 — How should context move backward from a completed step?
 
-This is now the first design question.
+This is now the most useful unresolved storage question.
 
-Use pending step 002 after up succeeded and verify failed. Evaluate these candidate actions:
+When completed 02 is moved down to 01, values introduced by 02 may need to disappear or revert.
 
-- Verify Again — rerun 002/verify without rerunning 002/up.
-- Inspect — run auxiliary inspection using effective committed + pending context.
-- Undo Pending — run 002/down using the effective context; discard pending changes only if it succeeds.
-- Rerun Up — probably unavailable by default because create-style up actions may duplicate state.
+Compare:
 
-**Exit criterion:** a failed verify does not force the user to recreate the fixture or manually rediscover IDs, and the UI remains obvious rather than workflow-engine-like.
+- requiring 02/down to explicitly publish context set/unset changes,
+- retaining a per-step context delta/snapshot so Control Tower can restore the prior completed context after successful down.
+
+**Exit criterion:** a create-record step can go 01 -> 02 -> 01 without stale record_id and without making down authoring unnecessarily awkward.
 
 ## Q2 — What happens to machine output when up itself fails?
 
-This is distinct from a failed verify.
+If up emits an ID and later exits nonzero, does that value become usable recovery context or only captured attempt output?
 
-If up emits an ID and later exits nonzero, should the value become pending context, remain recovery evidence only, or be ignored?
+Do not conflate this with successful up followed by failed verify.
 
-**Exit criterion:** one simple rule handles a partially successful external create without pretending the recorded step advanced.
+## Q3 — What exact machine-output format is smallest?
 
-## Q3 — What exactly does an action publish?
+Once backward context is understood, compare a tiny set/unset text protocol against a small JSON change document.
 
-The concrete example requires scalar values such as user_id and record_id plus explicit removal.
+The actual requirements are still primarily scalar IDs and removal.
 
-Compare a tiny set/unset text protocol with a small JSON change document only after Q1 clarifies pending-context lifecycle.
+## Q4 — Is verify read-only from the context perspective?
 
-**Exit criterion:** shell and Node can set an ID; down can remove it; malformed output has deterministic behavior.
+No current example requires verify to publish values.
 
-## Q4 — What are verify's exact I/O rules?
+Prefer read-only unless a concrete use case demonstrates otherwise.
 
-verify clearly needs read access to effective pending context and exit status controls pass/fail.
+## Q5 — Does convention-only authoring remain sufficient?
 
-Test whether verify ever needs to publish context. If no concrete case appears, keep it read-only at the Control Tower context boundary.
-
-**Exit criterion:** a failed verify can be retried after a code change without any hidden side effects in workbench context.
-
-## Q5 — How should backward transitions verify?
-
-The forward rule does not automatically settle backward semantics.
-
-For committed 003 -> 002 compare:
-
-~~~text
-003/down
-commit 002
-~~~
-
-against:
-
-~~~text
-003/down
-002/verify
-commit 002
-~~~
-
-Do not choose symmetry for its own sake. Test whether previous-state verification helps or blocks recovery.
-
-## Q6 — Does convention-only authoring remain sufficient?
-
-Numeric directories plus up/down/verify still express the three-step lifecycle. Keep config out until a real metadata need appears.
+Numeric directories plus up/down/verify still express the lifecycle. Keep config out until a real metadata need appears.
 
 ## Validation order
 
-Work through Q1 first. Pending-transition ergonomics determine the required context lifecycle. Then settle failed-up output and encoding. Backward verification can be tested after the forward path feels natural.
+Model context through 01 -> 02 -> 03-in-progress -> 02 and 02 -> 01. That should settle backward context ownership before choosing the output encoding.
 
 These are design steps, not implementation milestones.
