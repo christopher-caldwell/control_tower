@@ -34,8 +34,8 @@ Whatever state representation discovery chooses, application/core behavior must 
 ADR-0004 governs that boundary:
 
 - application/core owns the semantic state port,
-- memory adapter is v0,
-- SQLite is the fast-follow adapter.
+- SQLite is the v0 runtime adapter,
+- memory may be used as a test/fake adapter.
 
 This ADR concerns the logical data that needs to flow, not how the adapter stores it.
 
@@ -78,11 +78,11 @@ How it is represented is an implementation/discovery question.
 
 ## CLI/process-lifetime implication
 
-With the memory adapter, state survives only while the owning Rust process remains alive.
+This tension is now resolved at the product level.
 
-Therefore a one-shot CLI invocation cannot provide cross-invocation session state by itself.
+SQLite is part of v0 so one-shot CLI invocations can share the minimal workbench state required by the UUID fixture and directional-transition lifecycle.
 
-Discovery must resolve the CLI interaction model before treating command examples as requirements.
+Discovery should still keep the logical handoff minimal; SQLite availability is not a reason to invent a generalized context system.
 
 ## Remaining question
 

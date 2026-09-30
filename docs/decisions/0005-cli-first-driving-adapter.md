@@ -52,7 +52,7 @@ The executable entry point can be the composition root.
 
 For v0 it should explicitly construct:
 
-- the memory session-state adapter,
+- the SQLite session-state adapter,
 - the process/executable adapter(s) required by the application,
 - the application capability/service,
 - the CLI adapter or command handlers that invoke the service.

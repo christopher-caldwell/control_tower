@@ -67,8 +67,8 @@ application/core
   |
   +--> session-state port
           |
-          +--> memory adapter (v0)
-          +--> SQLite adapter (later)
+          +--> SQLite adapter (v0)
+          +--> memory adapter (optional test/fake)
 ~~~
 
 The CLI owns command-line concerns: parsing arguments, selecting an application use case, and rendering results/errors for a terminal.
@@ -100,40 +100,42 @@ application service
           v
 storage adapter
     |               |
-memory v0       SQLite fast follow
+SQLite v0       memory test/fake
 ~~~
 
-The v0 composition root constructs the in-memory adapter and injects it into the application service. A later SQLite implementation should satisfy the same core-owned port and be selected at the entry point instead.
+The v0 composition root constructs the SQLite adapter and injects it into the application service. A memory implementation may still be useful for tests or focused experiments, but it is no longer the runtime product adapter.
 
 No transition logic, context-checkpoint math, verification rules, or patch semantics belong in the adapter. The adapter stores/retrieves the state requested by the application port.
 
 This is an accepted architecture decision; see [ADR-0004](../decisions/0004-session-storage-port-and-adapters.md).
 
-## V0 behavior: memory adapter
+## V0 behavior: SQLite adapter
 
-The initial adapter is intentionally in-memory.
+SQLite is now part of v0 because the CLI is expected to support normal short-lived invocations while preserving workbench state between commands.
 
-With that adapter, Rust-process lifetime is effectively the session lifetime:
+For example:
 
 ~~~text
-process exits/crashes
-  -> memory adapter disappears
-  -> next launch begins with empty state
+control_tower up ...
+# process exits normally
+
+control_tower down ...
+# new process reads the same workspace state
 ~~~
 
-That is acceptable v0 behavior.
+This is a product-ergonomics requirement, not a durability initiative.
 
-The application/core should not be written *as if* memory is intrinsic. The same transition service should operate against a later SQLite adapter without knowing which adapter was injected.
+The application/core must remain storage-independent. SQLite-specific schema, queries, transactions, and mapping stay inside the adapter.
 
-## SQLite is a fast follow, not first-pass scope
+A memory adapter may still be useful for tests, but it should not define v0 runtime behavior.
 
-SQLite is expected soon after the memory implementation, which is why the storage port has earned its place now.
+### Crash behavior remains deliberately weak
 
-That does **not** justify designing a SQLite schema, migration system, transaction layer, durability policy, or resume UX in the first pass.
+SQLite persistence does not turn crash recovery into a v0 goal.
 
-When SQLite work begins, the adapter will own SQLite-specific mechanics. The application contract should change only if the actual capability needs change.
+If the Rust process crashes during an operation, Control Tower makes no promise to reconcile external side effects or reconstruct an interrupted transition. A later invocation uses whatever Control Tower state was last successfully stored. The developer can clean up/start over as needed.
 
-One product question will become relevant then: whether startup resumes the last stored workbench session or intentionally starts fresh. That question is deferred until the SQLite adapter exists; it does not belong in the memory implementation.
+Do not add crash journals, recovery protocols, external-state reconciliation, or structural-drift machinery merely because SQLite exists.
 
 ## Composition and dependency direction
 
@@ -206,11 +208,11 @@ Do not change the completed step and do not automatically verify. Show stdout/st
 
 Keep the active transition in the injected state store for the life of the current session. Allow verifier retry and inspection without rerunning the mutation.
 
-### Rust process exits/crashes with memory adapter
+### Rust process exits/crashes
 
-State is lost. Start over.
+Normal CLI process exit preserves state through SQLite.
 
-No crash-recovery feature is required for v0.
+A Rust crash has no recovery guarantee. The next invocation sees whatever Control Tower state was last successfully stored; external side effects may differ and remain the author's responsibility.
 
 ## No concurrency or structural-drift machinery
 
@@ -232,6 +234,8 @@ No scheduler, authentication, hosting, DAG, built-in drivers, retries, crash rec
 
 The high-level pre-discovery work is now sufficiently complete.
 
-Use [First formal discovery brief](discovery-brief.md) for the next round. The most important unresolved point is the interaction between an in-memory state adapter and CLI process lifetime: a one-shot CLI command cannot preserve memory state for a later command after the process exits. Formal discovery should test the smallest CLI interaction that preserves the intended workbench loop.
+Use [First formal discovery brief](discovery-brief.md) for the next round.
+
+The CLI/process-lifetime tension is resolved at the product level: SQLite is part of v0 so ordinary one-shot CLI commands can share workbench state. Discovery should not redesign this boundary; it should verify that the storage port keeps SQLite details outside application behavior.
 
 The four-role step remains the leading mechanism subject to discovery. The initial proof requires only one UUID handoff, filesystem-only authoring, and no auxiliary-action abstraction.

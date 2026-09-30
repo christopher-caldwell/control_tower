@@ -22,7 +22,7 @@ Session/workbench state storage is an outbound adapter concern.
 
 The application/core capability owns the semantic storage port it consumes. Concrete adapters implement that port.
 
-V0 uses an in-memory adapter for simplicity. SQLite is the planned fast-follow adapter. The executable entry point/composition root selects the concrete implementation and injects it into the application service.
+V0 uses SQLite as the runtime storage adapter because separate CLI invocations need to share workbench state. A memory implementation may still be useful as a test/fake adapter. The executable entry point/composition root selects the concrete implementation and injects it into the application service.
 
 ~~~text
 application/core
@@ -32,8 +32,8 @@ application/core
         ^
         |
 adapters
-  memory
-  sqlite (later)
+  sqlite (v0 runtime)
+  memory (optional test/fake)
         ^
         |
 entry point
@@ -44,12 +44,11 @@ entry point
 
 Normally the project should avoid speculative abstractions.
 
-This port is not speculative: two concrete storage implementations are already known.
+This port is not speculative.
 
-- memory is the deliberate v0 choice,
-- SQLite is an expected near-term replacement/alternative.
+SQLite is required by the v0 CLI interaction because one-shot commands must share workbench state across process invocations. A memory implementation remains useful for tests and focused application-level exercises.
 
-Without the port, a later SQLite move would risk coupling transition logic to storage mechanics. With the port, the composition root can swap the adapter while the capability logic remains unchanged.
+The port keeps SQLite mechanics out of transition logic and lets tests inject a simpler adapter without changing capability behavior.
 
 ## Port ownership
 
@@ -65,8 +64,8 @@ Exact methods should be derived from the application use cases during implementa
 
 A storage adapter may:
 
-- hold state in memory,
-- serialize/map state to SQLite later,
+- serialize/map state to SQLite,
+- hold state in memory for tests/experiments,
 - implement adapter-specific IO/error translation,
 - perform adapter-local atomic writes/transactions when needed.
 
@@ -85,9 +84,9 @@ Those are application/core rules.
 
 The executable entry point is the composition root.
 
-For v0 it constructs the memory adapter and injects it into the application service.
+For the v0 product runtime it constructs the SQLite adapter and injects it into the application service.
 
-Later it can construct a SQLite adapter instead and inject the same port.
+Tests or focused experiments may construct a memory adapter against the same port.
 
 Do not introduce a DI framework, service locator, container crate, or infrastructure-owned composition layer.
 
@@ -101,15 +100,17 @@ If one service exclusively owns the port implementation, exclusive ownership suc
 
 The exact Rust type should follow the real implementation topology.
 
-## V0 behavior versus SQLite fast follow
+## V0 SQLite scope
 
-The memory adapter means a process restart starts with empty Control Tower state.
+SQLite is in v0 only to preserve Control Tower workbench state across ordinary short-lived CLI invocations.
 
-The later SQLite adapter can make the same logical state durable.
+This does not make v0 a crash-recovery system.
 
-SQLite-specific schema, migrations, resume behavior, and transaction details are explicitly not part of the first pass.
+SQLite-specific schema, query details, adapter-local transactions, and mapping are implementation concerns for the SQLite adapter. They should stay as small as the actual application port requires.
 
-When SQLite work starts, its adapter should be added without moving SQLite concepts into application/core.
+If the Rust process crashes during an external mutation, the next invocation may only know the last Control Tower state successfully stored. Reconciliation of external side effects remains out of scope.
+
+The application/core must not gain SQLite concepts merely because SQLite is the runtime adapter.
 
 ## Consequences
 

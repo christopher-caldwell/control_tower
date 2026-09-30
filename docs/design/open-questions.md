@@ -35,29 +35,19 @@ The owner considers this the leading mechanism, subject to change.
 
 Test it rather than adding more roles.
 
-## Q2 — How should memory-only state coexist with CLI-only v0?
-
-This is the most important unresolved architectural/interaction question.
-
-A one-shot CLI process loses the in-memory adapter when it exits.
-
-Discovery should compare the smallest plausible interaction models, especially a long-lived CLI session versus pulling durable storage forward.
-
-Do not assume the illustrative command syntax is binding.
-
-## Q3 — What is the smallest UUID handoff?
+## Q2 — What is the smallest UUID handoff?
 
 The discovery fixture only needs one stage-1 UUID to be available to stages 2 and 3 and their verifiers.
 
 Use the smallest implementation that works. Do not design a generalized context platform first.
 
-## Q4 — Does filesystem-only authoring hold up?
+## Q3 — Does filesystem-only authoring hold up?
 
 Start with numbered directories and fixed executable-role filenames.
 
 Add config only if the actual fixture exposes a concrete need.
 
-## Q5 — Does the hexagonal boundary remain clean?
+## Q4 — Does the hexagonal boundary remain clean?
 
 Validate that:
 
@@ -65,12 +55,12 @@ Validate that:
 - transition behavior stays in application/core,
 - state storage remains behind the core-owned port,
 - process execution remains an outbound concern,
-- memory can later be swapped for SQLite without moving business rules.
+- SQLite remains an adapter detail and a memory test adapter can be swapped in without moving business rules.
 
 ## Removed from the first discovery
 
 - auxiliary action abstraction,
-- SQLite implementation,
+- SQLite behavior beyond the minimal v0 adapter needed for CLI state,
 - Tauri/HTTP,
 - generalized source/candidate context contract,
 - crash recovery,

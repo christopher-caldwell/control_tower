@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T22:13:41Z'
+  end: '2026-09-30T22:17:04Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -201,6 +201,18 @@ CLI syntax is intentionally loose; an illustrative target-stage command is accep
 A significant constraint surfaced from these choices: memory-only storage cannot survive separate one-shot CLI process invocations. The first formal discovery must therefore test how a CLI-only v0 preserves the workbench interaction—likely through a long-lived CLI session or by revisiting when durable storage is introduced—without prematurely committing to either solution.
 
 The project is now considered ready for formal discovery using [the discovery brief](../design/discovery-brief.md).
+
+## E23: SQLite moves into v0
+
+**22:17:04Z — Explicit scope correction.** The user concluded that the CLI/process-lifetime tension means SQLite belongs in v0.
+
+The v0 product runtime should therefore inject the SQLite state adapter so normal short-lived CLI invocations can share Control Tower workbench state. Memory may remain useful as a test/fake adapter but no longer defines product runtime behavior.
+
+This does not restore the previously rejected durability machinery. SQLite is present for normal cross-invocation usability, not for crash recovery, structural-drift protection, concurrency coordination, or external-state reconciliation.
+
+If the Rust process crashes during an operation, v0 makes no promise to recover/reconcile the external effects. The next invocation uses whatever Control Tower state was last successfully stored.
+
+The storage port decision remains unchanged and becomes more important: transition logic must stay independent of SQLite, with the SQLite adapter selected at the composition root.
 
 ## Corrections introduced over the discussion
 

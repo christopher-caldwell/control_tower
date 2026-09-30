@@ -63,7 +63,7 @@ Do not create one file per chat response, feature idea, or research link. Add to
 | [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executable authoring; not a driver platform. |
 | [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted core; directional verification under evaluation | Ordered migration-style transitions with verified forward completion; optional verify-down is the current design candidate. |
 | [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; leading candidate | Session context checkpoints, active-transition patching, and process I/O. |
-| [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Core/application owns the session-state storage port; v0 injects an in-memory adapter; SQLite is a planned adapter swap. |
+| [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Core/application owns the session-state storage port; SQLite is the v0 runtime adapter; memory may remain useful as a test adapter. |
 | [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI is the only v0 driving adapter and composition edge; future Tauri/HTTP entry adapters call the same application use cases. |
 
 The status of a document is not evidence that its design is implemented. A proposal does not become accepted because it was committed to main or because an assistant repeated it.

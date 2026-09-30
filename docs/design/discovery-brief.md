@@ -70,8 +70,8 @@ Follow the owner's Rust hexagonal/ports-and-adapters playbook.
 - CLI is the only v0 driving adapter.
 - Application/core owns business/workbench behavior.
 - Storage is an outbound adapter concern behind an application-owned semantic port.
-- Memory is the v0 state adapter.
-- SQLite is a fast-follow adapter, not first-pass implementation scope.
+- SQLite is the v0 runtime state adapter so one-shot CLI invocations can share workbench state.
+- A memory adapter may be used for tests/focused experiments, but it does not define v0 runtime behavior.
 - The executable entry point is the composition root and wires concrete adapters explicitly.
 - Do not introduce a DI framework, generic repository, service locator, or infrastructure-owned behavior.
 - Future Tauri/HTTP entry layers should invoke the same application use cases.
@@ -223,31 +223,13 @@ The important capability is to choose a workspace and request movement to a targ
 
 Discovery may change names, flags, or interaction style freely.
 
-### Important memory/CLI tension
+### Cross-invocation state
 
-The v0 storage adapter is in-memory.
+SQLite is part of v0 specifically so normal short-lived CLI invocations can share workbench state.
 
-A one-shot CLI process such as:
+Discovery should assume commands may be one-shot processes and verify that the application storage port keeps this persistence concern outside transition logic.
 
-~~~text
-control_tower up ...
-# process exits
-
-control_tower down ...
-# new process
-~~~
-
-cannot retain workbench state between those invocations without durable storage.
-
-Formal discovery must explicitly test this constraint.
-
-Plausible options include:
-
-- a long-lived interactive CLI session/REPL that keeps the memory adapter alive while the developer moves up/down,
-- limiting one-shot commands to operations that can derive all necessary state within one process invocation,
-- or deciding that one-shot stepwise CLI ergonomics justify pulling the SQLite adapter forward.
-
-Do not pick an option merely to preserve an earlier illustrative command. Preserve the product goal and architecture boundaries instead.
+This does **not** add a crash-recovery requirement. If the Rust process crashes during an operation, Control Tower does not need to reconcile external side effects.
 
 ## Auxiliary actions
 
@@ -269,17 +251,15 @@ Test missing verifiers, failed verify-up, failed verify-down, and moving repeate
 
 Do not solve future structured data problems prematurely.
 
-### C. How should an in-memory CLI session actually feel?
-
-This is the biggest unresolved interaction/architecture tension.
+### C. Does one-shot CLI navigation stay ergonomic with persisted state?
 
 The result should make it easy to:
 
-- open/select the workspace,
+- select the workspace,
 - move toward a target stage,
 - see what ran and failed,
 - retry directional verification without rerunning a successful mutation,
-- move backward.
+- move backward across separate CLI invocations.
 
 ### D. Is filesystem convention enough?
 
@@ -287,13 +267,13 @@ Only add workspace metadata/config if the experiment produces a concrete reason.
 
 ### E. Does the port/adapter architecture stay clean under the real use cases?
 
-The memory adapter should be swappable without changing transition behavior. The CLI should remain a driving adapter rather than becoming the application.
+The SQLite adapter should remain behind the application-owned state port, and a memory test adapter should be swappable without changing transition behavior. The CLI should remain a driving adapter rather than becoming the application.
 
 ## What discovery should not decide yet
 
 Unless the fixture forces the issue, do not spend discovery on:
 
-- SQLite schema,
+- elaborate SQLite schema design beyond the minimal adapter needs,
 - Tauri,
 - HTTP server,
 - visual UI,
