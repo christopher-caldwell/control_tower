@@ -12,7 +12,7 @@ sources:
 - ../decisions/0001-user-owned-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
-- ../history/2026-09-30-initial-design.md#e18-four-file-gauntlet
+- ../history/2026-09-30-initial-design.md#e19-reject-unneeded-safety-machinery
 ---
 
 # Three-step workspace design probe
@@ -46,9 +46,9 @@ workspace/
 
 Both verifiers are optional. The filenames remain illustrative.
 
-## Runtime model
+## Session-local runtime model
 
-Completed steps form a stack of context checkpoints:
+Within one Rust process session, completed steps can keep context checkpoints:
 
 ~~~text
 0  {}
@@ -57,6 +57,8 @@ Completed steps form a stack of context checkpoints:
 ~~~
 
 At most one directional transition can be active.
+
+Nothing in this model survives a Control Tower restart in v0.
 
 ### Forward
 
@@ -69,7 +71,7 @@ candidate 03 context
     |
     | 03/verify-up
     v
-push completed checkpoint 03
+completed checkpoint 03
 ~~~
 
 ### Backward
@@ -83,77 +85,42 @@ candidate 02 context
     |
     | 03/verify-down
     v
-pop 03 and settle checkpoint 02
+completed checkpoint 02
 ~~~
 
-## How candidate context is built
+## Candidate context
 
-### Forward candidate
-
-Start from the source completed checkpoint and apply the up mutation's context patch.
+Forward:
 
 ~~~text
 candidate_N = checkpoint_(N-1) + up_patch_N
 ~~~
 
-### Backward candidate
-
-Start from the already-saved target checkpoint and apply any down mutation patch.
+Backward:
 
 ~~~text
 candidate_(N-1) = saved_checkpoint_(N-1) + down_patch_N
 ~~~
 
-The down patch is optional.
+The down patch is optional. It exists for cases where down reconstructs an equivalent previous state with different identifiers.
 
-This is the key compromise that survived the gauntlet: automatic restoration for the normal case, but an escape hatch when down reconstructs an equivalent lower state with new identifiers.
+## Gauntlet results that still matter
 
-## Why both source and candidate are needed
-
-Consider:
-
-~~~text
-02 checkpoint:
-  user_id: 123
-  record_id: 456
-~~~
-
-02/down deletes record 456.
-
-The candidate 01 context should not contain record_id. But 02/verify-down may need 456 to query:
-
-~~~text
-does record 456 no longer exist?
-~~~
-
-So verify-down needs the source context even though it validates the candidate lower state.
-
-The same issue can happen in the up direction when an up replaces an existing identifier.
-
-The exact process API is open, but both logical views are justified:
-
-~~~text
-source context
-candidate context
-~~~
-
-## Gauntlet
-
-### 1. Happy path forward
+### Happy path
 
 ~~~text
 01/up
 01/verify-up
-commit 01
+complete 01
 
 02/up
 02/verify-up
-commit 02
+complete 02
 ~~~
 
-**Result:** clean. Push a context checkpoint after each verified transition.
+Clean.
 
-### 2. verify-up fails
+### verify-up fails
 
 ~~~text
 02 completed
@@ -161,35 +128,22 @@ commit 02
 03/verify-up fails
 ~~~
 
-Keep completed 02. Keep active up transition 03 with its candidate context.
+Keep 02 completed and 03 active in memory. Allow Inspect and Verify Up Again without rerunning up.
 
-Allowed recovery:
+Clean.
 
-~~~text
-Inspect
-Verify Up Again
-Down
-~~~
-
-Do not rerun 03/up automatically.
-
-**Result:** clean.
-
-### 3. Back out an in-progress up
+### Back out an in-progress up
 
 ~~~text
-02 completed
-03/up succeeds
-03/verify-up fails
-03/down succeeds
-03/verify-down succeeds
+03/down
+03/verify-down
 ~~~
 
-Discard the 03 candidate and return to completed 02. If down emitted a patch, apply it to the saved 02 checkpoint before settling.
+If both succeed, clear 03 active state and return to completed 02.
 
-**Result:** clean.
+Clean.
 
-### 4. Normal completed down
+### Completed down
 
 ~~~text
 03 completed
@@ -198,131 +152,108 @@ Discard the 03 candidate and return to completed 02. If down emitted a patch, ap
 => 02 completed
 ~~~
 
-Restore the 02 checkpoint, patched by any outputs from 03/down.
+Use the saved session checkpoint for 02 plus any down patch.
 
-**Result:** clean.
+Clean.
 
-### 5. verify-down fails
+### verify-down fails
 
-~~~text
-03 completed
-03/down succeeds
-03/verify-down fails
-~~~
+Keep completed 03 plus the active down transition. Allow inspection and Verify Down Again without rerunning down.
 
-Keep completed pointer at 03. Keep an active down transition with source 03 and candidate 02 contexts.
+Clean.
 
-Allow Inspect and Verify Down Again.
+### Down recreates prior logical state with new IDs
 
-Do not rerun 03/down automatically.
+Historical 02 checkpoint has record_id=456, but 03/down creates replacement 789.
 
-**Result:** clean, but recovery beyond verifier retry remains intentionally manual.
+Down patch overrides record_id to 789 before verify-down.
 
-### 6. Down creates replacement target data
+Pure checkpoint restoration fails here; checkpoint + patch works.
 
-Old 02 checkpoint:
+### Higher step overwrites an existing key
 
-~~~text
-record_id: 456
-~~~
+Checkpoint stack restores the earlier value automatically on a normal down unless down explicitly overrides it.
 
-03/down cannot restore 456 and instead creates 789.
+Clean.
 
-Down output patch:
+### Mutation exits nonzero after partial external work
 
-~~~text
-record_id: 789
-~~~
+Do not advance. Show the failure. Whatever happened externally is the author's problem.
 
-Candidate 02 checkpoint becomes the historical 02 checkpoint overlaid with 789.
+No adoption/recovery state machine is required for v0.
 
-**Result:** pure snapshot restore would fail; checkpoint + patch survives.
+Accepted limitation.
 
-### 7. Higher step overwrites an existing key
+### Rust process crashes
+
+All Control Tower session state is lost. On restart:
 
 ~~~text
-01: user_id = A
-02/up changes user_id = B
+completed: 0
+context: {}
+active transition: none
 ~~~
 
-The 02 checkpoint records B. A verified 02/down can restore 01 checkpoint A unless down emits an override.
+External systems are untouched.
 
-**Result:** checkpoint stack handles shadowing naturally.
+Accepted limitation.
 
-### 8. Mutation exits nonzero after partial external work
+### Step directories change during a session
 
-Example: create succeeds remotely, script prints an ID, then exits 1.
+Unsupported. Restart and start over if the workspace structure changed.
 
-Do not advance the pointer or automatically create a normal active transition. Preserve the execution result and any captured machine output as recovery evidence.
+No detection or reconciliation.
 
-A later “adopt/verify anyway” recovery feature may be useful, but it is not required to keep the core model sound.
+Accepted limitation.
 
-**Result:** unavoidable external-side-effect edge; not a design failure.
+### Two Control Tower instances
 
-### 9. Control Tower crashes during mutation
+Unsupported. No locking.
 
-Persist transition intent before process launch. On restart, mark the attempt interrupted/unknown and never auto-retry.
+Accepted limitation.
 
-The developer can inspect external state and choose recovery.
+### Verifier absent
 
-**Result:** requires durable local bookkeeping, not orchestration machinery.
+Mutation exit 0 completes that directional transition.
 
-### 10. Control Tower crashes after mutation succeeds but before verifier completes
+Clean.
 
-The active transition and candidate context must already be persisted. Restart can resume with Verify Up/Down Again.
-
-**Result:** checkpoint/active-transition model handles it.
-
-### 11. Step scripts change while debugging
-
-Changing verify-up after it failed is expected. Hard checksums on executable contents would fight the intended workflow.
-
-Record execution details if useful, but do not block merely because file contents changed.
-
-**Result:** intentionally differs from production migration tooling.
-
-### 12. Step structure changes
-
-Adding/removing/reordering numbered step directories can invalidate saved checkpoint meaning.
-
-Persist the step sequence identity and detect structural drift.
-
-**Result:** needs a guardrail, but no central config is required.
-
-### 13. Two app instances operate the same workspace
-
-Without a lock, both could mutate the pointer/checkpoint stack.
-
-Use one local writer lock.
-
-**Result:** small implementation requirement.
-
-### 14. Verifier absent
-
-Mutation exit 0 completes the directional transition immediately.
-
-**Result:** optional verification remains coherent.
-
-### 15. Down absent
+### Down absent
 
 Backward navigation through that step is unavailable.
 
-**Result:** coherent; no fake rollback.
+Clean.
 
-## Verdict
+## What was removed after the gauntlet
 
-The four-role step survives the gauntlet.
+The following ideas were initially surfaced as robustness improvements but are intentionally out of scope:
 
-The **pure snapshot** context model does not. The stronger version is:
+- durable transition state,
+- crash recovery,
+- migration-structure identity/checks,
+- structural-drift detection,
+- single-writer locking,
+- persistence backend selection.
 
-> completed context checkpoints + one active directional transition + optional mutation patch.
+They solve problems this personal workbench does not need to solve right now.
 
-This stays small while handling repeated navigation, directional verification, replacement IDs, failed verification, and context rewind.
+## Deferred reset idea
+
+A future root/workspace reset executable could be an explicit author-owned escape hatch:
+
+~~~text
+workspace/
+  reset
+  steps/
+  actions/
+~~~
+
+Its possible meaning would be “attempt to return the external test environment to this workspace's beginning.”
+
+No semantics are being designed now. This is only retained as a future idea.
 
 ## Remaining pressure tests
 
-- exact patch/output encoding,
-- auxiliary actions publishing context,
-- explicit recovery after interrupted/nonzero mutation,
-- storage backend and retention,
-- how structural drift is surfaced in the UI.
+- exact mutation patch/output encoding,
+- whether auxiliary actions may publish context,
+- whether verify-down should be adopted as the default optional convention.

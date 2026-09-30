@@ -77,7 +77,7 @@ Sources: [schema history](https://documentation.red-gate.com/fd/flyway-schema-hi
 
 Source: [dbmate repository documentation](https://github.com/amacneil/dbmate).
 
-**Implication.** The migration analogy holds up well: explicit author-owned reverse operations and small applied-state bookkeeping are established patterns. Control Tower differs intentionally in two places: verification is first-class in the interactive lifecycle, and editing executable content during development is expected rather than treated as a production migration-integrity violation.
+**Implication.** The migration analogy holds up well for explicit author-owned up/down operations. Control Tower intentionally does **not** adopt production migration-history safeguards for v0: no durable applied-version table, checksum validation, or structural-drift protection. Its state is session-local and editing/rearranging files remains the author's responsibility.
 
 ## Cross-tool findings that survive
 
@@ -85,7 +85,7 @@ Source: [dbmate repository documentation](https://github.com/amacneil/dbmate).
 | --- | --- | --- |
 | Dedicated machine-output channel | Keep human output and state updates separate. | Does not choose encoding or failure policy. |
 | Structured process input | Pass context without templating source code. | Does not require a complex context object. |
-| Named persistent values | Generated IDs can survive between manual actions. | Does not prove those IDs still reference valid external data. |
+| Named runtime values | Generated IDs can survive between manual actions in one Control Tower session. | Persistence across restarts is intentionally not required for v0. |
 | Separate configuration and runtime context | Avoid mixing environment selection with fixture IDs. | Does not require many scopes. |
 | Per-step results | stdout/stderr/exit history is useful during development. | Does not require a workflow execution engine. |
 

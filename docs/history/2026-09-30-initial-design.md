@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T21:34:25Z'
+  end: '2026-09-30T21:52:19Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -154,12 +154,23 @@ The gauntlet also surfaced source-versus-candidate context as a real verifier re
 
 Directional verify-down remains a recommendation pending explicit owner acceptance rather than an accepted decision.
 
+## E19: Reject unneeded safety machinery
+
+**21:52:19Z — Explicit user scope correction.** The project will not support concurrent Control Tower instances and needs no race-prevention machinery. Changing step directories in the middle of a session is the author's responsibility; there should be no structural-drift detection or reconciliation. If the Rust Control Tower process crashes, its state should simply be lost and the next launch should start over.
+
+This removes durable transition state, crash recovery, persistence-backend selection, migration-history/checksum logic, structural identity tracking, and multi-instance locking from the v0 design.
+
+The owner also noted a possible future workspace-level reset/back-out executable as an escape hatch, but explicitly did not want to design it now.
+
+This is a deliberate product simplification: complexity should be added only when it serves the personal workbench workflow, not because a production workflow/migration product would normally defend against the edge case.
+
 ## Corrections introduced over the discussion
 
 Several earlier assistant ideas were intentionally reduced:
 
 - No generalized workflow/DAG model is needed.
 - No “uncertain external state” engine is required; a failed attempt plus unchanged recorded position is sufficient bookkeeping.
+- No durable session state, crash recovery, structural-drift protection, or concurrency locking is required for v0.
 - Down is author-provided compensation, not guaranteed inverse execution.
 - Rebuild is not a promised primitive.
 - Central YAML/TOML configuration is no longer assumed.

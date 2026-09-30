@@ -72,16 +72,18 @@ Record the attempt and stop.
 
 This is deliberately stricter than trying to infer success from partial external effects. Recovery after a broken mutation can be added later without contaminating the normal state model.
 
-## Structural drift
+## Session scope
 
-Persisted completed-step identity must be compared with the discovered ordered step structure.
+The completed stack and active transition are in-memory session bookkeeping.
 
-Block automatic navigation if the migration structure changed incompatibly.
+A Control Tower restart starts over from zero. No durable migration history, structural-drift detection, or crash recovery is required.
 
-Do not make executable-content checksums a hard validity condition. Editing scripts during active development is expected.
+Changing step structure mid-session is unsupported and left to the author.
+
+Multiple simultaneous Control Tower instances for the same workspace are also unsupported; no locking is needed.
 
 ## Consequence
 
-The runtime remains serial and small: completed stack + one optional active transition.
+The runtime remains serial and small: in-memory completed stack + one optional active transition.
 
-No DAG, scheduler, retries, distributed workers, or external transaction engine is implied.
+No DAG, scheduler, retries, distributed workers, persistence layer, or external transaction engine is implied.

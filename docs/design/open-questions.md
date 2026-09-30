@@ -16,68 +16,59 @@ sources:
 
 # Open questions and validation
 
-The four-role directional transition model survived the current design gauntlet. The context candidate has narrowed to completed checkpoints plus an active-transition patch.
+The design is intentionally session-local. Durability, race protection, and migration-structure safety are not open questions for v0; they are out of scope.
 
 ## Q1 — Accept directional verify-down?
 
-No tested case exposed a problem with optional verify-down. It improves symmetry and lets the author validate the exact operation that ran.
-
-The proposed rule is:
+The current candidate is:
 
 ~~~text
-down -> verify-down -> commit lower step
+up
+down
+verify-up     # optional
+verify-down   # optional
 ~~~
 
-with verify-down optional.
+The gauntlet did not expose a problem with verify-down, and it keeps directional checks simple.
 
 **Exit criterion:** owner accepts/rejects the four-role step as the default convention.
 
 ## Q2 — What patch encoding is smallest?
 
-The context model now needs:
+The in-memory context model needs:
 
 - set scalar values,
 - occasionally unset inherited values,
 - preserve normal stdout/stderr,
 - parse deterministically.
 
-Compare a small line protocol against a small JSON change document.
+Compare a tiny line protocol against a small JSON patch document.
 
-Checkpoint rewind means down scripts usually need no state output, which should keep this protocol small.
+## Q3 — Can auxiliary actions mutate Control Tower context?
 
-## Q3 — How much recovery UI after mutation failure/interruption?
+Read-only inspection is simple.
 
-Normal behavior is clear: stop and keep the completed pointer.
+Allowing arbitrary actions to change context raises the question of which checkpoint or candidate they mutate.
 
-Decide whether first version needs an explicit “verify/adopt interrupted mutation” recovery path or whether inspection/manual cleanup is sufficient.
+Keep auxiliary context output disabled unless a concrete workflow requires it.
 
-Avoid automatic retry.
+## Q4 — How are source and candidate context exposed?
 
-## Q4 — Can auxiliary actions mutate Control Tower context?
+Directional verifiers can need both.
 
-Read-only inspection is easy.
+Choose the smallest language-neutral transport after the patch format is clear.
 
-Allowing arbitrary actions to change context raises the question of which completed checkpoint or active candidate they mutate.
+## Explicitly out of scope for v0
 
-Keep auxiliary context output disabled until a concrete workflow requires it.
+- persistent session state,
+- crash recovery,
+- structural drift detection,
+- migration history/checksums,
+- multi-instance locking,
+- automatic external-state reconciliation.
 
-## Q5 — Persistence backend
-
-The minimum durable state is small:
-
-- ordered structural identity,
-- completed step/checkpoint stack,
-- optional active transition,
-- recent result metadata.
-
-Compare one atomic local state file with SQLite on implementation ergonomics.
-
-## Q6 — Structural drift UX
-
-Define the smallest behavior when step directories are inserted, removed, renamed, or reordered around persisted state.
-
-Do not block normal edits to executable contents.
+A future workspace-level reset executable is a deferred idea, not a current design task.
 
 ## Validation order
 
-Settle Q1, then choose the patch encoding against one shell up and one Node up/down. Recovery and persistence can follow without changing the user-facing migration contract.
+Settle Q1, then choose the patch encoding against one shell action and one Node action. Source/candidate transport should follow from that.
