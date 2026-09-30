@@ -1,3 +1,5 @@
 target/
 .DS_Store
 .env
+.control_tower/
+examples/uuid-file/data/

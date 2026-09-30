@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+test "$(cat "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID")" = 'hello to you'
+printf 'hello' > "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID"
+printf 'removed stage 3 suffix\n'

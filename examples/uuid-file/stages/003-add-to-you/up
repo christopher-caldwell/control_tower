@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+printf ' to you' >> "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID"
+printf 'added stage 3 suffix\n'

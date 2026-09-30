@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+printf 'hello' > "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID"
+printf 'wrote hello\n'

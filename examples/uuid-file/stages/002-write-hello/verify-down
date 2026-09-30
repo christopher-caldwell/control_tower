@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+test ! -s "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID"
+printf 'file is empty\n'

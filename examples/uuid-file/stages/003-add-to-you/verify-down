@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+test "$(cat "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID")" = 'hello'
+printf 'file is back to hello\n'

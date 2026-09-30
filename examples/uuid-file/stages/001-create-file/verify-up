@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+test -f "$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID"
+printf 'UUID file exists\n'
