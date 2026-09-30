@@ -12,6 +12,7 @@ sources:
 - ../decisions/0001-user-owned-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
+- ../decisions/0004-session-storage-port-and-adapters.md
 - three-step-workspace.md
 ---
 
@@ -19,7 +20,7 @@ sources:
 
 ## Product identity
 
-Control Tower remains a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the work. Control Tower owns ordered navigation, process execution, visible results, and a small session-local context model.
+Control Tower remains a personal, local, migration-style workbench for arbitrary user-owned executable actions. The developer owns the work. Control Tower owns ordered navigation, process execution, visible results, and a small session-state model.
 
 It is intentionally not an orchestration product.
 
@@ -42,53 +43,97 @@ forward:  up   -> verify-up   -> complete higher step
 backward: down -> verify-down -> complete lower step
 ~~~
 
-The runtime needs only:
-
-- in-memory completed-step context checkpoints for this session,
-- at most one active directional transition,
-- recent execution results for the current session.
-
 The author remains responsible for the semantics of every executable.
 
-## Session lifetime is the Rust process lifetime
+## Session-state architecture follows the Rust playbook
 
-For the initial product, Control Tower state is **not durable**.
+The **behavioral logic must not depend on in-memory storage**.
 
-If the Rust process exits or crashes:
+Control Tower's application/core layer owns a semantic outbound port for the session/workbench state it needs. A concrete storage adapter implements that port.
+
+Conceptually:
 
 ~~~text
-completed checkpoints -> gone
-active transition     -> gone
-session context       -> gone
+entry point / composition root
+          |
+          | chooses concrete adapter
+          v
+application service
+          |
+          | application-owned session-state port
+          v
+storage adapter
+    |               |
+memory v0       SQLite fast follow
 ~~~
 
-The next launch starts from position 0 with empty Control Tower context.
+The v0 composition root constructs the in-memory adapter and injects it into the application service. A later SQLite implementation should satisfy the same core-owned port and be selected at the entry point instead.
 
-External side effects caused by user scripts remain whatever they are. Control Tower does not attempt to discover, reconcile, recover, or undo them after restart.
+No transition logic, context-checkpoint math, verification rules, or patch semantics belong in the adapter. The adapter stores/retrieves the state requested by the application port.
 
-This is an intentional scope decision, not a missing reliability feature.
+This is an accepted architecture decision; see [ADR-0004](../decisions/0004-session-storage-port-and-adapters.md).
 
-## No concurrency machinery
+## V0 behavior: memory adapter
 
-This project is for one local user and one intended instance.
+The initial adapter is intentionally in-memory.
 
-No locks, leases, multi-writer protection, or race-prevention system is needed.
+With that adapter, Rust-process lifetime is effectively the session lifetime:
 
-Running two instances against the same workspace is unsupported and the user's responsibility.
+~~~text
+process exits/crashes
+  -> memory adapter disappears
+  -> next launch begins with empty state
+~~~
 
-## No structural-drift protection
+That is acceptable v0 behavior.
 
-Control Tower does not need to protect the user from changing step directories during a session.
+The application/core should not be written *as if* memory is intrinsic. The same transition service should operate against a later SQLite adapter without knowing which adapter was injected.
 
-Renaming, inserting, removing, or reordering steps while state exists is unsupported. If the author changes the structure and wants a clean model, restart Control Tower and begin again.
+## SQLite is a fast follow, not first-pass scope
 
-No migration identity database, directory checksum, structural reconciliation, or adoption flow is required.
+SQLite is expected soon after the memory implementation, which is why the storage port has earned its place now.
 
-Editing the executable contents themselves during a session remains a normal intended workflow.
+That does **not** justify designing a SQLite schema, migration system, transaction layer, durability policy, or resume UX in the first pass.
 
-## In-memory context checkpoints
+When SQLite work begins, the adapter will own SQLite-specific mechanics. The application contract should change only if the actual capability needs change.
 
-Context checkpoints remain useful **within the current session**.
+One product question will become relevant then: whether startup resumes the last stored workbench session or intentionally starts fresh. That question is deferred until the SQLite adapter exists; it does not belong in the memory implementation.
+
+## Composition and dependency direction
+
+The intended dependency direction is inward:
+
+~~~text
+application/core
+    owns state semantics and outbound storage port
+          ^
+          |
+adapters
+    implement the port
+          ^
+          |
+entry point
+    constructs concrete adapter and injects it
+~~~
+
+The entry point is the composition root.
+
+Do not introduce:
+
+- a DI framework,
+- service locator,
+- generic Repository<T>/Store<T>,
+- adapter selection inside application logic,
+- infrastructure types crossing into the core,
+- a bootstrap/container abstraction merely to avoid explicit construction.
+
+Use explicit constructor injection. If a dependency has one owner, exclusive ownership is preferable; shared ownership such as Arc should only appear when independent owners actually require it.
+
+Exact crate/module layout and pointer types can follow implementation pressure. The dependency rule is the important part.
+
+## Context checkpoints remain a domain/application concern
+
+During a running session, completed-step checkpoints and one active directional transition remain the strongest state model.
 
 Example:
 
@@ -101,72 +146,56 @@ completed 02:
   record_id: 456
 ~~~
 
-They are not persisted snapshots of the outside world. They are just enough bookkeeping to make up/down navigation ergonomic while the app is running.
+The application logic decides how a forward patch builds a candidate context and how a verified down returns to a lower checkpoint.
 
-A forward transition starts from the current checkpoint. Its mutation output patch builds a candidate context. verify-up sees that candidate. On success, the candidate becomes the next in-memory checkpoint.
-
-A backward transition starts with the saved lower-step checkpoint as its target baseline. Any down output can patch that baseline. verify-down sees the candidate lower-step context before the completed pointer changes.
+The storage adapter does **not** calculate those transitions. It stores the application state through the port.
 
 ## Source and candidate context
 
-A directional verifier may need both sides of a transition.
+A directional verifier may need:
 
-Example: down deletes record_id=456. verify-down may need 456 to prove it no longer exists even though the candidate lower-step context correctly omits it.
+- source context — before the mutation,
+- candidate context — what would become current on verification success.
 
-The process contract therefore has two useful conceptual views:
+Exact process transport remains open.
 
-- **source context** — context before the directional mutation,
-- **candidate context** — context that would become current if verification succeeds.
-
-Exact transport remains open.
-
-## Active transition
-
-An active transition is session-local bookkeeping:
-
-~~~text
-step: 03
-direction: up | down
-source context
-mutation patch
-candidate context
-latest results
-~~~
-
-If verify-up or verify-down fails, the transition remains available in memory for inspection and verifier retry without rerunning the mutation.
-
-If the Rust process dies, this is discarded. The next run starts over.
-
-## Failure policy
+## Failure policy for v0
 
 ### Mutation exits nonzero
 
-Do not change the completed step and do not run the verifier automatically. Show stdout/stderr/exit status and stop.
-
-Any external side effects are the author's responsibility.
+Do not change the completed step and do not automatically verify. Show stdout/stderr/exit status and stop.
 
 ### Mutation succeeds; verifier fails
 
-Keep the active transition in memory. Allow verifier retry and inspection without rerunning the mutation.
+Keep the active transition in the injected state store for the life of the current session. Allow verifier retry and inspection without rerunning the mutation.
 
-### Rust process exits/crashes
+### Rust process exits/crashes with memory adapter
 
-Discard Control Tower state. Start fresh on next launch. No recovery protocol.
+State is lost. Start over.
 
-## Deferred escape hatch
+No crash-recovery feature is required for v0.
 
-A future workspace-level reset executable could provide a user-authored “back everything out / get me to a known beginning” escape hatch.
+## No concurrency or structural-drift machinery
 
-That is intentionally **not** part of the current contract and should not be designed until the normal up/down lifecycle proves insufficient.
+This remains a one-user, one-instance workbench.
+
+No locks or race-prevention system is required.
+
+Changing step directories while a session exists is the author's responsibility. Restart if a clean model is desired.
+
+## Deferred reset escape hatch
+
+A future workspace-level reset executable may provide an explicit author-owned “back everything out” escape hatch.
+
+It remains deferred.
 
 ## What still has not earned scope
 
-No scheduler, authentication, hosting, DAG, built-in drivers, retries, durability layer, concurrency control, structural-drift protection, transaction emulation, external snapshots, or expression language is required.
+No scheduler, authentication, hosting, DAG, built-in drivers, retries, crash recovery, concurrency control, structural-drift protection, transaction emulation, or expression language is required.
 
 The remaining design work is small:
 
 1. whether verify-down becomes the default optional convention,
 2. exact context patch/output encoding,
-3. whether auxiliary actions can change Control Tower context.
-
-See [Three-step workspace design probe](three-step-workspace.md).
+3. source/candidate context transport,
+4. whether auxiliary actions can change session context.

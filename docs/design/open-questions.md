@@ -12,11 +12,12 @@ sources:
 - three-step-workspace.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
+- ../decisions/0004-session-storage-port-and-adapters.md
 ---
 
 # Open questions and validation
 
-The design is intentionally session-local. Durability, race protection, and migration-structure safety are not open questions for v0; they are out of scope.
+The v0 storage implementation is memory, but storage is already architecturally isolated behind an application-owned port so SQLite can follow without rewriting transition logic.
 
 ## Q1 — Accept directional verify-down?
 
@@ -35,7 +36,7 @@ The gauntlet did not expose a problem with verify-down, and it keeps directional
 
 ## Q2 — What patch encoding is smallest?
 
-The in-memory context model needs:
+The session context model needs:
 
 - set scalar values,
 - occasionally unset inherited values,
@@ -44,7 +45,13 @@ The in-memory context model needs:
 
 Compare a tiny line protocol against a small JSON patch document.
 
-## Q3 — Can auxiliary actions mutate Control Tower context?
+## Q3 — How are source and candidate context exposed?
+
+Directional verifiers can need both.
+
+Choose the smallest language-neutral transport after the patch format is clear.
+
+## Q4 — Can auxiliary actions mutate Control Tower context?
 
 Read-only inspection is simple.
 
@@ -52,22 +59,27 @@ Allowing arbitrary actions to change context raises the question of which checkp
 
 Keep auxiliary context output disabled unless a concrete workflow requires it.
 
-## Q4 — How are source and candidate context exposed?
+## Not an open architecture question
 
-Directional verifiers can need both.
+The storage boundary is settled:
 
-Choose the smallest language-neutral transport after the patch format is clear.
+- application/core owns the state port,
+- memory adapter is v0,
+- SQLite adapter is a fast follow,
+- entry point chooses and injects the adapter.
+
+Exact port method signatures should be derived from implementation use cases; do not predesign a generic CRUD repository.
 
 ## Explicitly out of scope for v0
 
-- persistent session state,
-- crash recovery,
+- SQLite implementation,
+- durable crash recovery,
 - structural drift detection,
 - migration history/checksums,
 - multi-instance locking,
 - automatic external-state reconciliation.
 
-A future workspace-level reset executable is a deferred idea, not a current design task.
+A future workspace-level reset executable remains a deferred idea.
 
 ## Validation order
 

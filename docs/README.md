@@ -37,6 +37,7 @@ docs/
     0001-user-owned-executables.md
     0002-stage-navigation-and-verification.md
     0003-session-state-and-process-io.md
+    0004-session-storage-port-and-adapters.md
   research/
     documentation-strategy.md
     existing-tools.md
@@ -51,9 +52,7 @@ docs/
 | research/ | What evidence supports or challenges the design? | Dated, sourced observations, separated from our interpretation. |
 | history/ | What was said or changed, and when? | Dated discussion summaries and explicit corrections. |
 
-Do not create one file per chat response, feature idea, or research link. Add to the existing home for a subject unless it has an independently maintainable purpose. The three-step probe has its own file because it is a reusable concrete model for testing multiple design claims, not because every example deserves a document.
-
-This structure combines reader-oriented separation with lightweight decision records. The alternatives and sources are in [Documentation strategy](research/documentation-strategy.md).
+Do not create one file per chat response, feature idea, or research link. Add to the existing home for a subject unless it has an independently maintainable purpose.
 
 ## Decision index
 
@@ -61,7 +60,8 @@ This structure combines reader-oriented separation with lightweight decision rec
 | --- | --- | --- |
 | [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executable authoring; not a driver platform. |
 | [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted core; directional verification under evaluation | Ordered migration-style transitions with verified forward completion; optional verify-down is the current design candidate. |
-| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; leading candidate | Workbench-owned context, process input snapshot, and a separate machine-output channel. |
+| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; leading candidate | Session context checkpoints, active-transition patching, and process I/O. |
+| [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Core/application owns the session-state storage port; v0 injects an in-memory adapter; SQLite is a planned adapter swap. |
 
 The status of a document is not evidence that its design is implemented. A proposal does not become accepted because it was committed to main or because an assistant repeated it.
 
@@ -92,12 +92,10 @@ Statuses are deliberately type-specific:
 - Index and design: maintained; individual statements still distinguish chosen direction, candidate, and open question.
 - Research and history: recorded; this means captured, not universally correct or authoritative.
 
-Use sequential four-digit ADR filenames. Never reuse a number. Use topic names for living documents and ISO dates for history. When an accepted decision changes, add a replacement record and link the old and new records using supersedes / superseded_by; do not silently rewrite the old rationale. A proposed ADR can evolve before acceptance.
+Use sequential four-digit ADR filenames. Never reuse a number. Use topic names for living documents and ISO dates for history.
 
 ## Authority and maintenance
 
-Explicit user choices, with traceable sources, govern this design. Accepted ADRs summarize those choices; proposals and research do not override them. The current design is a navigation aid and synthesis, not a second competing source of approval. Conflicts require an explicit correction or decision, not an assistant selecting whichever text is newest.
+Explicit user choices, with traceable sources, govern this design. Accepted ADRs summarize those choices; proposals and research do not override them.
 
-Update the relevant current-design section and decision record together when a choice changes. Append a history entry when the change is significant. Keep external product claims in research and link to them instead of duplicating a feature matrix throughout the docs. Clearly label illustrative filesystem layouts and protocols until accepted.
-
-Before committing documentation, check front matter, unique IDs, relative links, status consistency, source attribution, and whether new claims were actually approved. Keep credentials, real fixture data, private work details, and runtime output out of this public repository.
+Update the relevant current-design section and decision record together when a choice changes. Append a history entry when the change is significant. Keep credentials, real fixture data, private work details, and runtime output out of this public repository.

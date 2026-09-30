@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T21:52:19Z'
+  end: '2026-09-30T21:57:37Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -163,6 +163,16 @@ This removes durable transition state, crash recovery, persistence-backend selec
 The owner also noted a possible future workspace-level reset/back-out executable as an escape hatch, but explicitly did not want to design it now.
 
 This is a deliberate product simplification: complexity should be added only when it serves the personal workbench workflow, not because a production workflow/migration product would normally defend against the edge case.
+
+## E20: Storage is an adapter concern
+
+**21:57:37Z — Explicit architecture decision.** Memory-only storage is acceptable for v0, but the implementation must follow the owner's Rust playbook: storage belongs behind an application/core-owned port and concrete storage is an adapter concern.
+
+The v0 composition root should construct an in-memory adapter and inject it into the application capability. SQLite is expected as a fast follow, at which point the composition root should be able to select a SQLite adapter satisfying the same semantic port without rewriting transition logic.
+
+This is a justified abstraction because the second implementation is already anticipated. It must remain narrow: no DI framework, generic repository, service locator, infrastructure-owned business rules, or speculative SQLite schema in the first pass. Exact port methods should follow the actual application use cases.
+
+The memory adapter preserves the currently accepted v0 behavior that a Rust-process restart loses session state. SQLite durability/resume behavior is deferred until the SQLite adapter is actually designed.
 
 ## Corrections introduced over the discussion
 
