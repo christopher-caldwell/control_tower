@@ -25,27 +25,62 @@ Rust is the chosen implementation language. Native UI versus a local browser UI 
 
 The governing boundary is:
 
-> You own the work. Control Tower runs it, records its own position, passes small amounts of context, and gives you controls to move through it.
+> You own the work. Control Tower runs it, records its position, passes small amounts of context, and gives you controls to move through it.
 
-This is intentionally not Dagu-lite and not an orchestration product. No login, hosted control plane, scheduler, worker model, DAG engine, built-in HTTP/database driver layer, or generalized automation platform is required.
+This is intentionally not an orchestration product. No login, hosted control plane, scheduler, worker model, DAG engine, built-in HTTP/database driver layer, or generalized automation platform is required.
 
 ## Core contract
 
 The accepted direction is deliberately small:
 
 1. Steps are ordered.
-2. Step N up moves from recorded position N-1 to N.
-3. Step N down moves from recorded position N to N-1.
-4. Multi-step movement executes those files sequentially and stops on first nonzero exit.
-5. Successful up records the new position; failed up/down does not move the pointer.
-6. If the current step has verify, it must exit successfully immediately before any forward transition to the next step.
-7. A failed verify leaves the pointer and current context intact and blocks only the forward transition.
-8. A future/previous verify result is not treated as a durable permission token; requesting Next should run the gate again.
-9. The correctness of up, down, and verify is the author's responsibility, as with database migrations.
-10. stdout/stderr and exit status are visible execution results.
-11. Small shared context remains a leading candidate because generated IDs must survive across steps; the exact machine-output protocol is still open.
+2. Step N can provide an up executable from N-1 toward N.
+3. Step N can provide a down executable from N toward N-1.
+4. Step N can provide a verify executable describing the checks that must pass before Control Tower records step N as current.
+5. A forward change from N-1 to N is therefore: run N/up, then N/verify if present, then commit the recorded step change to N.
+6. A failed up or verify does not commit the recorded step change.
+7. The correctness of up, down, and verify is the author's responsibility, as with database migrations.
+8. stdout/stderr and exit status are visible execution results.
+9. Small shared context remains necessary because an up can create identifiers that verify and later steps need.
 
-The pointer records which authored migration transitions succeeded. It does not claim that external systems have been proven correct.
+The tool records its own migration bookkeeping. It does not claim that external systems are transactional or automatically reversible.
+
+## The newly exposed runtime concept: pending transition
+
+Verification-before-commit means a successful up can have real side effects and produce useful context before the step is committed.
+
+For example:
+
+~~~text
+recorded step: 001
+active context:
+  user_id: 123
+
+run 002/up
+  -> succeeds
+  -> creates record_id: 456
+
+run 002/verify
+  -> fails
+~~~
+
+Control Tower cannot honestly call step 002 committed, but it also cannot throw away record_id if the developer needs it to inspect, retry verify, or run 002/down.
+
+The smallest model therefore needs a **pending transition** in addition to the last committed step:
+
+~~~text
+committed step: 001
+pending step: 002
+pending up: succeeded
+pending verify: failed
+effective context:
+  user_id: 123
+  record_id: 456
+~~~
+
+This is not a workflow engine. It is the minimum bookkeeping implied by making verify part of the transition before commit.
+
+The exact persistence and output protocol for pending context remains proposed in ADR-0003.
 
 ## Minimal concepts
 
@@ -53,17 +88,17 @@ A workspace contains an ordered migration set and optional auxiliary actions.
 
 A step is one migration unit with up/down and optionally verify.
 
-A position is Control Tower's recorded migration index. Position 0 means no step has been applied in the current workspace/session.
+A committed step is the last step whose transition completed according to the workbench contract.
 
-verify belongs to the current position and gates forward movement out of it.
+A pending transition is an in-progress move whose mutation has run but whose target step has not yet been committed.
 
-An auxiliary action runs without changing the pointer, such as inspect. Control Tower does not enforce that it is read-only.
+Context is a small set of values carried between executions. While a transition is pending, the effective context may need to include both committed values and outputs produced by the pending up.
 
-Context is a small set of values carried between executions, such as user_id and record_id.
+An auxiliary action runs without changing the committed step, such as inspect.
 
 A result is what Control Tower directly observes: executable, stdout, stderr, exit status, timing, and eventual machine-output data.
 
-No separate controller-level “stage state machine” is required. The UI can retain the latest verify result for feedback without treating it as durable truth.
+These are conceptual responsibilities, not required Rust structs or database tables.
 
 ## Authoring boundary
 
@@ -71,47 +106,42 @@ User-owned executable files remain the core mechanism. A shebang can choose shel
 
 Control Tower does not understand SQL, HTTP, Node libraries, or business semantics. Future helpers can exist as sidecars that consume the same executable/context contract. They are not core execution primitives.
 
-The [three-step design probe](three-step-workspace.md) suggests that a central configuration file has not yet earned its place: numeric directories and fixed executable names express the smallest example.
+The [three-step design probe](three-step-workspace.md) continues to test whether a convention-only directory is sufficient before adding central configuration.
 
-## Leading context and I/O direction
+## Leading transition sequence
 
-~~~text
-Control Tower context -> process input view
-executable stdout/stderr -> human-visible result
-executable machine output -> context updates
-~~~
-
-The verification gate now simplifies successful transition timing:
+For a forward move into step N:
 
 ~~~text
-step N up succeeds
-  -> current context updates
-  -> recorded position N
-
-later, before N -> N+1:
-  step N verify runs
-  -> pass: allow next up
-  -> fail: stay at N
+committed N-1
+   |
+   | N/up
+   v
+pending N
+   |
+   | N/verify
+   v
+commit N
 ~~~
 
-The concrete example only requires scalar identifiers and removal when walking down. Rich structured context still has not earned scope.
+If N/up fails, the committed step remains N-1.
 
-See [ADR-0003](../decisions/0003-session-state-and-process-io.md).
+If N/up succeeds but N/verify fails, the committed step remains N-1 and N remains pending. The pending outputs need to stay usable for inspection and retry.
 
-## Dagu lesson
+If N/verify later succeeds, Control Tower commits the context changes and the recorded step together as far as its local persistence model allows.
 
-Dagu remains useful inspiration for execution results and output-passing patterns. The owner's local trial clarified the product boundary: Dagu solves a broader workflow/orchestration problem and felt substantially heavier than this intended workbench.
+A step without verify can commit immediately after a successful up.
 
-Control Tower intentionally optimizes for walking a user-authored migration set during development.
+Backward transition verification is not yet specified by this correction. The current design should not silently infer a symmetric rule until we test the three-step example in reverse.
 
 ## Scope that has not earned its way in
 
-No built-in database/HTTP action types, mandatory SDK, expression language, dependency installer, scheduler, distributed workers, DAG engine, authentication system, hosted service, automatic retries, universal rollback, exact-once execution, or rich external-state model is selected.
+No built-in database/HTTP action types, mandatory SDK, expression language, dependency installer, scheduler, distributed workers, DAG engine, authentication system, hosted service, automatic retries, universal rollback, or exact-once execution is selected.
 
-The UI can simply show the recorded position, the attempted action, the latest verify result, and stdout/stderr.
+The new pending-transition requirement does not justify a generalized workflow state machine. It only exists because verify is explicitly part of a step transition before the committed pointer changes.
 
 ## Current design probe
 
-The active exercise remains [Three-step workspace design probe](three-step-workspace.md): create a user, create an associated record, and mutate that record.
+The active exercise remains [Three-step workspace design probe](three-step-workspace.md).
 
-Verification timing is now settled. The next meaningful design work is the smallest context publication contract, especially what happens to machine output emitted by a process that later exits nonzero.
+The next design work is now **pending-transition ergonomics**: what the UI allows after up succeeds but verify fails, what context those actions receive, and how down/abort should behave. The machine-output encoding should follow that decision rather than precede it.

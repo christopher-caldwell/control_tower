@@ -10,7 +10,7 @@ authored_by: assistant
 correlation_id: CT-DISCUSSION-2026-09-30
 source_window:
   start: '2026-09-30T00:49:35Z'
-  end: '2026-09-30T20:13:30Z'
+  end: '2026-09-30T20:44:59Z'
 source_kind: Current conversation with relevant history recovery
 ---
 
@@ -118,7 +118,15 @@ The probe finds that a convention-only directory can express the minimum example
 
 The refined model records successful `up` first, making the new position and its context available. `verify` then gates the next forward transition. A failed verify leaves the developer at the same recorded position so they can inspect, change application code, rerun verify, or move backward.
 
-The documentation intentionally does not introduce a persisted entered/verified sub-state machine. The latest verify result is useful feedback; a request to advance should run the current verify again so an old pass is not treated as a durable permission token.
+That interpretation was corrected shortly afterward.
+
+## E15: Verify before step commit
+
+**20:44:59Z — User correction.** Verify needs to run before the step change itself, not after the target step has already become the recorded current step.
+
+The corrected forward transition into step 002 is therefore: run `002/up`, run `002/verify`, and only then commit the recorded step to 002. If up succeeds but verify fails, the workbench still records 001 as the committed step but must retain a pending 002 transition and the values produced by 002/up so the developer can inspect, retry verify, or run an authored undo.
+
+This correction invalidates the previous attempt to eliminate within-step state. A narrow pending-transition lifecycle has now earned its place; it should not be generalized beyond what this workflow requires.
 
 ## Corrections introduced over the discussion
 

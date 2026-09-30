@@ -1,6 +1,6 @@
 ---
 id: ADR-0003
-title: Separate persisted context from process input and output
+title: Separate committed context, pending transition context, and process I/O
 type: decision
 status: proposed
 created: '2026-09-30'
@@ -10,107 +10,112 @@ authored_by: assistant
 decision_authority: user-endorsed-candidate-with-unapproved-details
 sources:
 - ../history/2026-09-30-initial-design.md#e09-leading-storage-candidate
+- ../history/2026-09-30-initial-design.md#e15-verify-before-step-commit
 - ../research/existing-tools.md
 - ../design/three-step-workspace.md
 ---
 
-# ADR-0003: Separate persisted context from process input and output
+# ADR-0003: Separate committed context, pending transition context, and process I/O
 
 ## Standing
 
-The owner endorsed the general separation as the leading candidate for exploration: Control Tower owns small shared context, an executable receives an input view, stdout/stderr remain ordinary visible output, and a separate machine-output channel can update context.
+The owner endorsed the general context/output separation as the leading candidate. Verification-before-step-commit adds one concrete requirement: successful up outputs may need to exist **before** they are committed to the settled workspace context.
 
-The exact protocol is still unaccepted. File names, encoding, persistence backend, environment projection, and failed-process output rules remain working ideas.
+The exact wire format and storage backend remain unaccepted.
 
-## What the three-step probe requires
+## Required context views
 
-The first concrete workspace only needs:
+The three-step example now implies two logical context layers.
+
+**Committed context** belongs to the last committed step.
+
+**Pending changes** come from a successful target up whose verify has not yet passed.
+
+The effective context seen by the pending target is conceptually:
 
 ~~~text
-after step 1 up:
-  user_id
-
-after step 2 up:
-  user_id
-  record_id
-
-after step 3 up:
-  user_id
-  record_id
+committed context + pending changes
 ~~~
 
-Walking down step 2 needs to remove record_id. Walking down step 1 needs to remove user_id.
+For example:
 
-Assignment and removal are therefore required. Rich nested state, variable precedence, an expression language, and a large type system are not.
+~~~text
+committed step: 001
+committed:
+  user_id: 123
 
-## Distinct responsibilities
+pending step: 002
+pending:
+  record_id: 456
 
-| Information | Owner | Current direction |
-| --- | --- | --- |
-| Recorded migration position | Control Tower | Internal bookkeeping; scripts do not set it directly. |
-| Shared authored context | Control Tower plus explicit script outputs | Small values carried between actions. |
-| Process configuration | Author/environment | Do not copy the entire inherited environment into durable context. |
-| stdout/stderr | Executable | Human-visible execution result. |
-| Machine output | Executable through a defined channel | Candidate context set/remove operations. |
-| Verify result | Verify executable exit status | Gate forward movement; latest result can be displayed. |
+effective for 002/verify:
+  user_id: 123
+  record_id: 456
+~~~
 
-## Successful up/down and context timing
+This is a logical distinction. It does not require two database tables or a sophisticated transaction engine.
 
-The verification decision removes one earlier complication.
+## Commit behavior
 
-When up N exits successfully, Control Tower records position N and applies the successful action's context updates according to the eventual output protocol. verify N runs later, immediately before any forward move to N+1.
+On target up success, parse and retain its machine-output changes as pending.
 
-Therefore verify N sees the normal current context. There is no need for a hidden candidate-context layer waiting for verification.
+Run target verify against the effective context.
 
-Similarly, successful down N can apply its context removals and then record position N-1.
+If verify succeeds, promote the pending changes into committed context and change the recorded step.
 
-Exact ordering between durable pointer write and durable context write is a persistence/atomicity implementation question, not a reason to add workflow semantics.
+If verify fails, retain pending changes so verify, inspect, and a pending undo can still use them.
 
-## Input candidates
+If a pending undo succeeds, discard the pending changes and keep the previous committed context.
 
-Environment variables are convenient scalar transport and can point to a context file, but they are not durable parent-process storage. Command-line arguments fit existing executables but make generic binding verbose. stdin consumes a useful stream. A read-only context snapshot file remains a strong language-neutral candidate.
+This lifecycle is now more important than choosing JSON versus KEY=value.
 
-Automatic projection of every scalar into environment variables still has not earned acceptance.
+## Process channels
 
-## Output candidates
+The leading process boundary remains:
 
-The strongest direction remains a separate machine-output channel from stdout/stderr.
+~~~text
+context input -> executable
+stdout/stderr -> human-visible result
+machine output -> proposed context changes
+exit status -> operation result
+~~~
 
-The first real requirement is:
+A context snapshot file remains a strong language-neutral candidate. Environment variables may locate it or expose convenience scalars.
 
-- set a scalar key,
-- remove a scalar key,
-- detect malformed output,
-- keep normal stdout/stderr untouched.
+The machine-output channel still needs assignment and removal semantics. The three-step example does not justify richer data types yet.
 
-KEY=value is shell-friendly but needs deletion syntax. A small JSON change document expresses set/remove clearly but may be more ceremony. Choose against real scripts, not feature breadth.
+## Verify process contract
 
-## Failed process output remains the hard edge
+verify must receive the effective pending context so it can inspect values created by up.
 
-A process can change an external system, emit an identifier, and then exit nonzero. The migration-runner philosophy says the pointer does not advance, but it still leaves a narrow machine-output decision.
+The smallest useful verify contract is otherwise read-only from Control Tower's perspective: stdout/stderr for explanation and exit status for pass/fail.
 
-Options remain:
+Whether verify is allowed to publish additional context remains open and currently has no motivating example.
 
-- retain failed output only with the result,
-- merge it into current context,
-- or ignore it and require external recovery.
+## Failed up output
 
-No choice is accepted yet.
+A separate edge remains: an up can emit machine output and then exit nonzero.
 
-## Verify output is a separate question
+That is different from “up succeeded, verify failed.” In the latter case pending context clearly has a role. In the former case we still need to decide whether emitted values are retained as recovery evidence, promoted into pending context, or ignored.
 
-The smallest verify contract is read current context, print results, and signal pass/fail through exit status.
-
-Allowing verify to publish context would make a gate also mutate Control Tower state. That may be useful in some edge case, but the three-step example does not require it. Treat verify context publication as unearned until a concrete case demonstrates it.
+Do not conflate the two cases.
 
 ## Persistence
 
-Restart persistence for pointer/context remains a candidate. JSON files, SQLite, or another local mechanism can be evaluated later.
+If a pending transition can survive long enough for the developer to change code and retry verify, it likely needs to survive ordinary UI refresh/restart as well. That is now stronger evidence for local persistence than before, but the backend remains undecided.
 
-The process protocol must not accidentally choose the storage backend, and local execution does not make context a secrets store.
+A simple local file or SQLite can both represent committed step, pending step, pending changes, and recent results. Choose later based on implementation ergonomics, not protocol aesthetics.
 
 ## Confirmation
 
-Test the protocol against the three-step workspace using shell and Node. Require scalar set/remove first. Include a successful up followed by failed verify, and confirm the pointer/context remain usable for inspect -> code change -> verify again.
+Use the pending-002 scenario:
 
-Then test a failed up that emitted an ID before exiting nonzero. That is now the main unresolved context edge.
+1. committed 001 with user_id,
+2. 002/up succeeds and produces record_id,
+3. 002/verify fails,
+4. inspect sees user_id + record_id,
+5. restart the UI/process,
+6. verify again or run 002/down,
+7. either commit 002 or return cleanly to 001.
+
+The smallest mechanism that supports that flow should become the initial context protocol.

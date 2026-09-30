@@ -60,7 +60,7 @@ This structure combines reader-oriented separation with lightweight decision rec
 | Record | Status | Scope |
 | --- | --- | --- |
 | [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executable authoring; not a driver platform. |
-| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted direction | Ordered migration-style up/down navigation; command correctness remains the author's responsibility. Assertion timing is still open. |
+| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted | Ordered migration-style transitions; the target step's verify must pass before the recorded step changes. |
 | [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; leading candidate | Workbench-owned context, process input snapshot, and a separate machine-output channel. |
 
 The status of a document is not evidence that its design is implemented. A proposal does not become accepted because it was committed to main or because an assistant repeated it.
