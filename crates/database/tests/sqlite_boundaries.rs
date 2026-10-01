@@ -50,17 +50,21 @@ fn explicit_setup_and_checkpoint_round_trip_use_real_sqlite() {
     let queries = SqliteWorkbenchQueries::open(&database.0).unwrap();
     let writes = SqliteWorkbenchWrites::open(&database.0).unwrap();
     assert_eq!(queries.read_checkpoint().unwrap(), None);
-    for direction in [Direction::Up, Direction::Down] {
-        let checkpoint = WorkbenchState {
-            completed_stage_count: 2,
-            uuid: Some("opaque-uuid".into()),
-            pending: Some(PendingTransition {
-                stage_index: 2,
-                direction,
-            }),
-        };
-        writes.record_checkpoint(&checkpoint).unwrap();
-        assert_eq!(queries.read_checkpoint().unwrap(), Some(checkpoint));
+    // Either adjacent last-completed position is valid for either pending
+    // direction: normal verification and verification after reversal.
+    for completed_stage_count in [2, 3] {
+        for direction in [Direction::Up, Direction::Down] {
+            let checkpoint = WorkbenchState {
+                completed_stage_count,
+                uuid: Some("opaque-uuid".into()),
+                pending: Some(PendingTransition {
+                    stage_index: 2,
+                    direction,
+                }),
+            };
+            writes.record_checkpoint(&checkpoint).unwrap();
+            assert_eq!(queries.read_checkpoint().unwrap(), Some(checkpoint));
+        }
     }
     writes
         .record_checkpoint(&WorkbenchState::default())

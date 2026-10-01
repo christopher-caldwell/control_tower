@@ -4,7 +4,7 @@ title: Current design and decision audit
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -174,26 +174,17 @@ Application owns opaque `PersistenceError`, `StageDiscoveryError` and `Executabl
 
 `status` exposes `StatusError`; `move_to` exposes `MoveToError`, with its additional invalid-target meaning. Process-start and checkpoint-write errors inside a stopped move also retain sources. One execution failure is referenced by both the execution event and stopped outcome using `Rc`, matching that actual single-threaded diagnostic sharing; injected dependencies remain `Box`, with no `Arc` introduced. Errors are not required to fabricate equality or clone driver sources.
 
-`move_to` takes `MoveToInput` with public workspace, direction and target fields. Status has one direct workspace argument. Named result types and the existing UUID generation/handoff remain intact. This pass does not correct the known failed-verify-up backout semantics.
+`move_to` takes `MoveToInput` with public workspace, direction and target fields. Status has one direct workspace argument. Named result types and the existing UUID generation/handoff remain intact. The later [run-semantics validation](../research/run-semantics-validation.md) corrects active-transition reversal without changing these architecture boundaries or the SQLite schema.
 
-## Context checkpoints remain a domain/application concern
+## Completed position and active transition
 
-During a running session, completed-step checkpoints and one active directional transition remain the strongest state model.
+Application records the last accepted stage count, one opaque UUID, and at most one pending stage/direction. The direction identifies the most recently successful mutation whose verifier is outstanding. The completed position may be on either adjacent side of that stage, including after reversal; it changes only after directional verification succeeds.
 
-Example:
+A request continuing the pending direction retries its verifier without replaying the mutation. A request in the opposite direction invokes the same stage's opposite mutation and optional verifier. Successful resolution clears pending state, then the sequential walk continues toward the target.
 
-~~~text
-completed 01:
-  user_id: 123
+For example, completed 02 plus pending 03/up can resolve through verify-up to completed 03, or through 03/down and optional verify-down back to completed 02. If that verify-down fails, completed remains 02 and pending becomes 03/down; a later downward request retries only verify-down. Completed 03 plus pending 03/down supports the symmetric 03/up reversal.
 
-completed 02:
-  user_id: 123
-  record_id: 456
-~~~
-
-The application logic decides how a forward patch builds a candidate context and how a verified down returns to a lower checkpoint.
-
-The storage adapter does **not** calculate those transitions. It stores the application state through the port.
+SQLite stores this Application checkpoint and does not choose transitions. Earlier context-stack and patch proposals remain hypotheses, not implemented v0 requirements.
 
 ## V0 state handoff is intentionally minimal
 
@@ -213,7 +204,7 @@ Do not change the completed step and do not automatically verify. Show stdout/st
 
 ### Mutation succeeds; verifier fails
 
-Keep the active transition in the injected state store for the life of the current session. Allow verifier retry and inspection without rerunning the mutation.
+Persist the active transition and UUID across normal CLI invocations. Allow matching verifier retry without rerunning the successful mutation, or explicit opposite-direction movement through the same stage's mutation and optional verifier. A failed reverse verifier leaves the original completed position intact and the reverse direction pending. Resolve that stage before walking farther toward the requested target.
 
 ### Rust process exits/crashes
 
@@ -237,7 +228,7 @@ It remains deferred.
 
 ## What still has not earned scope
 
-No scheduler, authentication, hosting, DAG, built-in drivers, retries, crash recovery, concurrency control, structural-drift protection, transaction emulation, or expression language is required.
+No scheduler, authentication, hosting, DAG, built-in drivers, automatic mutation retries, crash recovery, concurrency control, structural-drift protection, transaction emulation, or expression language is required.
 
 The high-level pre-discovery work is now sufficiently complete.
 

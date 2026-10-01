@@ -112,6 +112,7 @@ fn write_executable(path: &Path, contents: &str) {
 #[test]
 fn walks_fixture_forward_and_backward_across_cli_processes() {
     let workspace = Workspace::from_fixture();
+    observe_roles(&workspace);
 
     let first_up = move_to(&workspace, "up", 1);
     assert!(first_up.status.success(), "{}", output_text(&first_up));
@@ -163,6 +164,28 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
         output_text(&final_status)
     );
     assert!(String::from_utf8_lossy(&final_status.stdout).contains("UUID: not created"));
+    assert_eq!(
+        checkpoint(&workspace),
+        control_tower_application::WorkbenchState::default()
+    );
+    assert_calls_and_uuid(
+        &workspace,
+        &[
+            "1 up",
+            "1 verify-up",
+            "2 up",
+            "2 verify-up",
+            "3 up",
+            "3 verify-up",
+            "3 down",
+            "3 verify-down",
+            "2 down",
+            "2 verify-down",
+            "1 down",
+            "1 verify-down",
+        ],
+        &uuid,
+    );
 }
 
 #[test]
@@ -312,4 +335,210 @@ fn ordinary_cli_does_not_bootstrap_or_migrate() {
     assert!(output_text(&output).contains("schema is not initialized"));
     assert!(uuid_file(&workspace).is_none());
     assert!(control_tower_database::operations::verify(&database).is_err());
+}
+
+// Keep the author's scripts as the external semantic authority, adding only
+// call/UUID observation and a first-attempt verifier failure for these tests.
+fn observe_roles(workspace: &Workspace) {
+    for directory in fs::read_dir(workspace.path().join("stages")).unwrap() {
+        let directory = directory.unwrap().path();
+        for role in ["up", "down", "verify-up", "verify-down"] {
+            let path = directory.join(role);
+            let script = fs::read_to_string(&path).unwrap();
+            let (shebang, body) = script.split_once('\n').unwrap();
+            write_executable(
+                &path,
+                &format!(
+                    "{shebang}\nprintf '%s %s %s\\n' \"$CONTROL_TOWER_STAGE\" \"$CONTROL_TOWER_ROLE\" \"$CONTROL_TOWER_UUID\" >> \"$CONTROL_TOWER_WORKSPACE/calls.log\"\n{body}"
+                ),
+            );
+        }
+    }
+}
+
+fn fail_verifier_once(workspace: &Workspace, stage: &str, role: &str) {
+    let path = workspace.path().join("stages").join(stage).join(role);
+    let script = fs::read_to_string(&path).unwrap();
+    // Insert after the observation so even the intentionally failed check is logged.
+    let (prefix, body) = script.split_once("set -eu\n").unwrap();
+    write_executable(
+        &path,
+        &format!(
+            "{prefix}set -eu\nmarker=\"$CONTROL_TOWER_WORKSPACE/{stage}-{role}-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 23; fi\n{body}"
+        ),
+    );
+}
+
+fn checkpoint(workspace: &Workspace) -> control_tower_application::WorkbenchState {
+    use control_tower_application::WorkbenchQueries;
+    control_tower_database::workbench::SqliteWorkbenchQueries::open(
+        &workspace.path().join(".control_tower/state.sqlite3"),
+    )
+    .unwrap()
+    .read_checkpoint()
+    .unwrap()
+    .unwrap()
+}
+
+fn assert_checkpoint(workspace: &Workspace, completed: usize, pending: Option<(&str, usize)>) {
+    let state = checkpoint(workspace);
+    assert_eq!(state.completed_stage_count, completed);
+    assert_eq!(
+        state
+            .pending
+            .map(|p| (p.direction.as_str(), p.stage_index + 1)),
+        pending
+    );
+    let output = status(workspace);
+    assert!(output.status.success(), "{}", output_text(&output));
+    let text = output_text(&output);
+    assert!(text.contains(&format!("Completed stage: {completed}")));
+    if let Some((direction, stage)) = pending {
+        assert!(text.contains(&format!("Pending verification: {direction} {stage}")));
+    } else {
+        assert!(!text.contains("Pending verification:"));
+    }
+}
+
+fn assert_calls_and_uuid(workspace: &Workspace, expected: &[&str], uuid: &str) {
+    let text = fs::read_to_string(workspace.path().join("calls.log")).unwrap();
+    let calls: Vec<_> = text
+        .lines()
+        .map(|line| {
+            let (call, observed_uuid) = line.rsplit_once(' ').unwrap();
+            assert_eq!(observed_uuid, uuid);
+            call
+        })
+        .collect();
+    assert_eq!(calls, expected);
+}
+
+#[test]
+fn failed_verify_up_backs_out_same_stage_or_farther_across_cli_processes() {
+    for target in [2, 1] {
+        let workspace = Workspace::from_fixture();
+        observe_roles(&workspace);
+        fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
+        let first = move_to(&workspace, "up", 3);
+        assert!(!first.status.success(), "{}", output_text(&first));
+        assert!(output_text(&first).contains("verify-up exited with status 23"));
+        assert_checkpoint(&workspace, 2, Some(("up", 3)));
+        let uuid = checkpoint(&workspace).uuid.unwrap();
+        assert_eq!(
+            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            b"hello to you"
+        );
+
+        let reverse = move_to(&workspace, "down", target);
+        assert!(reverse.status.success(), "{}", output_text(&reverse));
+        assert_checkpoint(&workspace, target as usize, None);
+        assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
+        assert_eq!(
+            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            if target == 2 { &b"hello"[..] } else { &b""[..] }
+        );
+        let mut expected = vec![
+            "1 up",
+            "1 verify-up",
+            "2 up",
+            "2 verify-up",
+            "3 up",
+            "3 verify-up",
+            "3 down",
+            "3 verify-down",
+        ];
+        if target == 1 {
+            expected.extend(["2 down", "2 verify-down"]);
+        }
+        assert_calls_and_uuid(&workspace, &expected, &uuid);
+    }
+}
+
+#[test]
+fn rollback_verifier_failure_persists_and_retries_only_check_before_walking_farther() {
+    let workspace = Workspace::from_fixture();
+    observe_roles(&workspace);
+    fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
+    fail_verifier_once(&workspace, "003-add-to-you", "verify-down");
+    assert!(!move_to(&workspace, "up", 3).status.success());
+    assert_checkpoint(&workspace, 2, Some(("up", 3)));
+    let uuid = checkpoint(&workspace).uuid.unwrap();
+    let reverse = move_to(&workspace, "down", 1);
+    assert!(!reverse.status.success(), "{}", output_text(&reverse));
+    assert!(output_text(&reverse).contains("verify-down exited with status 23"));
+    assert_checkpoint(&workspace, 2, Some(("down", 3)));
+    assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
+    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"hello");
+
+    let retry = move_to(&workspace, "down", 1);
+    assert!(retry.status.success(), "{}", output_text(&retry));
+    assert_checkpoint(&workspace, 1, None);
+    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"");
+    assert_calls_and_uuid(
+        &workspace,
+        &[
+            "1 up",
+            "1 verify-up",
+            "2 up",
+            "2 verify-up",
+            "3 up",
+            "3 verify-up",
+            "3 down",
+            "3 verify-down",
+            "3 verify-down",
+            "2 down",
+            "2 verify-down",
+        ],
+        &uuid,
+    );
+}
+
+#[test]
+fn pending_down_reverses_up_and_reverse_verification_is_resumable_across_processes() {
+    for fail_reverse_verifier in [false, true] {
+        let workspace = Workspace::from_fixture();
+        observe_roles(&workspace);
+        let up = move_to(&workspace, "up", 3);
+        assert!(up.status.success(), "{}", output_text(&up));
+        let uuid = checkpoint(&workspace).uuid.unwrap();
+        fail_verifier_once(&workspace, "003-add-to-you", "verify-down");
+        let down = move_to(&workspace, "down", 2);
+        assert!(!down.status.success(), "{}", output_text(&down));
+        assert_checkpoint(&workspace, 3, Some(("down", 3)));
+        if fail_reverse_verifier {
+            fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
+        }
+        let reverse = move_to(&workspace, "up", 3);
+        assert_eq!(
+            reverse.status.success(),
+            !fail_reverse_verifier,
+            "{}",
+            output_text(&reverse)
+        );
+        let mut expected = vec![
+            "1 up",
+            "1 verify-up",
+            "2 up",
+            "2 verify-up",
+            "3 up",
+            "3 verify-up",
+            "3 down",
+            "3 verify-down",
+            "3 up",
+            "3 verify-up",
+        ];
+        if fail_reverse_verifier {
+            assert_checkpoint(&workspace, 3, Some(("up", 3)));
+            let retry = move_to(&workspace, "up", 3);
+            assert!(retry.status.success(), "{}", output_text(&retry));
+            expected.push("3 verify-up");
+        }
+        assert_checkpoint(&workspace, 3, None);
+        assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
+        assert_eq!(
+            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            b"hello to you"
+        );
+        assert_calls_and_uuid(&workspace, &expected, &uuid);
+    }
 }

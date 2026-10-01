@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -19,7 +19,7 @@ Control Tower is a personal, local, migration-style workbench for user-owned exe
 
 The project is intentionally not an orchestration platform. No login, hosting service, scheduler, worker fleet, built-in HTTP/database action model, or DAG engine is part of the current identity.
 
-**The current CLI implementation is described in the maintained current design and [playbook evidence ledger](research/playbook-compliance.md).** Earlier design probes and discovery records remain historical evidence, not additional implementation requirements. Explicitly accepted decisions are called out separately from proposals.
+**The current CLI implementation is described in the maintained current design and [playbook evidence ledger](research/playbook-compliance.md).** The later [run-semantics validation](research/run-semantics-validation.md) records decision alignment, active-transition reversal, and executed test evidence. Earlier design probes and discovery records remain historical evidence, not additional implementation requirements. Explicitly accepted decisions are called out separately from proposals.
 
 ## Start here
 

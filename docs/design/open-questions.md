@@ -4,7 +4,7 @@ title: Open questions and validation
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -54,6 +54,12 @@ Validate that:
 - process execution stays behind an outer capability boundary,
 - SQLite remains an adapter detail,
 - the Entry executable owns explicit composition.
+
+## Executed implementation evidence
+
+The [run-semantics validation](../research/run-semantics-validation.md) now exercises the four-role fixture and minimal UUID handoff through deterministic Application tests and separate CLI processes using real SQLite and scripts. Active transitions support both matching-verifier retry and same-stage directional reversal; reverse verification failures remain resumable. Target walks resolve active work before crossing further stages.
+
+Filesystem-only authoring, Application-owned transition semantics and ports, explicit CLI composition, and separate database setup remain intact. The earlier [playbook ledger](../research/playbook-compliance.md) retains its architecture-pass provenance; later semantics evidence is recorded separately.
 
 ## Deferred edge cases
 

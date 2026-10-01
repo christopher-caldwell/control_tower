@@ -4,7 +4,7 @@ title: Use migration-style steps with verified completion
 type: decision
 status: accepted
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction
@@ -76,3 +76,7 @@ The runtime remains local and serial. It needs enough bookkeeping for completed 
 ## Documentation correction during discovery
 
 The source-review pass found obsolete memory-only session wording in this accepted record after SQLite had already been selected. That wording is corrected here to match the owner's later instruction, not to introduce a new storage decision. The first-discovery record preserves the finding and inspected baseline. The discovery closeout also moved mutation-failure recovery details out of the pre-implementation blocker set so the first vertical slice can be built before those edge cases are generalized.
+
+## Implementation validation
+
+The [October 1 run-semantics validation](../research/run-semantics-validation.md) maps this accepted directional decision to Application and test evidence. Matching-direction continuation retries only verification; opposite-direction movement runs the same active stage's opposite mutation and optional verifier, in either direction. The last completed position remains unchanged until verification succeeds, including while verifying a reverse action. This records implementation alignment without changing the decision or expanding failed-mutation recovery.

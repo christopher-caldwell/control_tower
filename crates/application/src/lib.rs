@@ -86,7 +86,8 @@ impl Stage {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct WorkbenchState {
-    /// Number of entries in the discovered ordered stage list that have completed.
+    /// Last accepted position in the discovered ordered stage list.
+    /// This remains unchanged while a directional verifier is pending.
     pub completed_stage_count: usize,
     /// The one opaque identifier currently handed to stage executables.
     pub uuid: Option<String>,
@@ -98,6 +99,8 @@ pub struct WorkbenchState {
 pub struct PendingTransition {
     /// Zero-based position in the ordered stage list.
     pub stage_index: usize,
+    /// Most recently successful mutation; the completed position may be on
+    /// either side of this stage while verification or reversal is outstanding.
     pub direction: Direction,
 }
 
@@ -145,10 +148,6 @@ pub enum TransitionFailure {
         role: ExecutableRole,
         error: Rc<ExecutableRunError>,
     },
-    ConflictingPendingTransition {
-        stage_number: u32,
-        direction: Direction,
-    },
     DirectionDoesNotReachTarget {
         direction: Direction,
     },
@@ -182,13 +181,6 @@ impl fmt::Display for TransitionFailure {
                     "could not start stage {stage_number} {role}: {error}"
                 )
             }
-            Self::ConflictingPendingTransition {
-                stage_number,
-                direction,
-            } => write!(
-                formatter,
-                "stage {stage_number} has an unfinished {direction} transition; retry that direction first"
-            ),
             Self::DirectionDoesNotReachTarget { direction } => write!(
                 formatter,
                 "the requested target is not reachable in the {direction} direction"
@@ -288,49 +280,37 @@ impl Workbench {
         let mut executions = Vec::new();
 
         if let Some(pending) = state.pending {
-            let target_matches_pending = match pending.direction {
-                Direction::Up => direction == Direction::Up && target_count > pending.stage_index,
-                Direction::Down => {
-                    direction == Direction::Down && target_count <= pending.stage_index
-                }
+            // Resolve the active stage toward the requested side before walking
+            // farther. The last completed position alone cannot select this action.
+            let target_is_reachable = match direction {
+                Direction::Up => target_count > pending.stage_index,
+                Direction::Down => target_count <= pending.stage_index,
             };
-            if !target_matches_pending {
-                let stage_number = stages[pending.stage_index].number;
+            if !target_is_reachable {
                 return Ok(MoveOutcome {
                     executions,
                     status: MoveStatus::Stopped {
                         state,
-                        failure: TransitionFailure::ConflictingPendingTransition {
-                            stage_number,
-                            direction: pending.direction,
-                        },
+                        failure: TransitionFailure::DirectionDoesNotReachTarget { direction },
                     },
                 });
             }
 
-            if !self.run_role(
+            let transition = PendingTransition {
+                stage_index: pending.stage_index,
+                direction,
+            };
+            if let Err(failure) = self.run_transition(
                 workspace_root,
                 &stages[pending.stage_index],
-                pending.direction,
-                true,
-                &state,
+                transition,
+                direction != pending.direction,
+                &mut state,
                 &mut executions,
             ) {
-                let failure = failure_for_last_execution(&executions);
                 return Ok(MoveOutcome {
                     executions,
                     status: MoveStatus::Stopped { state, failure },
-                });
-            }
-
-            finish_transition(&mut state, pending);
-            if let Err(message) = self.writes.record_checkpoint(&state) {
-                return Ok(MoveOutcome {
-                    executions,
-                    status: MoveStatus::Stopped {
-                        state,
-                        failure: TransitionFailure::StateCouldNotBeSaved(message),
-                    },
                 });
             }
         }
@@ -361,90 +341,20 @@ impl Workbench {
                 Direction::Up => state.completed_stage_count,
                 Direction::Down => state.completed_stage_count - 1,
             };
-            let stage = &stages[stage_index];
-            let mutation_role = ExecutableRole::for_direction(direction, false);
-            if stage.executable(mutation_role).is_none() {
-                return Ok(MoveOutcome {
-                    executions,
-                    status: MoveStatus::Stopped {
-                        state,
-                        failure: TransitionFailure::MissingExecutable {
-                            stage_number: stage.number,
-                            role: mutation_role,
-                        },
-                    },
-                });
-            }
-
-            if state.uuid.is_none() {
-                state.uuid = Some(Uuid::new_v4().to_string());
-                if let Err(message) = self.writes.record_checkpoint(&state) {
-                    return Ok(MoveOutcome {
-                        executions,
-                        status: MoveStatus::Stopped {
-                            state,
-                            failure: TransitionFailure::StateCouldNotBeSaved(message),
-                        },
-                    });
-                }
-            }
-
-            if !self.run_role(
+            if let Err(failure) = self.run_transition(
                 workspace_root,
-                stage,
-                direction,
-                false,
-                &state,
+                &stages[stage_index],
+                PendingTransition {
+                    stage_index,
+                    direction,
+                },
+                true,
+                &mut state,
                 &mut executions,
             ) {
-                let failure = failure_for_last_execution(&executions);
                 return Ok(MoveOutcome {
                     executions,
                     status: MoveStatus::Stopped { state, failure },
-                });
-            }
-
-            let verifier_role = ExecutableRole::for_direction(direction, true);
-            let transition = PendingTransition {
-                stage_index,
-                direction,
-            };
-            if stage.executable(verifier_role).is_some() {
-                state.pending = Some(transition);
-                if let Err(message) = self.writes.record_checkpoint(&state) {
-                    return Ok(MoveOutcome {
-                        executions,
-                        status: MoveStatus::Stopped {
-                            state,
-                            failure: TransitionFailure::StateCouldNotBeSaved(message),
-                        },
-                    });
-                }
-
-                if !self.run_role(
-                    workspace_root,
-                    stage,
-                    direction,
-                    true,
-                    &state,
-                    &mut executions,
-                ) {
-                    let failure = failure_for_last_execution(&executions);
-                    return Ok(MoveOutcome {
-                        executions,
-                        status: MoveStatus::Stopped { state, failure },
-                    });
-                }
-            }
-
-            finish_transition(&mut state, transition);
-            if let Err(message) = self.writes.record_checkpoint(&state) {
-                return Ok(MoveOutcome {
-                    executions,
-                    status: MoveStatus::Stopped {
-                        state,
-                        failure: TransitionFailure::StateCouldNotBeSaved(message),
-                    },
                 });
             }
         }
@@ -488,13 +398,8 @@ impl Workbench {
         }
         if let Some(pending) = state.pending {
             let consistent = pending.stage_index < stage_count
-                && match pending.direction {
-                    Direction::Up => pending.stage_index == state.completed_stage_count,
-                    Direction::Down => {
-                        state.completed_stage_count > 0
-                            && pending.stage_index + 1 == state.completed_stage_count
-                    }
-                };
+                && (pending.stage_index == state.completed_stage_count
+                    || pending.stage_index + 1 == state.completed_stage_count);
             if !consistent {
                 return Err(StatusError::InvalidState(
                     "pending transition does not match the completed stage position".to_owned(),
@@ -507,6 +412,56 @@ impl Workbench {
             ));
         }
         Ok(state)
+    }
+
+    fn run_transition(
+        &self,
+        workspace_root: &Path,
+        stage: &Stage,
+        transition: PendingTransition,
+        run_mutation: bool,
+        state: &mut WorkbenchState,
+        executions: &mut Vec<ExecutionEvent>,
+    ) -> Result<(), TransitionFailure> {
+        let direction = transition.direction;
+        if run_mutation {
+            let role = ExecutableRole::for_direction(direction, false);
+            if stage.executable(role).is_none() {
+                return Err(TransitionFailure::MissingExecutable {
+                    stage_number: stage.number,
+                    role,
+                });
+            }
+            if state.uuid.is_none() {
+                state.uuid = Some(Uuid::new_v4().to_string());
+                self.writes
+                    .record_checkpoint(state)
+                    .map_err(TransitionFailure::StateCouldNotBeSaved)?;
+            }
+            if !self.run_role(workspace_root, stage, direction, false, state, executions) {
+                // A failed reverse mutation does not replace the previously
+                // accepted checkpoint or infer any external recovery state.
+                return Err(failure_for_last_execution(executions));
+            }
+        }
+
+        let verifier_role = ExecutableRole::for_direction(direction, true);
+        if stage.executable(verifier_role).is_some() {
+            if run_mutation {
+                state.pending = Some(transition);
+                self.writes
+                    .record_checkpoint(state)
+                    .map_err(TransitionFailure::StateCouldNotBeSaved)?;
+            }
+            if !self.run_role(workspace_root, stage, direction, true, state, executions) {
+                return Err(failure_for_last_execution(executions));
+            }
+        }
+
+        finish_transition(state, transition);
+        self.writes
+            .record_checkpoint(state)
+            .map_err(TransitionFailure::StateCouldNotBeSaved)
     }
 
     fn run_role(

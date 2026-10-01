@@ -5,7 +5,7 @@ type: research
 status: recorded
 discovery_status: handoff-ready
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 verified_on: '2026-09-30'
 started_at: '2026-09-30T22:21:04Z'
 owner: christopher-caldwell
@@ -115,3 +115,7 @@ The owner requested that the first implementation be allowed to answer remaining
 This collaborative Discovery source is therefore ready for packaging with no blockers. The implementation handoff should preserve the agreed v0 behavior and UUID-file acceptance fixture, while leaving deferred failure-recovery details outside binding authority.
 
 No application implementation or runtime fixture execution occurred during this Discovery; those become Build evidence.
+
+## Later implementation evidence
+
+The acceptance exercises above remain prospective observations from the September 30 source-review baseline. The separate [October 1 run-semantics validation](run-semantics-validation.md) records executed Application, SQLite and CLI evidence, including failed verify-up backout and reverse-verifier retry. It does not retroactively turn this discovery into a runtime test or change its inspected baseline.
