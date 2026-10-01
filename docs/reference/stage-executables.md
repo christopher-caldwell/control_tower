@@ -51,7 +51,7 @@ The role filenames are exact: `up`, `down`, `verify-up`, `verify-down`. A file c
 
 Each stage must contain at least one mutation (`up` or `down`). A verifier requires its matching mutation file. A missing mutation makes traversal in that direction unavailable. Missing verifiers need no placeholder: successful mutation is sufficient when that directional verifier is absent.
 
-Files must be regular executable files. For scripts, supply a valid shebang and install the interpreter yourself:
+Role paths must be regular files; execute permission is required when a role is launched. Discovery/status can still succeed when an execute bit is absent; a role path that is a directory fails discovery. For scripts, supply a valid shebang and install the interpreter yourself:
 
 ```sh
 #!/bin/sh
@@ -73,6 +73,8 @@ Each role runs with **its own stage directory** as the working directory, not th
 
 The runner adds no command-line arguments to a role. Its current implementation captures stdout/stderr and gives the child no interactive stdin. Write noninteractive scripts; do not depend on a terminal prompt. Other environment variables are inherited from the launching process, with the five variables below set by Control Tower.
 
+The CLI flushes the stage/role identity before attempting invocation. It shows captured output and the result when that role returns, before attempting the next. Bytes are buffered for one role, with stdout/stderr displayed separately and a framing newline if a stream lacks one. Application retains the original bytes; stdout is never parsed into state. Ordering between the two streams is not a chronological log.
+
 | Variable | Value |
 | --- | --- |
 | `CONTROL_TOWER_WORKSPACE` | Canonical absolute path to the selected workspace. |
@@ -85,17 +87,21 @@ A verifier receives the direction it verifies (`up` for `verify-up`, `down` for 
 
 ### What the UUID does and does not mean
 
-**The current implementation generates the UUID in Control Tower before the first mutation of a run. The stage does not generate or publish it.** The bundled example uses that UUID as a filename. After the workspace successfully settles at baseline 0, the UUID is cleared; a later run gets a new one. It remains available while verification of a return to baseline is pending.
+**The current implementation generates and records the UUID in Control Tower before the first mutation of a run. The stage does not generate or publish it.** The UUID-file example uses that UUID as a filename. After the workspace successfully records settlement at baseline 0, the UUID is cleared; a later run gets a new one. It remains available while verification of a return to baseline is pending. A failed first mutation can retain the UUID with baseline/no pending check; a down-0 no-op does not clear it, and retry reuses it.
 
 This proves a minimal runner-supplied identifier handoff. There is no supported `WB_OUTPUT`, `DAGU_OUTPUT_FILE`, generic context-patch channel, or parser that turns script stdout into persisted values. A script printing an API-created ID does not automatically pass it to the next stage. Such scripts can deliberately share their own workspace files, but that storage/cleanup is author-owned, not a managed Control Tower output protocol.
 
 Earlier discovery explored stage-produced IDs and richer context views. Those are not the shipped process interface. See [ADR-0003's implementation note](../decisions/0003-session-state-and-process-io.md#current-implementation-observation).
+
+The optional [generated-ID example](../../examples/generated-id/README.md) uses Python's standard-library SQLite client and an author-owned JSON file to carry the database-generated record ID through two stages. Its application database is separate from Control Tower's checkpoint file. Its checks open read-only connections and never initialize or repair the fixture. This is an ordinary authoring pattern, not a new runner protocol.
 
 ## Success, failure, and trust
 
 An exit code of 0 accepts a role. A nonzero mutation stops the walk before its verifier or later stages. A successful mutation followed by failed verification remains unfinished; [navigation](../guides/verification-and-navigation.md) describes explicit retry and reversal.
 
 Write fixture verifiers to observe, not repair, the state they check. Control Tower cannot enforce that convention. Likewise, `down` is not guaranteed undo: any side effects and compensating operations belong to the script author.
+
+Optional roles are discovered again on each invocation. Editing a pending check changes the next check; removing it can accept the pending transition without replaying its mutation or checking anything. Finish/clean runs before structural stage edits. A later missing mutation stops traversal after earlier stages may already have been accepted; the route is not atomic or fully preflighted.
 
 Scripts run with your user permissions and inherited environment, including any credentials you supply. Local-only does not make execution sandboxed or offline. Read scripts before running an unfamiliar workspace.
 

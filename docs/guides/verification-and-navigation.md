@@ -16,7 +16,9 @@ sources:
 
 # Navigate and retry verification
 
-A **completed stage** is Control Tower's last accepted position. A **pending transition** means a mutation succeeded but its verifier has not succeeded. Both facts can be true at once; the stored position is not a claim that the external system remained unchanged.
+A **completed stage** is Control Tower's last accepted, recorded position. A **pending transition** records that a mutation succeeded but its verifier has not succeeded. Both facts can be true at once; the stored position is not a claim that the external system remained unchanged.
+
+Movement shows the workspace/target, then a flushed start and captured result for each actual role before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one role, so the start identity may be the only output during a long operation. Success of a role does not by itself confirm the following checkpoint write.
 
 ## Move to a target
 
@@ -57,6 +59,8 @@ This is representative output, not a stable machine-readable format. The file ma
 | Back out stage 3 | `down --stage 2` | Stage 3/down, then its optional verify-down. |
 
 Changing application code does not itself redo the mutation. If you need to exercise the changed mutation, back out first and then run up again.
+
+The failed movement prints runnable retry/backout commands using the current executable and workspace, with shell quoting for spaces/apostrophes. Their targets resolve only this active stage. For sparse stages 10/200, pending 200/up suggests up 200 or down 10; pending 200/down suggests down 10 or up 200. The lower side of the first stage is 0. A reverse command is offered only when that mutation exists.
 
 Asking for `down --stage 1` first resolves stage 3's reversal, then reverses stage 2. It does not skip the unfinished stage.
 
@@ -120,6 +124,8 @@ chmod +x "$check"
 
 Only stage 3/verify-up should appear in this invocation's role results. There is no standalone `verify` subcommand.
 
+Checks are optional and discovered afresh. Editing/removing a pending verifier changes what the next invocation runs; removing it can accept without a check or mutation replay. Preserve the check when you intend a verifier-only retry. An already settled target runs no roles and says so; it does not reverify external state.
+
 When finished with either path:
 
 ```sh
@@ -138,6 +144,10 @@ The UUID stays available in all these cases, including a pending return to basel
 ## A mutation failure is not a verifier failure
 
 If `up` or `down` itself exits nonzero, Control Tower reports the failure and stops before the verifier or later stages. It does not infer whether the script partially changed something, automatically back it out, or provide a dedicated recovery flow. A failed reverse mutation can leave the prior pending checkpoint recorded; that is not evidence about the external state.
+
+Verifier retry/backout recipes are printed only for this invocation's failed verifier. After a mutation or save failure, inspect author-owned effects. In particular, a partially effective failed first up can leave baseline, a retained UUID and no pending check. Down 0 then runs no cleanup; retrying up can repeat effects with the same UUID.
+
+After a save failure, the movement separates the last confirmed checkpoint from the attempted update, preserves role results, and stops. A pending-save failure can retain a successful mutation with no recorded pending check; a final-save failure can retain a pending check after the verifier succeeded. Those cases have different retry effects. No automatic retry/reconciliation is provided.
 
 A Rust-process crash or SQLite failure likewise carries no external-state reconciliation guarantee. Do not treat a saved checkpoint as a transaction around an API/database mutation. See [troubleshooting](troubleshooting.md).
 

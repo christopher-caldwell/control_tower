@@ -24,6 +24,7 @@ Control Tower is a local CLI workbench for user-owned executable stages. Start w
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |
 | See each stage's effect | [Three-stage UUID-file walkthrough](../examples/uuid-file/README.md) |
+| Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/generated-id/README.md) (Python 3) |
 | Write your own stages | [Create a workspace](guides/creating-a-workspace.md) |
 | Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
 | Look up commands and database operations | [CLI reference](reference/cli.md) |
@@ -46,6 +47,8 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 
 [Playbook compliance](research/playbook-compliance.md) records the architecture correction. [Run-semantics validation](research/run-semantics-validation.md) records the later behavior correction and executed evidence. Neither is a replacement for the accepted decisions or a universal certification of future changes.
 
+[Guided-usage findings and core refinement](research/2026-10-01-guided-usage-findings.md) retains all F01–F15 findings/corrections and distinguishes inherited experiments from newly executed phase acceptance. Deferred entries are retained knowledge, not additional acceptance criteria or an implementation backlog for this round.
+
 [Open questions](design/open-questions.md) tracks deferred work, not extra first-use prerequisites. The [discovery brief](design/discovery-brief.md), [first discovery record](research/discovery-01.md), [earlier three-step probe](design/three-step-workspace.md) and [initial history](history/2026-09-30-initial-design.md) preserve historical context. Do not use old `steps/` layouts, memory-only assumptions, or checkpoint/patch hypotheses there as current CLI instructions.
 
 ## Documentation structure
@@ -61,7 +64,7 @@ docs/
   history/        dated discussions and corrections
 ```
 
-The root README is the short entry point. `examples/uuid-file/README.md` belongs beside its runnable scripts. All deeper project guidance stays under `docs/`. There is no generated documentation site or per-folder index to maintain.
+The root README is the short entry point. Each example README belongs beside its runnable scripts. All deeper project guidance stays under `docs/`. There is no generated documentation site or per-folder index to maintain.
 
 ## Authority and maintenance
 
