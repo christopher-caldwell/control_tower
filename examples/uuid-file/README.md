@@ -7,8 +7,11 @@ Run from the repository root, using a copy so the example stays clean:
 ```sh
 workspace="$(mktemp -d)"
 cp -R examples/uuid-file/. "$workspace/"
-cargo run -p control-tower -- up --workspace "$workspace" --stage 3
-cargo run -p control-tower -- down --workspace "$workspace" --stage 0
+just db-bootstrap-local "$workspace"
+just db-migrate-local "$workspace"
+just db-verify-local "$workspace"
+cargo run -p control-tower-cli -- up --workspace "$workspace" --stage 3
+cargo run -p control-tower-cli -- down --workspace "$workspace" --stage 0
 ```
 
 The stages progress through absent → empty → `hello` → `hello to you`; each down executable removes only its own contribution. The verifiers check the state after each directional mutation.

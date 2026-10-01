@@ -61,7 +61,7 @@ CLI adapter
   |
   | invokes application use cases
   v
-application/core
+Application
   |
   +--> process execution port/adapter
   |
@@ -85,7 +85,7 @@ See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
 The **behavioral logic must not depend on in-memory storage**.
 
-Control Tower's application/core layer owns a semantic outbound port for the session/workbench state it needs. A concrete storage adapter implements that port.
+Control Tower's Application layer owns a semantic outbound port for the session/workbench state it needs. A concrete storage adapter implements that port.
 
 Conceptually:
 
@@ -125,7 +125,7 @@ control_tower down ...
 
 This is a product-ergonomics requirement, not a durability initiative.
 
-The application/core must remain storage-independent. SQLite-specific schema, queries, transactions, and mapping stay inside the adapter.
+The Application must remain storage-independent. SQLite-specific schema, queries, transactions, and mapping stay inside the adapter.
 
 A memory adapter may still be useful for tests, but it should not define v0 runtime behavior.
 
@@ -137,37 +137,44 @@ If the Rust process crashes during an operation, Control Tower makes no promise 
 
 Do not add crash journals, recovery protocols, external-state reconciliation, or structural-drift machinery merely because SQLite exists.
 
-## Composition and dependency direction
+## Implemented package boundaries and persistence
 
-The intended dependency direction is inward:
+The correction pass uses Rust Simpler Playbook revision `8d2ff6d906676020d671ba3b0674c0f8b58d9414`. The [rule-level evidence ledger](../research/playbook-compliance.md) records the assessment against implementation base `f967bda7` and the correction commit containing that ledger.
 
-~~~text
-application/core
-    owns state semantics and outbound storage port
-          ^
-          |
-adapters
-    implement the port
-          ^
-          |
-entry point
-    constructs concrete adapter and injects it
-~~~
+```text
+control-tower-cli (binary-only Entry)
+  -> control-tower-application
+  -> control-tower-database -> control-tower-application
+  -> control-tower-infrastructure -> control-tower-application
+```
 
-The entry point is the composition root.
+Database owns SQLite adapters, SQL/mapping, bootstrap, migrations and its separate operational executable. Infrastructure owns the `stage_discovery` and `executable_runner` capabilities. Neither constructs Application services or depends on its peer. `crates/cli/src/deps.rs` explicitly constructs four exclusively owned boxed ports and `Workbench`. No DI framework, service locator, generic dependency bag or shared composition package is present.
 
-Do not introduce:
+Domain is currently absent deliberately. `Direction` and `ExecutableRole` describe the invocation protocol; `Stage` describes discovered executable paths; `WorkbenchState` and `PendingTransition` describe the orchestrator's checkpoint and outstanding verification. Their validation checks whether that checkpoint can drive the discovered stage sequence. All current behavior sequences external capabilities or validates their orchestration inputs/results; no separate entity lifecycle, business eligibility, or Domain rule is implemented. Naming these records does not by itself earn a Domain package. If later features introduce genuine Domain meaning, the playbook requires its own package and foundational dependency assessment.
 
-- a DI framework,
-- service locator,
-- generic Repository<T>/Store<T>,
-- adapter selection inside application logic,
-- infrastructure types crossing into the core,
-- a bootstrap/container abstraction merely to avoid explicit construction.
+Application owns `WorkbenchQueries::read_checkpoint() -> Result<Option<WorkbenchState>, PersistenceError>` and `WorkbenchWrites::record_checkpoint(&WorkbenchState) -> Result<(), PersistenceError>`. An absent checkpoint is normal absence. Recording a checkpoint is one independently atomic singleton upsert, with no Application work between persistence statements. External scripts and multiple checkpoints are intentionally not one atomic transaction; no Store/UoW is earned. A stopped outcome retains the existing attempted in-memory state reporting behavior and does not establish that a failed checkpoint write persisted.
 
-Use explicit constructor injection. If a dependency has one owner, exclusive ownership is preferable; shared ownership such as Arc should only appear when independent owners actually require it.
+The Query adapter opens a read-only handle; the Write adapter opens an existing read-write handle to the same local primary file. No replica or cross-row/multi-instance guarantee is claimed.
 
-Exact crate/module layout and pointer types can follow implementation pressure. The dependency rule is the important part.
+### SQLite library and SQL default departure
+
+`rusqlite` is retained as a **DEFAULT DEVIATION WITH JUSTIFICATION** from SQLx implementation/checking/tooling defaults. The actual program is synchronous: short-lived CLI processes discover files, run one child process at a time, and independently read/upsert one local checkpoint row. It has no async executor, concurrent request workload, server database, pool, or Application transaction. SQLx would require an executor and async adapter/port plumbing (or synchronous wrappers around that executor), plus a checked-schema/offline preparation workflow for a database that is created separately in each user workspace. That adds runtime/build tooling with no needed pooling or async-I/O benefit here. The cost of retaining rusqlite is losing compile-time query/schema checking; real SQLite mapping, absence, source-error and legacy migration tests exercise that boundary. This choice must be reconsidered if the actual workload changes.
+
+Production Query/Write SQL remains external and feature-local under `crates/database/src/workbench/sql/`. Mapping reconciles SQLite integers/text with Application checkpoint values. Operational history/version inspection SQL is confined to Database operations; no SQL or driver type enters Application.
+
+### Explicit local setup and migrations
+
+`just db-bootstrap-local <workspace>` provisions the directory/file only. `just db-migrate-local <workspace>` requires that provisioned file, applies `migrations/0001-workbench-state.sql` in a SQLite transaction, and records version/history. Version 1 also adopts the original unversioned table without altering its shape or saved rows. Rerunning migration at version 1 is a no-op plus history verification. `just db-verify-local <workspace>` opens read-only and inspects supported history/version. All three invoke the Database-owned `control-tower-db` operational binary; ordinary `up`, `down`, and `status` never call them.
+
+These commands accept an explicit local workspace, not an ambient database URL. There is no hosted/live database workflow. PostgreSQL logins, NOLOGIN object owners, role grants/default privileges and role assumption do not apply to SQLite. The read-write SQLite connection has file access, not a server role that denies DDL; separation of schema operations is architectural, and no server privilege isolation is claimed. Future hosted database operations would need separate intentional live inputs and their applicable ownership/privilege evidence.
+
+### Error boundaries and inputs
+
+Application owns opaque `PersistenceError`, `StageDiscoveryError` and `ExecutableRunError`, each retaining an underlying `Error` source. Real rusqlite and I/O errors are wrapped intact by their adapters; diagnostic context may add a source-preserving outer wrapper. Synthetic validation failures have typed message sources because no driver error exists to retain. Application never downcasts sources for behavior.
+
+`status` exposes `StatusError`; `move_to` exposes `MoveToError`, with its additional invalid-target meaning. Process-start and checkpoint-write errors inside a stopped move also retain sources. One execution failure is referenced by both the execution event and stopped outcome using `Rc`, matching that actual single-threaded diagnostic sharing; injected dependencies remain `Box`, with no `Arc` introduced. Errors are not required to fabricate equality or clone driver sources.
+
+`move_to` takes `MoveToInput` with public workspace, direction and target fields. Status has one direct workspace argument. Named result types and the existing UUID generation/handoff remain intact. This pass does not correct the known failed-verify-up backout semantics.
 
 ## Context checkpoints remain a domain/application concern
 

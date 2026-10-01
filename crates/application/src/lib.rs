@@ -1,4 +1,8 @@
 use std::fmt;
+use std::rc::Rc;
+
+mod errors;
+pub use errors::*;
 use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
@@ -116,14 +120,16 @@ pub struct ProcessOutput {
     pub stderr: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct ExecutionEvent {
     pub stage_number: u32,
     pub role: ExecutableRole,
-    pub result: Result<ProcessOutput, String>,
+    /// The event and stopped outcome share this diagnostic in this synchronous
+    /// result. Dependencies themselves remain exclusively owned Boxes.
+    pub result: Result<ProcessOutput, Rc<ExecutableRunError>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum TransitionFailure {
     MissingExecutable {
         stage_number: u32,
@@ -137,7 +143,7 @@ pub enum TransitionFailure {
     ExecutableCouldNotStart {
         stage_number: u32,
         role: ExecutableRole,
-        message: String,
+        error: Rc<ExecutableRunError>,
     },
     ConflictingPendingTransition {
         stage_number: u32,
@@ -146,7 +152,7 @@ pub enum TransitionFailure {
     DirectionDoesNotReachTarget {
         direction: Direction,
     },
-    StateCouldNotBeSaved(String),
+    StateCouldNotBeSaved(PersistenceError),
 }
 
 impl fmt::Display for TransitionFailure {
@@ -169,11 +175,11 @@ impl fmt::Display for TransitionFailure {
             Self::ExecutableCouldNotStart {
                 stage_number,
                 role,
-                message,
+                error,
             } => {
                 write!(
                     formatter,
-                    "could not start stage {stage_number} {role}: {message}"
+                    "could not start stage {stage_number} {role}: {error}"
                 )
             }
             Self::ConflictingPendingTransition {
@@ -194,7 +200,17 @@ impl fmt::Display for TransitionFailure {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl std::error::Error for TransitionFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::StateCouldNotBeSaved(error) => Some(error),
+            Self::ExecutableCouldNotStart { error, .. } => Some(error.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum MoveStatus {
     Complete(WorkbenchState),
     Stopped {
@@ -203,7 +219,7 @@ pub enum MoveStatus {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct MoveOutcome {
     pub executions: Vec<ExecutionEvent>,
     pub status: MoveStatus,
@@ -215,67 +231,57 @@ pub struct WorkbenchStatus {
     pub stages: Vec<Stage>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum WorkbenchError {
-    StageDiscovery(String),
-    StateStore(String),
-    InvalidState(String),
-    InvalidTarget(String),
-}
-
-impl fmt::Display for WorkbenchError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::StageDiscovery(message) => write!(formatter, "stage discovery failed: {message}"),
-            Self::StateStore(message) => write!(formatter, "workbench state failed: {message}"),
-            Self::InvalidState(message) => {
-                write!(formatter, "invalid stored workbench state: {message}")
-            }
-            Self::InvalidTarget(message) => write!(formatter, "invalid target: {message}"),
-        }
-    }
-}
-
-impl std::error::Error for WorkbenchError {}
-
 pub trait StageDiscovery {
-    fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, String>;
+    fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
 }
 
-pub trait WorkbenchStateStore {
-    fn load(&self) -> Result<Option<WorkbenchState>, String>;
-    fn save(&self, state: &WorkbenchState) -> Result<(), String>;
+pub trait WorkbenchQueries {
+    fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError>;
+}
+
+pub trait WorkbenchWrites {
+    /// Record one orchestration checkpoint as an independently atomic mutation.
+    fn record_checkpoint(&self, checkpoint: &WorkbenchState) -> Result<(), PersistenceError>;
+}
+
+pub struct MoveToInput<'a> {
+    pub workspace_root: &'a Path,
+    pub direction: Direction,
+    pub target_stage: u32,
 }
 
 pub trait ExecutableRunner {
-    fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, String>;
+    fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError>;
 }
 
 pub struct Workbench {
     stage_discovery: Box<dyn StageDiscovery>,
-    state_store: Box<dyn WorkbenchStateStore>,
+    queries: Box<dyn WorkbenchQueries>,
+    writes: Box<dyn WorkbenchWrites>,
     executable_runner: Box<dyn ExecutableRunner>,
 }
 
 impl Workbench {
     pub fn new(
         stage_discovery: Box<dyn StageDiscovery>,
-        state_store: Box<dyn WorkbenchStateStore>,
+        queries: Box<dyn WorkbenchQueries>,
+        writes: Box<dyn WorkbenchWrites>,
         executable_runner: Box<dyn ExecutableRunner>,
     ) -> Self {
         Self {
             stage_discovery,
-            state_store,
+            queries,
+            writes,
             executable_runner,
         }
     }
 
-    pub fn move_to(
-        &self,
-        workspace_root: &Path,
-        direction: Direction,
-        target_stage: u32,
-    ) -> Result<MoveOutcome, WorkbenchError> {
+    pub fn move_to(&self, input: MoveToInput<'_>) -> Result<MoveOutcome, MoveToError> {
+        let MoveToInput {
+            workspace_root,
+            direction,
+            target_stage,
+        } = input;
         let stages = self.load_stages(workspace_root)?;
         let target_count = target_count(&stages, target_stage)?;
         let mut state = self.load_state(stages.len())?;
@@ -318,7 +324,7 @@ impl Workbench {
             }
 
             finish_transition(&mut state, pending);
-            if let Err(message) = self.state_store.save(&state) {
+            if let Err(message) = self.writes.record_checkpoint(&state) {
                 return Ok(MoveOutcome {
                     executions,
                     status: MoveStatus::Stopped {
@@ -372,7 +378,7 @@ impl Workbench {
 
             if state.uuid.is_none() {
                 state.uuid = Some(Uuid::new_v4().to_string());
-                if let Err(message) = self.state_store.save(&state) {
+                if let Err(message) = self.writes.record_checkpoint(&state) {
                     return Ok(MoveOutcome {
                         executions,
                         status: MoveStatus::Stopped {
@@ -405,7 +411,7 @@ impl Workbench {
             };
             if stage.executable(verifier_role).is_some() {
                 state.pending = Some(transition);
-                if let Err(message) = self.state_store.save(&state) {
+                if let Err(message) = self.writes.record_checkpoint(&state) {
                     return Ok(MoveOutcome {
                         executions,
                         status: MoveStatus::Stopped {
@@ -432,7 +438,7 @@ impl Workbench {
             }
 
             finish_transition(&mut state, transition);
-            if let Err(message) = self.state_store.save(&state) {
+            if let Err(message) = self.writes.record_checkpoint(&state) {
                 return Ok(MoveOutcome {
                     executions,
                     status: MoveStatus::Stopped {
@@ -449,33 +455,33 @@ impl Workbench {
         })
     }
 
-    pub fn status(&self, workspace_root: &Path) -> Result<WorkbenchStatus, WorkbenchError> {
+    pub fn status(&self, workspace_root: &Path) -> Result<WorkbenchStatus, StatusError> {
         let stages = self.load_stages(workspace_root)?;
         let state = self.load_state(stages.len())?;
         Ok(WorkbenchStatus { state, stages })
     }
 
-    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, WorkbenchError> {
+    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StatusError> {
         let stages = self
             .stage_discovery
             .discover(workspace_root)
-            .map_err(WorkbenchError::StageDiscovery)?;
+            .map_err(StatusError::StageDiscovery)?;
         if stages.is_empty() {
-            return Err(WorkbenchError::StageDiscovery(
-                "no numbered stage directories were found under `stages/`".to_owned(),
-            ));
+            return Err(StatusError::StageDiscovery(StageDiscoveryError::message(
+                "no numbered stage directories were found under `stages/`",
+            )));
         }
         Ok(stages)
     }
 
-    fn load_state(&self, stage_count: usize) -> Result<WorkbenchState, WorkbenchError> {
+    fn load_state(&self, stage_count: usize) -> Result<WorkbenchState, StatusError> {
         let state = self
-            .state_store
-            .load()
-            .map_err(WorkbenchError::StateStore)?
+            .queries
+            .read_checkpoint()
+            .map_err(StatusError::Persistence)?
             .unwrap_or_default();
         if state.completed_stage_count > stage_count {
-            return Err(WorkbenchError::InvalidState(format!(
+            return Err(StatusError::InvalidState(format!(
                 "{} completed stages exceed the {} discovered stages",
                 state.completed_stage_count, stage_count
             )));
@@ -490,13 +496,13 @@ impl Workbench {
                     }
                 };
             if !consistent {
-                return Err(WorkbenchError::InvalidState(
+                return Err(StatusError::InvalidState(
                     "pending transition does not match the completed stage position".to_owned(),
                 ));
             }
         }
         if (state.completed_stage_count > 0 || state.pending.is_some()) && state.uuid.is_none() {
-            return Err(WorkbenchError::InvalidState(
+            return Err(StatusError::InvalidState(
                 "the workbench has stage state but no UUID".to_owned(),
             ));
         }
@@ -517,7 +523,9 @@ impl Workbench {
             executions.push(ExecutionEvent {
                 stage_number: stage.number,
                 role,
-                result: Err("executable is missing".to_owned()),
+                result: Err(Rc::new(ExecutableRunError::message(
+                    "executable is missing",
+                ))),
             });
             return false;
         };
@@ -544,7 +552,7 @@ impl Workbench {
                 executions.push(ExecutionEvent {
                     stage_number: stage.number,
                     role,
-                    result: Err(message),
+                    result: Err(Rc::new(message)),
                 });
                 false
             }
@@ -552,7 +560,7 @@ impl Workbench {
     }
 }
 
-fn target_count(stages: &[Stage], target_stage: u32) -> Result<usize, WorkbenchError> {
+fn target_count(stages: &[Stage], target_stage: u32) -> Result<usize, MoveToError> {
     if target_stage == 0 {
         return Ok(0);
     }
@@ -560,7 +568,7 @@ fn target_count(stages: &[Stage], target_stage: u32) -> Result<usize, WorkbenchE
         .iter()
         .position(|stage| stage.number == target_stage)
         .map(|index| index + 1)
-        .ok_or_else(|| WorkbenchError::InvalidTarget(format!("stage {target_stage} was not found")))
+        .ok_or_else(|| MoveToError::InvalidTarget(format!("stage {target_stage} was not found")))
 }
 
 fn finish_transition(state: &mut WorkbenchState, transition: PendingTransition) {
@@ -576,15 +584,15 @@ fn finish_transition(state: &mut WorkbenchState, transition: PendingTransition) 
 
 fn failure_for_last_execution(executions: &[ExecutionEvent]) -> TransitionFailure {
     let Some(event) = executions.last() else {
-        return TransitionFailure::StateCouldNotBeSaved(
-            "execution stopped without a process result".to_owned(),
-        );
+        return TransitionFailure::StateCouldNotBeSaved(PersistenceError::message(
+            "execution stopped without a process result",
+        ));
     };
     match &event.result {
         Err(message) => TransitionFailure::ExecutableCouldNotStart {
             stage_number: event.stage_number,
             role: event.role,
-            message: message.clone(),
+            error: Rc::clone(message),
         },
         Ok(output) => TransitionFailure::ExecutableFailed {
             stage_number: event.stage_number,

@@ -139,27 +139,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
-name = "control-tower"
+name = "control-tower-application"
 version = "0.1.0"
 dependencies = [
- "clap",
- "control-tower-adapters",
- "control-tower-application",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
-name = "control-tower-adapters"
+name = "control-tower-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "control-tower-application",
+ "control-tower-database",
+ "control-tower-infrastructure",
+]
+
+[[package]]
+name = "control-tower-database"
 version = "0.1.0"
 dependencies = [
  "control-tower-application",
  "rusqlite",
+ "thiserror",
 ]
 
 [[package]]
-name = "control-tower-application"
+name = "control-tower-infrastructure"
 version = "0.1.0"
 dependencies = [
- "uuid",
+ "control-tower-application",
+ "thiserror",
 ]
 
 [[package]]
@@ -385,6 +396,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]

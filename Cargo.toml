@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/application", "crates/adapters", "crates/cli"]
+members = ["crates/application", "crates/database", "crates/infrastructure", "crates/cli"]
 resolver = "2"
 
 [workspace.package]
@@ -9,7 +9,9 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 control-tower-application = { path = "crates/application" }
-control-tower-adapters = { path = "crates/adapters" }
+control-tower-database = { path = "crates/database" }
+control-tower-infrastructure = { path = "crates/infrastructure" }
+thiserror = "2"
 clap = { version = "4.5", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1.11", features = ["v4"] }

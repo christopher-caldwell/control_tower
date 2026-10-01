@@ -56,7 +56,7 @@ The port belongs beside the application capability that needs it, not in infrast
 
 The interface should describe Control Tower's semantic state needs, not generic persistence mechanics.
 
-Prefer a name such as SessionStateStore / WorkbenchStateStore only if it matches the final capability language. Do not introduce a generic Repository<T>, Store<T>, or application-wide persistence abstraction.
+The original Store name was provisional. The pinned playbook assessment selects `WorkbenchQueries::read_checkpoint` and `WorkbenchWrites::record_checkpoint`, without a Store/UoW, because the existing callers independently read and record orchestration checkpoints. Do not introduce a generic Repository<T>, Store<T>, or application-wide persistence abstraction.
 
 Exact methods should be derived from the application use cases during implementation rather than designed as a generic CRUD surface now.
 
@@ -122,3 +122,7 @@ That seam earns its cost because it protects the most likely near-term change wh
 - IO/storage outward,
 - explicit dependency injection at the edge,
 - no framework machinery.
+
+## Implementation refinement from the compliance correction
+
+The concrete storage implementation now lives in `control-tower-database`; non-database adapters live in `control-tower-infrastructure`. CLI Entry explicitly composes both with Application. Database owns a separate local operational bootstrap/migration binary, and ordinary application startup only opens a previously initialized file. The current design documents the rusqlite default deviation, typed source-preserving error contracts, and intentional absence of a separate Domain concern. See [implemented architecture](../design/current-design.md#implemented-package-boundaries-and-persistence) and the [rule-level ledger](../research/playbook-compliance.md). Historical discovery statements remain historical.

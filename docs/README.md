@@ -19,7 +19,7 @@ Control Tower is a personal, local, migration-style workbench for user-owned exe
 
 The project is intentionally not an orchestration platform. No login, hosting service, scheduler, worker fleet, built-in HTTP/database action model, or DAG engine is part of the current identity.
 
-**This is a design baseline, not an implemented product or an approved implementation specification.** Explicitly accepted decisions are called out separately from proposals and design probes.
+**The current CLI implementation is described in the maintained current design and [playbook evidence ledger](research/playbook-compliance.md).** Earlier design probes and discovery records remain historical evidence, not additional implementation requirements. Explicitly accepted decisions are called out separately from proposals.
 
 ## Start here
 

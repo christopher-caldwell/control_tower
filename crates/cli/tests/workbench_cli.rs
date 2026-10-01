@@ -26,6 +26,10 @@ impl Workspace {
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/uuid-file"),
             &workspace,
         );
+        let database = workspace.join(".control_tower/state.sqlite3");
+        control_tower_database::operations::bootstrap(&database)
+            .expect("bootstrap fixture database");
+        control_tower_database::operations::migrate(&database).expect("migrate fixture database");
         Self(workspace)
     }
 
@@ -291,4 +295,21 @@ fn failed_mutation_stops_before_its_verifier_and_later_stages() {
     let status_text = String::from_utf8_lossy(&final_status.stdout);
     assert!(status_text.contains("Completed stage: 1"));
     assert!(!status_text.contains("Pending verification:"));
+}
+
+#[test]
+fn ordinary_cli_does_not_bootstrap_or_migrate() {
+    let workspace = Workspace::from_fixture();
+    fs::remove_dir_all(workspace.path().join(".control_tower")).unwrap();
+    let output = status(&workspace);
+    assert!(!output.status.success());
+    assert!(output_text(&output).contains("explicit local database setup"));
+    assert!(!workspace.path().join(".control_tower").exists());
+    let database = workspace.path().join(".control_tower/state.sqlite3");
+    control_tower_database::operations::bootstrap(&database).unwrap();
+    let output = move_to(&workspace, "up", 1);
+    assert!(!output.status.success());
+    assert!(output_text(&output).contains("schema is not initialized"));
+    assert!(uuid_file(&workspace).is_none());
+    assert!(control_tower_database::operations::verify(&database).is_err());
 }
