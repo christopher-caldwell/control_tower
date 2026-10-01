@@ -132,6 +132,24 @@ pub struct ExecutionEvent {
     pub result: Result<ProcessOutput, Rc<ExecutableRunError>>,
 }
 
+/// Synchronous observations surrounding an actual role attempt. Captured
+/// results remain in the outcome; observers do not decide navigation.
+pub enum ExecutionProgress<'a> {
+    Starting {
+        stage: &'a Stage,
+        role: ExecutableRole,
+    },
+    Finished {
+        stage: &'a Stage,
+        execution: &'a ExecutionEvent,
+    },
+}
+
+struct ExecutionLog<'a> {
+    executions: Vec<ExecutionEvent>,
+    observe: &'a mut dyn FnMut(ExecutionProgress<'_>),
+}
+
 #[derive(Debug)]
 pub enum TransitionFailure {
     MissingExecutable {
@@ -151,7 +169,10 @@ pub enum TransitionFailure {
     DirectionDoesNotReachTarget {
         direction: Direction,
     },
-    StateCouldNotBeSaved(PersistenceError),
+    StateCouldNotBeSaved {
+        error: PersistenceError,
+        attempted: WorkbenchState,
+    },
 }
 
 impl fmt::Display for TransitionFailure {
@@ -185,8 +206,8 @@ impl fmt::Display for TransitionFailure {
                 formatter,
                 "the requested target is not reachable in the {direction} direction"
             ),
-            Self::StateCouldNotBeSaved(message) => {
-                write!(formatter, "could not save workbench state: {message}")
+            Self::StateCouldNotBeSaved { error, .. } => {
+                write!(formatter, "could not save workbench state: {error}")
             }
         }
     }
@@ -195,7 +216,7 @@ impl fmt::Display for TransitionFailure {
 impl std::error::Error for TransitionFailure {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::StateCouldNotBeSaved(error) => Some(error),
+            Self::StateCouldNotBeSaved { error, .. } => Some(error),
             Self::ExecutableCouldNotStart { error, .. } => Some(error.as_ref()),
             _ => None,
         }
@@ -206,6 +227,8 @@ impl std::error::Error for TransitionFailure {
 pub enum MoveStatus {
     Complete(WorkbenchState),
     Stopped {
+        /// Latest checkpoint confirmed by a successful read or write. A failed
+        /// write's proposed update is carried separately by the failure.
         state: WorkbenchState,
         failure: TransitionFailure,
     },
@@ -214,7 +237,76 @@ pub enum MoveStatus {
 #[derive(Debug)]
 pub struct MoveOutcome {
     pub executions: Vec<ExecutionEvent>,
+    pub stages: Vec<Stage>,
     pub status: MoveStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MovementChoice {
+    pub direction: Direction,
+    pub target_stage: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerificationChoices {
+    pub retry: MovementChoice,
+    pub reverse: Option<MovementChoice>,
+}
+
+impl MoveOutcome {
+    /// Only this invocation's failed verifier earns verifier-specific choices.
+    /// An old pending checkpoint after a failed mutation/save is insufficient.
+    pub fn verification_choices(&self) -> Option<VerificationChoices> {
+        let MoveStatus::Stopped { state, failure } = &self.status else {
+            return None;
+        };
+        let role = match failure {
+            TransitionFailure::ExecutableFailed { role, .. }
+            | TransitionFailure::ExecutableCouldNotStart { role, .. }
+                if matches!(role, ExecutableRole::VerifyUp | ExecutableRole::VerifyDown) =>
+            {
+                *role
+            }
+            _ => return None,
+        };
+        let pending = state.pending?;
+        if role != ExecutableRole::for_direction(pending.direction, true) {
+            return None;
+        }
+        let stage = &self.stages[pending.stage_index];
+        let lower = pending
+            .stage_index
+            .checked_sub(1)
+            .map_or(0, |i| self.stages[i].number);
+        let (retry, reverse) = match pending.direction {
+            Direction::Up => (
+                MovementChoice {
+                    direction: Direction::Up,
+                    target_stage: stage.number,
+                },
+                MovementChoice {
+                    direction: Direction::Down,
+                    target_stage: lower,
+                },
+            ),
+            Direction::Down => (
+                MovementChoice {
+                    direction: Direction::Down,
+                    target_stage: lower,
+                },
+                MovementChoice {
+                    direction: Direction::Up,
+                    target_stage: stage.number,
+                },
+            ),
+        };
+        Some(VerificationChoices {
+            retry,
+            reverse: stage
+                .executable(ExecutableRole::for_direction(reverse.direction, false))
+                .map(|_| reverse),
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -269,6 +361,14 @@ impl Workbench {
     }
 
     pub fn move_to(&self, input: MoveToInput<'_>) -> Result<MoveOutcome, MoveToError> {
+        self.move_to_observed(input, &mut |_| {})
+    }
+
+    pub fn move_to_observed(
+        &self,
+        input: MoveToInput<'_>,
+        observe: &mut dyn FnMut(ExecutionProgress<'_>),
+    ) -> Result<MoveOutcome, MoveToError> {
         let MoveToInput {
             workspace_root,
             direction,
@@ -277,7 +377,10 @@ impl Workbench {
         let stages = self.load_stages(workspace_root)?;
         let target_count = target_count(&stages, target_stage)?;
         let mut state = self.load_state(stages.len())?;
-        let mut executions = Vec::new();
+        let mut log = ExecutionLog {
+            executions: Vec::new(),
+            observe,
+        };
 
         if let Some(pending) = state.pending {
             // Resolve the active stage toward the requested side before walking
@@ -288,7 +391,8 @@ impl Workbench {
             };
             if !target_is_reachable {
                 return Ok(MoveOutcome {
-                    executions,
+                    executions: log.executions,
+                    stages,
                     status: MoveStatus::Stopped {
                         state,
                         failure: TransitionFailure::DirectionDoesNotReachTarget { direction },
@@ -306,10 +410,11 @@ impl Workbench {
                 transition,
                 direction != pending.direction,
                 &mut state,
-                &mut executions,
+                &mut log,
             ) {
                 return Ok(MoveOutcome {
-                    executions,
+                    executions: log.executions,
+                    stages,
                     status: MoveStatus::Stopped { state, failure },
                 });
             }
@@ -317,7 +422,8 @@ impl Workbench {
 
         if target_count == state.completed_stage_count {
             return Ok(MoveOutcome {
-                executions,
+                executions: log.executions,
+                stages,
                 status: MoveStatus::Complete(state),
             });
         }
@@ -328,7 +434,8 @@ impl Workbench {
         };
         if !walk_is_valid {
             return Ok(MoveOutcome {
-                executions,
+                executions: log.executions,
+                stages,
                 status: MoveStatus::Stopped {
                     state,
                     failure: TransitionFailure::DirectionDoesNotReachTarget { direction },
@@ -350,17 +457,19 @@ impl Workbench {
                 },
                 true,
                 &mut state,
-                &mut executions,
+                &mut log,
             ) {
                 return Ok(MoveOutcome {
-                    executions,
+                    executions: log.executions,
+                    stages,
                     status: MoveStatus::Stopped { state, failure },
                 });
             }
         }
 
         Ok(MoveOutcome {
-            executions,
+            executions: log.executions,
+            stages,
             status: MoveStatus::Complete(state),
         })
     }
@@ -421,7 +530,7 @@ impl Workbench {
         transition: PendingTransition,
         run_mutation: bool,
         state: &mut WorkbenchState,
-        executions: &mut Vec<ExecutionEvent>,
+        log: &mut ExecutionLog<'_>,
     ) -> Result<(), TransitionFailure> {
         let direction = transition.direction;
         if run_mutation {
@@ -433,35 +542,47 @@ impl Workbench {
                 });
             }
             if state.uuid.is_none() {
-                state.uuid = Some(Uuid::new_v4().to_string());
-                self.writes
-                    .record_checkpoint(state)
-                    .map_err(TransitionFailure::StateCouldNotBeSaved)?;
+                let mut proposed = state.clone();
+                proposed.uuid = Some(Uuid::new_v4().to_string());
+                self.publish_checkpoint(state, proposed)?;
             }
-            if !self.run_role(workspace_root, stage, direction, false, state, executions) {
-                // A failed reverse mutation does not replace the previously
-                // accepted checkpoint or infer any external recovery state.
-                return Err(failure_for_last_execution(executions));
+            if !self.run_role(workspace_root, stage, direction, false, state, log) {
+                return Err(failure_for_last_execution(&log.executions));
             }
         }
 
         let verifier_role = ExecutableRole::for_direction(direction, true);
         if stage.executable(verifier_role).is_some() {
             if run_mutation {
-                state.pending = Some(transition);
-                self.writes
-                    .record_checkpoint(state)
-                    .map_err(TransitionFailure::StateCouldNotBeSaved)?;
+                let mut proposed = state.clone();
+                proposed.pending = Some(transition);
+                self.publish_checkpoint(state, proposed)?;
             }
-            if !self.run_role(workspace_root, stage, direction, true, state, executions) {
-                return Err(failure_for_last_execution(executions));
+            if !self.run_role(workspace_root, stage, direction, true, state, log) {
+                return Err(failure_for_last_execution(&log.executions));
             }
         }
 
-        finish_transition(state, transition);
-        self.writes
-            .record_checkpoint(state)
-            .map_err(TransitionFailure::StateCouldNotBeSaved)
+        let mut proposed = state.clone();
+        finish_transition(&mut proposed, transition);
+        self.publish_checkpoint(state, proposed)
+    }
+
+    fn publish_checkpoint(
+        &self,
+        confirmed: &mut WorkbenchState,
+        proposed: WorkbenchState,
+    ) -> Result<(), TransitionFailure> {
+        match self.writes.record_checkpoint(&proposed) {
+            Ok(()) => {
+                *confirmed = proposed;
+                Ok(())
+            }
+            Err(error) => Err(TransitionFailure::StateCouldNotBeSaved {
+                error,
+                attempted: proposed,
+            }),
+        }
     }
 
     fn run_role(
@@ -471,19 +592,12 @@ impl Workbench {
         direction: Direction,
         verify: bool,
         state: &WorkbenchState,
-        executions: &mut Vec<ExecutionEvent>,
+        log: &mut ExecutionLog<'_>,
     ) -> bool {
         let role = ExecutableRole::for_direction(direction, verify);
-        let Some(executable) = stage.executable(role) else {
-            executions.push(ExecutionEvent {
-                stage_number: stage.number,
-                role,
-                result: Err(Rc::new(ExecutableRunError::message(
-                    "executable is missing",
-                ))),
-            });
-            return false;
-        };
+        let executable = stage
+            .executable(role)
+            .expect("transition checked role availability");
         let invocation = Invocation {
             executable: executable.to_path_buf(),
             working_directory: stage.directory.clone(),
@@ -493,25 +607,19 @@ impl Workbench {
             role,
             uuid: state.uuid.clone().unwrap_or_default(),
         };
-        match self.executable_runner.run(&invocation) {
-            Ok(output) => {
-                let succeeded = output.success;
-                executions.push(ExecutionEvent {
-                    stage_number: stage.number,
-                    role,
-                    result: Ok(output),
-                });
-                succeeded
-            }
-            Err(message) => {
-                executions.push(ExecutionEvent {
-                    stage_number: stage.number,
-                    role,
-                    result: Err(Rc::new(message)),
-                });
-                false
-            }
-        }
+        (log.observe)(ExecutionProgress::Starting { stage, role });
+        let result = self.executable_runner.run(&invocation).map_err(Rc::new);
+        let succeeded = result.as_ref().is_ok_and(|output| output.success);
+        log.executions.push(ExecutionEvent {
+            stage_number: stage.number,
+            role,
+            result,
+        });
+        (log.observe)(ExecutionProgress::Finished {
+            stage,
+            execution: log.executions.last().expect("just recorded role"),
+        });
+        succeeded
     }
 }
 
@@ -538,11 +646,7 @@ fn finish_transition(state: &mut WorkbenchState, transition: PendingTransition) 
 }
 
 fn failure_for_last_execution(executions: &[ExecutionEvent]) -> TransitionFailure {
-    let Some(event) = executions.last() else {
-        return TransitionFailure::StateCouldNotBeSaved(PersistenceError::message(
-            "execution stopped without a process result",
-        ));
-    };
+    let event = executions.last().expect("called only after a failed role");
     match &event.result {
         Err(message) => TransitionFailure::ExecutableCouldNotStart {
             stage_number: event.stage_number,

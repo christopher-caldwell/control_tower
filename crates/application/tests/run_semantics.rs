@@ -13,6 +13,9 @@ struct Memory {
     writes: Vec<WorkbenchState>,
     calls: Vec<(Invocation, WorkbenchState)>,
     failures: VecDeque<(u32, ExecutableRole)>,
+    write_attempts: usize,
+    fail_write_at: Option<usize>,
+    trace: Vec<String>,
 }
 struct Queries(Rc<RefCell<Memory>>);
 struct Writes(Rc<RefCell<Memory>>);
@@ -26,6 +29,12 @@ impl WorkbenchQueries for Queries {
 impl WorkbenchWrites for Writes {
     fn record_checkpoint(&self, state: &WorkbenchState) -> Result<(), PersistenceError> {
         let mut memory = self.0.borrow_mut();
+        memory.write_attempts += 1;
+        if memory.fail_write_at == Some(memory.write_attempts) {
+            return Err(PersistenceError::new(std::io::Error::other(
+                "injected checkpoint failure",
+            )));
+        }
         memory.checkpoint = Some(state.clone());
         memory.writes.push(state.clone());
         Ok(())
@@ -35,6 +44,10 @@ impl ExecutableRunner for Runner {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError> {
         let mut memory = self.0.borrow_mut();
         let checkpoint = memory.checkpoint.clone().unwrap_or_default();
+        memory.trace.push(format!(
+            "run {} {}",
+            invocation.stage_number, invocation.role
+        ));
         memory.calls.push((invocation.clone(), checkpoint));
         let success = memory.failures.front() != Some(&(invocation.stage_number, invocation.role));
         if !success {
@@ -43,8 +56,8 @@ impl ExecutableRunner for Runner {
         Ok(ProcessOutput {
             success,
             exit_code: Some(if success { 0 } else { 23 }),
-            stdout: vec![],
-            stderr: vec![],
+            stdout: b"raw\xff".to_vec(),
+            stderr: b"err\0".to_vec(),
         })
     }
 }
@@ -585,4 +598,332 @@ fn targets_are_stage_numbers_not_contiguous_numeric_counts() {
             (20, VerifyDown)
         ]
     );
+}
+
+#[test]
+fn synchronous_observations_surround_each_role_before_the_next_invocation() {
+    let fixture = Fixture::new();
+    let memory = fixture.memory.clone();
+    let outcome = fixture
+        .workbench()
+        .move_to_observed(
+            MoveToInput {
+                workspace_root: Path::new("/fixture"),
+                direction: Up,
+                target_stage: 2,
+            },
+            &mut |progress| match progress {
+                ExecutionProgress::Starting { stage, role } => memory
+                    .borrow_mut()
+                    .trace
+                    .push(format!("starting {} {role}", stage.number)),
+                ExecutionProgress::Finished { stage, execution } => {
+                    let output = execution.result.as_ref().unwrap();
+                    assert_eq!(output.stdout, b"raw\xff");
+                    assert_eq!(output.stderr, b"err\0");
+                    memory
+                        .borrow_mut()
+                        .trace
+                        .push(format!("finished {} {}", stage.number, execution.role));
+                }
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        fixture.memory.borrow().trace,
+        [
+            "starting 1 up",
+            "run 1 up",
+            "finished 1 up",
+            "starting 1 verify-up",
+            "run 1 verify-up",
+            "finished 1 verify-up",
+            "starting 2 up",
+            "run 2 up",
+            "finished 2 up",
+            "starting 2 verify-up",
+            "run 2 verify-up",
+            "finished 2 verify-up",
+        ]
+    );
+    assert_eq!(outcome.executions.len(), 4);
+    for event in outcome.executions {
+        assert_eq!(event.result.unwrap().stdout, b"raw\xff");
+    }
+}
+
+#[test]
+fn failed_checkpoint_publication_returns_latest_confirmed_state_and_attempted_update() {
+    use std::error::Error;
+    struct Case {
+        name: &'static str,
+        initial: Option<(usize, Option<(usize, Direction)>)>,
+        no_verifier: bool,
+        direction: Direction,
+        target: u32,
+        fail_at: usize,
+        calls: Vec<(u32, ExecutableRole)>,
+        confirmed: (usize, Option<(usize, Direction)>),
+        attempted: (usize, Option<(usize, Direction)>),
+    }
+    let cases = [
+        Case {
+            name: "initial UUID",
+            initial: None,
+            no_verifier: false,
+            direction: Up,
+            target: 3,
+            fail_at: 1,
+            calls: vec![],
+            confirmed: (0, None),
+            attempted: (0, None),
+        },
+        Case {
+            name: "pending after up",
+            initial: None,
+            no_verifier: false,
+            direction: Up,
+            target: 3,
+            fail_at: 2,
+            calls: vec![(1, UpRole)],
+            confirmed: (0, None),
+            attempted: (0, Some((0, Up))),
+        },
+        Case {
+            name: "accepted up",
+            initial: None,
+            no_verifier: false,
+            direction: Up,
+            target: 3,
+            fail_at: 3,
+            calls: vec![(1, UpRole), (1, VerifyUp)],
+            confirmed: (0, Some((0, Up))),
+            attempted: (1, None),
+        },
+        Case {
+            name: "no verifier",
+            initial: None,
+            no_verifier: true,
+            direction: Up,
+            target: 3,
+            fail_at: 2,
+            calls: vec![(1, UpRole)],
+            confirmed: (0, None),
+            attempted: (1, None),
+        },
+        Case {
+            name: "baseline UUID clearing",
+            initial: Some((1, None)),
+            no_verifier: false,
+            direction: Down,
+            target: 0,
+            fail_at: 2,
+            calls: vec![(1, DownRole), (1, VerifyDown)],
+            confirmed: (1, Some((0, Down))),
+            attempted: (0, None),
+        },
+        Case {
+            name: "earlier accepted stage",
+            initial: None,
+            no_verifier: false,
+            direction: Up,
+            target: 3,
+            fail_at: 5,
+            calls: vec![(1, UpRole), (1, VerifyUp), (2, UpRole), (2, VerifyUp)],
+            confirmed: (1, Some((1, Up))),
+            attempted: (2, None),
+        },
+        Case {
+            name: "reverse pending save",
+            initial: Some((0, Some((0, Up)))),
+            no_verifier: false,
+            direction: Down,
+            target: 0,
+            fail_at: 1,
+            calls: vec![(1, DownRole)],
+            confirmed: (0, Some((0, Up))),
+            attempted: (0, Some((0, Down))),
+        },
+        Case {
+            name: "reverse baseline acceptance",
+            initial: Some((0, Some((0, Up)))),
+            no_verifier: false,
+            direction: Down,
+            target: 0,
+            fail_at: 2,
+            calls: vec![(1, DownRole), (1, VerifyDown)],
+            confirmed: (0, Some((0, Down))),
+            attempted: (0, None),
+        },
+        Case {
+            name: "verifier-only acceptance",
+            initial: Some((0, Some((0, Up)))),
+            no_verifier: false,
+            direction: Up,
+            target: 1,
+            fail_at: 1,
+            calls: vec![(1, VerifyUp)],
+            confirmed: (0, Some((0, Up))),
+            attempted: (1, None),
+        },
+    ];
+    fn position(state: &WorkbenchState) -> (usize, Option<(usize, Direction)>) {
+        (
+            state.completed_stage_count,
+            state.pending.map(|p| (p.stage_index, p.direction)),
+        )
+    }
+    for case in cases {
+        let mut fixture = Fixture::new();
+        if case.no_verifier {
+            fixture.stages[0].verify_up = None;
+        }
+        let initial = case
+            .initial
+            .map(|(completed_stage_count, pending)| WorkbenchState {
+                completed_stage_count,
+                uuid: Some("existing-run".into()),
+                pending: pending.map(|(stage_index, direction)| PendingTransition {
+                    stage_index,
+                    direction,
+                }),
+            });
+        fixture.memory.borrow_mut().checkpoint = initial.clone();
+        fixture.memory.borrow_mut().fail_write_at = Some(case.fail_at);
+        let mut observations = 0;
+        let outcome = fixture
+            .workbench()
+            .move_to_observed(
+                MoveToInput {
+                    workspace_root: Path::new("/fixture"),
+                    direction: case.direction,
+                    target_stage: case.target,
+                },
+                &mut |_| observations += 1,
+            )
+            .unwrap();
+        assert!(outcome.verification_choices().is_none(), "{}", case.name);
+        let MoveStatus::Stopped { state, failure } = outcome.status else {
+            panic!("{} did not stop", case.name)
+        };
+        assert_eq!(position(&state), case.confirmed, "{}", case.name);
+        let TransitionFailure::StateCouldNotBeSaved {
+            ref error,
+            ref attempted,
+        } = failure
+        else {
+            panic!("expected save failure")
+        };
+        assert!(error.source().unwrap().is::<std::io::Error>());
+        assert!(failure.source().unwrap().is::<PersistenceError>());
+        assert_eq!(position(attempted), case.attempted, "{}", case.name);
+        if case.name == "initial UUID" {
+            assert_eq!(state.uuid, None);
+            assert!(attempted.uuid.is_some());
+            assert_eq!(fixture.memory.borrow().checkpoint, None);
+        } else {
+            assert!(state.uuid.is_some());
+            assert_eq!(
+                attempted.uuid.is_none(),
+                case.direction == Down && case.attempted.0 == 0 && case.attempted.1.is_none()
+            );
+        }
+        let memory = fixture.memory.borrow();
+        assert_eq!(
+            memory.checkpoint.clone().unwrap_or_default(),
+            state,
+            "{}",
+            case.name
+        );
+        assert_eq!(
+            memory.write_attempts, case.fail_at,
+            "no writes after failure"
+        );
+        assert_eq!(
+            observations,
+            case.calls.len() * 2,
+            "no unattempted role observations"
+        );
+        assert_eq!(outcome.executions.len(), case.calls.len());
+        for event in &outcome.executions {
+            assert_eq!(event.result.as_ref().unwrap().stdout, b"raw\xff");
+        }
+        drop(memory);
+        assert_eq!(fixture.calls(), case.calls, "{}", case.name);
+    }
+}
+
+#[test]
+fn verifier_choices_resolve_only_active_sparse_stage_and_exclude_other_failures() {
+    for direction in [Up, Down] {
+        for first_stage in [false, true] {
+            let mut fixture = Fixture::new();
+            fixture.stages[0].number = 10;
+            fixture.stages[1].number = 200;
+            fixture.stages[2].number = 900;
+            let index = if first_stage { 0 } else { 1 };
+            fixture.memory.borrow_mut().checkpoint = Some(WorkbenchState {
+                completed_stage_count: if direction == Up { index } else { index + 1 },
+                uuid: Some("run".into()),
+                pending: None,
+            });
+            fixture.fail(
+                fixture.stages[index].number,
+                if direction == Up {
+                    VerifyUp
+                } else {
+                    VerifyDown
+                },
+            );
+            let outcome = fixture.move_to(direction, if direction == Up { 900 } else { 0 });
+            let choices = outcome.verification_choices().unwrap();
+            let upper = fixture.stages[index].number;
+            let lower = if first_stage { 0 } else { 10 };
+            assert_eq!(
+                choices.retry,
+                MovementChoice {
+                    direction,
+                    target_stage: if direction == Up { upper } else { lower }
+                }
+            );
+            assert_eq!(
+                choices.reverse,
+                Some(MovementChoice {
+                    direction: if direction == Up { Down } else { Up },
+                    target_stage: if direction == Up { lower } else { upper }
+                })
+            );
+            fixture.clear_calls();
+            fixture.move_to(choices.retry.direction, choices.retry.target_stage);
+            assert_eq!(
+                fixture.calls(),
+                vec![(
+                    upper,
+                    if direction == Up {
+                        VerifyUp
+                    } else {
+                        VerifyDown
+                    }
+                )]
+            );
+        }
+    }
+    let mut fixture = Fixture::new();
+    fixture.stages[0].down = None;
+    fixture.fail(1, VerifyUp);
+    assert!(
+        fixture
+            .move_to(Up, 1)
+            .verification_choices()
+            .unwrap()
+            .reverse
+            .is_none()
+    );
+    let fixture = Fixture::new();
+    fixture.pending_up();
+    fixture.fail(3, DownRole);
+    assert!(fixture.move_to(Down, 2).verification_choices().is_none());
+    let fixture = Fixture::new();
+    fixture.fail(1, UpRole);
+    assert!(fixture.move_to(Up, 1).verification_choices().is_none());
 }

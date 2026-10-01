@@ -154,6 +154,7 @@ dependencies = [
  "control-tower-application",
  "control-tower-database",
  "control-tower-infrastructure",
+ "rusqlite",
 ]
 
 [[package]]
