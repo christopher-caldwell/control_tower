@@ -15,6 +15,7 @@ sources:
 - ../reference/cli.md
 - ../reference/stage-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
+- 2026-10-01-core-v0-completion.md
 ---
 
 # Autonomous usage cycle summaries
@@ -93,3 +94,11 @@ Completed attempts total **45 CLI/DB processes**, one compiler process and **63 
 **Conclusion/classification: EXPECTED.** The edit → back out → rerun changed application code → verify loop is understandable and reliable in this executed disposable scenario without special recovery behavior. The printed “Retry this check only” and “Reverse the active stage” choices correctly distinguish observation from compensation. Repairing source while verification is pending does not replay a mutation; ordinary down2 followed by up3 exercises the correction. This is intentional behavior, not a new defect. No new or extended usability finding/disposition was warranted; F08 and H02/H04 gain evidence for stable handoff and ordinary application iteration. Status remains bookkeeping (F06); implementation provenance and logs remain author-owned (F10).
 
 **Evidence/limits:** external run `2026-10-01_225256Z/` contains the plan, reusable `AR07/scenario/`, source ZIP, execution receipts/snapshots/traces, ordered source-edit versions and read-only audit. One intentionally buggy implementation and its correction were exercised, with deterministic single-field compensation. Source loading, HTTP acknowledgement semantics, service lifecycle and logging are authored fixture choices. No production fidelity, automatic reload, generalized rollback, crash recovery, concurrency or new platform guarantees are inferred. Only registry/run-summary research records change in the checkout; product code, accepted decisions, persistence schema, CLI and examples remain unchanged. No optional extra cycle was needed. Recommended next variation is AR04's author-owned local project CLI/venv error before effects, repaired by ordinary setup; explicit application-server reload could be studied separately if it becomes relevant.
+
+## Cycle 004 — 2026-10-01_233459Z: core-v0 closeout
+
+The [authoritative completion record](2026-10-01-core-v0-completion.md) contains the independent assessment, bounded standard, full evidence mapping, exact environment/revision and retained limits. **Core v0 is complete as a candidate for repeated owner use; no product implementation change was justified.**
+
+Fresh AR08 exercised `265623137e3fdcac4de34b080439b340277fe93e`: same-association status/contact layers plus dependent activation; 0→4→2→5→4→3→0; pending up3→5 and down4→0 block farther movement until verifier-only resolution. **28 CLI/database processes, 50 role attempts, two UUIDs; EXPECTED on the first execution.** Earlier IDs/results/contributions and unrelated background rows remained stable; both scoped cleanups settled at baseline. Raw source, binaries, commands, snapshots and traces remain external under `core-v0/AR08/`; the service was explicitly stopped.
+
+AR06/AR07 source/raw receipts and copied SQLite snapshots received a fresh read-only cross-check, recorded in `prior-evidence-audit.json`. Their scenario executions remain inherited. Literal root/UUID-file/generated-ID instructions and all normal gates passed freshly; 39 workspace tests passed with no failures/ignored tests. This round changes documentation only, retains prior records/corrections and adds no finding/disposition or accepted decision. The completion record explains why AR04 and a separate AR05 are unnecessary for this milestone. Next phase: repeated real owner tickets and evidence-driven ergonomics.

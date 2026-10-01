@@ -16,6 +16,7 @@ sources:
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
 - ../research/2026-10-01-guided-usage-findings.md
+- ../research/2026-10-01-core-v0-completion.md
 - ../reference/cli.md
 - ../reference/stage-executables.md
 ---
@@ -29,6 +30,10 @@ This is the maintained implementation/intent summary. For commands, start with [
 Control Tower is a personal, local, migration-style workbench for user-owned executable actions. The author owns what operations mean. Control Tower owns ordered navigation, process execution, visible results, and the small amount of state needed between CLI invocations.
 
 It is not an orchestration platform: no hosted control plane, login, scheduler, workers, or built-in HTTP/database action language.
+
+## Core-v0 standing
+
+The core is complete as a candidate for repeated local owner use under the bounded [completion standard and evidence](../research/2026-10-01-core-v0-completion.md). Real-process layered navigation, farther continuation after pending verification, both runnable examples and normal development gates support the current contract. This milestone adds no product semantics, accepted decision, managed context or recovery guarantee. Actual owner tickets and recurring ergonomics should drive the next iteration; retained findings and untried research scenarios are not a new completion backlog.
 
 ## Core model
 

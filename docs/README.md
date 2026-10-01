@@ -49,6 +49,8 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 
 [Guided-usage findings and core refinement](research/2026-10-01-guided-usage-findings.md) retains all F01–F15 findings/corrections and distinguishes inherited experiments from newly executed phase acceptance. Deferred entries are retained knowledge, not additional acceptance criteria or an implementation backlog for this round.
 
+[Core-v0 completion and validation](research/2026-10-01-core-v0-completion.md) is the authoritative milestone closeout: bounded standard, independent assessment, audited AR06/AR07 evidence, fresh layered navigation/continuation, examples, gates and deliberately retained limits. Core v0 is ready for repeated owner use. The [scenario registry](research/autonomous-scenario-registry.md) and [cycle summaries](research/autonomous-usage-runs.md) retain research coverage; untried entries do not reopen this completed milestone.
+
 [Open questions](design/open-questions.md) tracks deferred work, not extra first-use prerequisites. The [discovery brief](design/discovery-brief.md), [first discovery record](research/discovery-01.md), [earlier three-step probe](design/three-step-workspace.md) and [initial history](history/2026-09-30-initial-design.md) preserve historical context. Do not use old `steps/` layouts, memory-only assumptions, or checkpoint/patch hypotheses there as current CLI instructions.
 
 ## Documentation structure

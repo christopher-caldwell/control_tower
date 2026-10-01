@@ -13,6 +13,7 @@ sources:
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
 - ../research/2026-10-01-guided-usage-findings.md
+- ../research/2026-10-01-core-v0-completion.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 ---
@@ -20,6 +21,8 @@ sources:
 # Open questions and validation
 
 The first implementation and its architecture/semantics corrections exist. This is not a setup checklist or a list of blockers before using the example. Start with [the user guide](../guides/getting-started.md).
+
+**Core v0 is complete as an owner-use candidate.** The [completion record](../research/2026-10-01-core-v0-completion.md) defines the bounded standard, fresh and inherited evidence, and remaining limits. These questions guide later real use; they do not reopen that milestone.
 
 ## Implemented experiments
 
@@ -31,7 +34,7 @@ The [guided-usage findings register](../research/2026-10-01-guided-usage-finding
 
 ## Questions for actual use
 
-Does the filesystem-only authoring model stay convenient for a real work ticket? Does a runner-supplied token suffice, or does a concrete operation need to return an API/database-generated ID to later stages? Does the current CLI expose enough information for the edit, back out, rerun loop?
+Filesystem authoring, application-generated IDs in author-owned files, and the application edit/backout/rerun loop have practical evidence in AR06/AR07 and the completion record. Farther pending continuation and layered compensation have fresh AR08 evidence. The remaining question is convenience across repeated actual owner tickets: where do authoring, setup, inspection or handoff costs recur enough to justify a small change?
 
 Answer these from use. They do not authorize a config language, output-patch system, extra action type or additional frontend before a real need appears.
 
