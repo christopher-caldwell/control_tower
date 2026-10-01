@@ -10,99 +10,86 @@ authored_by: assistant
 sources:
 - research/documentation-strategy.md
 - history/2026-09-30-initial-design.md#scope-and-provenance
-- research/discovery-01.md
+- research/documentation-validation.md
 ---
 
 # Control Tower documentation
 
-Control Tower is a personal, local, migration-style workbench for user-owned executable actions. The developer supplies the work; the tool supplies ordered navigation, execution, results, and a small amount of shared working context.
+Control Tower is a local CLI workbench for user-owned executable stages. Start with the runnable example; the architecture history is not a setup prerequisite.
 
-The project is intentionally not an orchestration platform. No login, hosting service, scheduler, worker fleet, built-in HTTP/database action model, or DAG engine is part of the current identity.
+## Using Control Tower
 
-**The current CLI implementation is described in the maintained current design and [playbook evidence ledger](research/playbook-compliance.md).** The later [run-semantics validation](research/run-semantics-validation.md) records decision alignment, active-transition reversal, and executed test evidence. Earlier design probes and discovery records remain historical evidence, not additional implementation requirements. Explicitly accepted decisions are called out separately from proposals.
+| Need | Start here |
+| --- | --- |
+| Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
+| Install/build and prepare storage | [Getting started](guides/getting-started.md) |
+| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/uuid-file/README.md) |
+| Write your own stages | [Create a workspace](guides/creating-a-workspace.md) |
+| Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
+| Look up commands and database operations | [CLI reference](reference/cli.md) |
+| Look up role names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
+| Diagnose setup or script failures | [Troubleshooting](guides/troubleshooting.md) |
 
-## Start here
+Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence.
 
-Read [Current design](design/current-design.md) for the distilled direction and [First formal discovery brief](design/discovery-brief.md) for the discovery seed. The first collaborative discovery is now handoff-ready; its inspected revisions, findings, and evidence limits are in [First discovery record](research/discovery-01.md).
+## Design and development
 
-[Open questions and validation](design/open-questions.md) now tracks implementation experiments and deliberately deferred edge cases rather than pre-build blockers. [Three-step workspace design probe](design/three-step-workspace.md) preserves earlier conceptual pressure tests, not additional v0 obligations. The [initial discussion history](history/2026-09-30-initial-design.md) records how the direction changed.
+Read [Current design](design/current-design.md) for the maintained architecture and scope. Accepted decisions explain intent; dated research and history explain how it was reached.
 
-## Structure and responsibilities
+| Record | Standing | Scope |
+| --- | --- | --- |
+| [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executables, not built-in action drivers. |
+| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted leading mechanism | Ordered up/down and optional directional verification before completion. |
+| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed | Minimal identifier handoff; shipped runner-generated UUID and unimplemented output ideas are distinguished. |
+| [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Application-owned storage contracts with SQLite as the v0 runtime adapter. |
+| [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |
 
-~~~text
+[Playbook compliance](research/playbook-compliance.md) records the architecture correction. [Run-semantics validation](research/run-semantics-validation.md) records the later behavior correction and executed evidence. Neither is a replacement for the accepted decisions or a universal certification of future changes.
+
+[Open questions](design/open-questions.md) tracks deferred work, not extra first-use prerequisites. The [discovery brief](design/discovery-brief.md), [first discovery record](research/discovery-01.md), [earlier three-step probe](design/three-step-workspace.md) and [initial history](history/2026-09-30-initial-design.md) preserve historical context. Do not use old `steps/` layouts, memory-only assumptions, or checkpoint/patch hypotheses there as current CLI instructions.
+
+## Documentation structure
+
+```text
 docs/
-  README.md
-  design/
-    current-design.md
-    discovery-brief.md
-    three-step-workspace.md
-    open-questions.md
-  decisions/
-    0001-user-owned-executables.md
-    0002-stage-navigation-and-verification.md
-    0003-session-state-and-process-io.md
-    0004-session-storage-port-and-adapters.md
-    0005-cli-first-driving-adapter.md
-  research/
-    documentation-strategy.md
-    existing-tools.md
-    discovery-01.md
-  history/
-    2026-09-30-initial-design.md
-~~~
+  README.md       navigation and maintenance conventions
+  guides/         setup, authoring, navigation, troubleshooting
+  reference/      implemented CLI and executable contract
+  design/         current synthesis and labeled design inputs/probes
+  decisions/      accepted intent and explicitly proposed choices
+  research/       sourced research and dated validation evidence
+  history/        dated discussions and corrections
+```
 
-| Location | Question it answers | What belongs here |
-| --- | --- | --- |
-| design/ | What are we designing now? | The living synthesis, concrete design probes, and unresolved questions. |
-| decisions/ | Why choose this rather than an alternative? | One significant decision per numbered record, including drawbacks and validation. |
-| research/ | What evidence supports or challenges the design? | Dated, sourced observations, separated from our interpretation. |
-| history/ | What was said or changed, and when? | Dated discussion summaries and explicit corrections. |
-
-Do not create one file per chat response, feature idea, or research link. Add to the existing home for a subject unless it has an independently maintainable purpose. The discovery record is one accumulating investigation record, not a separate specification or a claim of independent repeated runs.
-
-## Decision index
-
-| Record | Status | Scope |
-| --- | --- | --- |
-| [ADR-0001](decisions/0001-user-owned-executables.md) | Accepted | User-owned, shebang-led executable authoring; not a driver platform. |
-| [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted leading mechanism, subject to discovery | Ordered up/down transitions with optional verify-up and verify-down before completion. |
-| [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed; implementation choice | Minimal opaque UUID handoff for the first demonstration; richer checkpoint/patch mechanics are not v0 requirements. |
-| [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Core/application owns the session-state storage port; SQLite is the v0 runtime adapter; memory may remain useful as a test adapter. |
-| [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI is the only v0 driving adapter and composition edge; future Tauri/HTTP entry adapters call the same application use cases. |
-
-The status of a document is not evidence that its design is implemented. A proposal does not become accepted because it was committed to main or because an assistant repeated it.
-
-## Metadata convention
-
-Every Markdown document has YAML front matter. Metadata describes the document; the body contains its explanation and reasoning. Use this small common set:
-
-~~~yaml
-id: CT-EXAMPLE
-title: A descriptive title
-type: design
-status: maintained
-created: "2026-09-30"
-updated: "2026-09-30"
-owner: christopher-caldwell
-authored_by: assistant
-sources:
-  - ../history/2026-09-30-initial-design.md#scope-and-provenance
-~~~
-
-id is unique and stable. owner identifies maintenance responsibility, not approval. authored_by identifies who wrote the synthesis, not who made the underlying choices. sources contains relative document links or external URLs; link to the smallest relevant section where possible. Quote date strings. Use UTC for recorded event timestamps.
-
-Decision records additionally use decision_authority; accepted records include decision_date and a source for that acceptance. Research uses verified_on and method. History uses source_window and a human-readable correlation_id. Add metadata only when it answers a real retrieval or provenance question.
-
-Statuses are deliberately type-specific:
-
-- Decisions: proposed, accepted, rejected, or superseded.
-- Index and design: maintained; individual statements still distinguish chosen direction, candidate, and open question.
-- Research and history: recorded; this means captured, not universally correct or authoritative.
-
-Use sequential four-digit ADR filenames. Never reuse a number. Use topic names for living documents and ISO dates for history.
+The root README is the short entry point. `examples/uuid-file/README.md` belongs beside its runnable scripts. All deeper project guidance stays under `docs/`. There is no generated documentation site or per-folder index to maintain.
 
 ## Authority and maintenance
 
-Explicit user choices, with traceable sources, govern this design. Accepted ADRs summarize those choices; proposals and research do not override them.
+Explicit user choices and accepted decisions govern the product. Guides/reference describe implementation, not new approval. If code and an accepted decision disagree, identify the mismatch; do not rewrite the decision to make code appear correct. Proposals do not become accepted because they were committed or repeated. Preserve historical evidence with its original revision and execution limits, adding dated links to later evidence rather than rewriting a past run.
 
-Update the relevant current-design section and decision record together when a choice changes. Append a history entry when the change is significant. Keep credentials, real fixture data, private work details, and runtime output out of this public repository.
+Update the relevant guide/reference when an interface changes. Update the current design and decision record together only when intent changes. A material documentation or implementation observation can be recorded in one cohesive dated research/validation record; do not create a file per chat response or checklist item.
+
+For internal links, use relative paths and descriptive link text. Keep one canonical reference for commands and one for the executable/environment contract. Short runnable examples may repeat commands, but they must be checked together when syntax changes. Each guide states prerequisites, working directory, expected observations and failure behavior where relevant. Keep credentials, private fixture data, real work identifiers and generated run files out of the public repository.
+
+## Metadata convention
+
+Markdown files under `docs/` use YAML front matter. Root/example READMEs remain plain reader-facing Markdown. Keep metadata small; explanation belongs in the body.
+
+```yaml
+id: CT-EXAMPLE
+title: A descriptive title
+type: guide
+status: maintained
+created: '2026-10-01'
+updated: '2026-10-01'
+owner: christopher-caldwell
+authored_by: assistant
+sources:
+- ../decisions/0002-stage-navigation-and-verification.md
+```
+
+`id` is unique and stable. `owner` is maintenance responsibility, not approval; `authored_by` is authorship, not decision authority. `sources` contains relevant relative paths or primary-source URLs. Quote date strings; use UTC for event timestamps.
+
+Use `maintained` for index, guide, reference and living design documents. Decision records use `proposed`, `accepted`, `rejected` or `superseded`, with `decision_authority` and a sourced `decision_date` when accepted. Research/history use `recorded`; research additionally states `verified_on` and `method`, and history retains its source window/correlation information. A historical design input remains clearly labeled in its body even when its original metadata is preserved.
+
+Number ADR filenames sequentially and never reuse a number. Keep topic names for maintained guides and ISO dates for history. Before a documentation commit, check relative targets/anchors, unique IDs, front matter, code-block syntax, command/source alignment and the distinction between executed, source-inspected and unavailable verification. See [the organization strategy](research/documentation-strategy.md) and [the latest docs audit](research/documentation-validation.md).

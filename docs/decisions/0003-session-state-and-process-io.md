@@ -4,7 +4,7 @@ title: Keep v0 state handoff minimal and storage-independent
 type: decision
 status: proposed
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: discovery-leading-candidate
@@ -89,3 +89,9 @@ Discovery should still keep the logical handoff minimal; SQLite availability is 
 After the concrete UUID fixture works end-to-end, revisit whether the observed implementation warrants a richer context contract.
 
 Until then, keep the product requirement at “pass the identifier needed by later stages.”
+
+## Current implementation observation
+
+The implementation at `e73e5e6fd7058ac6bb6505114651945ccf5d080d` supplies the UUID from `Workbench::run_transition` before the first mutation. The stage-1 script consumes that value to create the file. It does not generate an ID and return it to Control Tower. This differs from the generation direction described in the discovery wording above; that wording is preserved as provenance rather than silently rewritten.
+
+The shipped interface is documented in [Stage executables and environment](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean). There is no stdout-to-state parser or general output publication channel. The runnable example proves shared runner-token continuity and navigation, not arbitrary script-produced-ID capture. This observation neither promotes this proposed ADR to accepted status nor selects a future output protocol.

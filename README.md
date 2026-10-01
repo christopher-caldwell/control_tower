@@ -1,47 +1,56 @@
 # Control Tower
 
-Control Tower is a local CLI workbench for ordered, user-owned executable stages. A workspace contains a `stages/` directory with numbered folders; each folder may contain executable `up`, `down`, `verify-up`, and `verify-down` files. Stage executables run with their stage folder as the working directory.
+A local CLI workbench for stepping through your own executable actions: set up a test fixture, verify it, change your application, then move backward and try again.
 
-```text
-my-workspace/
-  stages/
-    001-create-user/
-      up
-      down
-      verify-up       # optional
-      verify-down     # optional
-```
+You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control Tower runs them in order and remembers your position between commands. No server, account, or built-in HTTP/database action language.
 
-Set up each local workspace explicitly before ordinary commands. This also adopts an existing v0 database without changing its saved checkpoint:
+## Try the three-stage example
+
+You need Git, a current stable Rust toolchain with Cargo, a C compiler/linker, and a Unix shell. The recorded full CLI tests ran on macOS; native Windows is not verified. See [setup and toolchain notes](docs/guides/getting-started.md#prerequisites). **Neither `just` nor a separate SQLite installation is required for this path.**
+
+Run these commands in one terminal. Skip the clone when you already have the repository, and start from its root.
 
 ```sh
-just db-bootstrap-local ./my-workspace
-just db-migrate-local ./my-workspace
-just db-verify-local ./my-workspace
-```
+git clone https://github.com/christopher-caldwell/control_tower.git
+cd control_tower
+cargo build --locked --workspace
 
-Without `just`, run `cargo run -p control-tower-database --bin control-tower-db -- bootstrap-local ./my-workspace` and then the same command with `migrate-local` and `verify-local`. Normal CLI startup only opens the existing database and checks its version/history; it never creates tables or runs migrations.
-
-Move forward or backward to a stage number (`0` is the baseline when moving down):
-
-```sh
-cargo run -p control-tower-cli -- up --workspace ./my-workspace --stage 1
-cargo run -p control-tower-cli -- status --workspace ./my-workspace
-cargo run -p control-tower-cli -- down --workspace ./my-workspace --stage 0
-```
-
-Control Tower runs each executable directly, honoring its executable bit and shebang. It sets `CONTROL_TOWER_WORKSPACE`, `CONTROL_TOWER_UUID`, `CONTROL_TOWER_STAGE`, `CONTROL_TOWER_DIRECTION`, and `CONTROL_TOWER_ROLE` in the child environment. The UUID stays the same across CLI invocations during a run and is cleared when the workspace returns to baseline. User scripts decide what that value means.
-
-Control Tower preserves each executable's stdout, stderr, and exit status in its CLI report. A stage is recorded complete only after its mutation and optional directional verifier both succeed. A verifier failure leaves the transition pending so another invocation in the same direction retries verification without rerunning the mutation. Movement in the opposite direction runs that same stage's opposite mutation and optional verifier before continuing toward the target. Workbench state lives at `.control_tower/state.sqlite3` inside the workspace.
-
-The [three-stage UUID-file workspace](examples/uuid-file) demonstrates the executable convention. Copy it before trying the full forward/backward walk so its generated file and SQLite state remain outside the repository:
-
-```sh
 workspace="$(mktemp -d)"
 cp -R examples/uuid-file/. "$workspace/"
-just db-bootstrap-local "$workspace"
-just db-migrate-local "$workspace"
-just db-verify-local "$workspace"
-cargo run -p control-tower-cli -- up --workspace "$workspace" --stage 3
-cargo run -p control-tower-cli -- down --workspace "$workspace" --stage 0
+printf 'Example workspace: %s\n' "$workspace"
+
+./target/debug/control-tower-db bootstrap-local "$workspace"
+./target/debug/control-tower-db migrate-local "$workspace"
+./target/debug/control-tower-db verify-local "$workspace"
+
+./target/debug/control-tower up --workspace "$workspace" --stage 3
+./target/debug/control-tower status --workspace "$workspace"
+cat "$workspace"/data/*
+printf '\n'
 ```
+
+The file should contain **`hello to you`**, and status should report completed stage 3. One UUID-named file progresses through:
+
+| Completed stage | Example file |
+| --- | --- |
+| 0 | Absent |
+| 1 | Empty |
+| 2 | `hello` |
+| 3 | `hello to you` |
+
+Back out the example:
+
+```sh
+./target/debug/control-tower down --workspace "$workspace" --stage 0
+./target/debug/control-tower status --workspace "$workspace"
+```
+
+The example file is now absent; status reports baseline 0 and no UUID. The temporary workspace and its SQLite file remain available for another run. Each command is a separate process. Database setup is explicit and does not run during `up`, `down`, or `status`.
+
+## Use it in your work
+
+[Walk through the example one stage at a time](examples/uuid-file/README.md), then [create your own workspace](docs/guides/creating-a-workspace.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
+
+Scripts run with your permissions and can change real systems. Control Tower does not guarantee that `down` undoes `up`, provide a sandbox, or reconcile external effects after a crash.
+
+[Setup and installation](docs/guides/getting-started.md) · [CLI reference](docs/reference/cli.md) · [Executable and environment contract](docs/reference/stage-executables.md) · [Troubleshooting](docs/guides/troubleshooting.md) · [All documentation](docs/README.md)

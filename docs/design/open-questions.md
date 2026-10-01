@@ -9,72 +9,33 @@ owner: christopher-caldwell
 authored_by: assistant
 sources:
 - current-design.md
-- discovery-brief.md
 - ../research/discovery-01.md
+- ../research/playbook-compliance.md
+- ../research/run-semantics-validation.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
-- ../decisions/0004-session-storage-port-and-adapters.md
-- ../decisions/0005-cli-first-driving-adapter.md
 ---
 
 # Open questions and validation
 
-The first collaborative discovery is complete enough for an implementation handoff. The remaining items are implementation experiments or deferred edge cases, not blockers that must be resolved before the first working slice.
+The first implementation and its architecture/semantics corrections exist. This is not a setup checklist or a list of blockers before using the example. Start with [the user guide](../guides/getting-started.md).
 
-## Implementation experiment — does the four-role step remain the right convention?
+## Implemented experiments
 
-Leading mechanism:
+The four-role filesystem convention, SQLite across CLI invocations, verifier retry without mutation replay, and same-stage directional reversal have [executed implementation evidence](../research/run-semantics-validation.md). The [playbook ledger](../research/playbook-compliance.md) preserves the preceding architecture assessment. Keep their revision, platform and test limits when citing those records.
 
-~~~text
-up
-down
-verify-up     # optional
-verify-down   # optional
-~~~
+The example uses one shared **runner-generated** UUID. That is the implemented minimal handoff, not a demonstration of a script publishing an arbitrary identifier back into managed state. The distinction is explicit in [the process reference](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
 
-Build the UUID-file fixture with this convention and simplify only if real implementation evidence justifies it.
+## Questions for actual use
 
-## Implementation experiment — smallest UUID handoff
+Does the filesystem-only authoring model stay convenient for a real work ticket? Does a runner-supplied token suffice, or does a concrete operation need to return an API/database-generated ID to later stages? Does the current CLI expose enough information for the edit, back out, rerun loop?
 
-The first fixture needs one stage-1 UUID to be available to stages 2 and 3 and their verifiers across normal CLI invocations.
-
-Use the smallest mechanism that works. Do not design a generalized context platform first.
-
-## Implementation experiment — filesystem-only authoring
-
-Start with numbered stage directories and fixed executable-role filenames. Add config only if the implemented fixture exposes a concrete need.
-
-## Implementation experiment — keep the hexagonal boundary clean
-
-Validate that:
-
-- CLI remains the only v0 driving adapter,
-- transition behavior stays in Application,
-- state persistence stays behind an Application-owned port,
-- process execution stays behind an outer capability boundary,
-- SQLite remains an adapter detail,
-- the Entry executable owns explicit composition.
-
-## Executed implementation evidence
-
-The [run-semantics validation](../research/run-semantics-validation.md) now exercises the four-role fixture and minimal UUID handoff through deterministic Application tests and separate CLI processes using real SQLite and scripts. Active transitions support both matching-verifier retry and same-stage directional reversal; reverse verification failures remain resumable. Target walks resolve active work before crossing further stages.
-
-Filesystem-only authoring, Application-owned transition semantics and ports, explicit CLI composition, and separate database setup remain intact. The earlier [playbook ledger](../research/playbook-compliance.md) retains its architecture-pass provenance; later semantics evidence is recorded separately.
+Answer these from use. They do not authorize a config language, output-patch system, extra action type or additional frontend before a real need appears.
 
 ## Deferred edge cases
 
-Do not block the first working version on richer recovery behavior.
+When an up/down executable itself exits nonzero, v0 reports failure and stops automatic movement. Richer cleanup/recovery for partially effective failed mutations remains deferred; it must not be confused with the already implemented reversal after a successful mutation's verifier fails.
 
-In particular, if an up/down executable itself exits nonzero, v0 only needs to report the failure, stop automatic movement, and avoid running later stages automatically. Whether the user should receive special same-stage cleanup/recovery commands after a partially effective failed mutation is deliberately deferred until implementation experience makes the need concrete.
+Also deferred: Rust-process crash reconciliation, directory-structure drift protection, concurrent instances, workspace-wide reset semantics, Tauri/HTTP, helper ecosystems and generalized context/value semantics. SQLite persistence does not bring those features into scope.
 
-Also deferred:
-
-- crash recovery/reconciliation,
-- directory-structure drift protection,
-- concurrency/multi-instance behavior,
-- workspace reset semantics,
-- Tauri/HTTP,
-- helper ecosystem,
-- generalized context/value semantics.
-
-See [First formal discovery brief](discovery-brief.md) and [First discovery record](../research/discovery-01.md) for the complete scope and evidence.
+Historical starting points are retained in the [discovery brief](discovery-brief.md) and [discovery record](../research/discovery-01.md). They should not be reissued as current implementation tasks without new evidence.

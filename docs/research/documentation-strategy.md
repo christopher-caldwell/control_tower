@@ -4,19 +4,24 @@ title: Documentation organization strategy
 type: research
 status: recorded
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
-verified_on: '2026-09-30'
+verified_on: '2026-10-01'
 method: Primary-source review and project-specific evaluation
 sources:
 - https://diataxis.fr/
 - https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions
 - https://adr.github.io/madr/
 - https://adr.github.io/madr/decisions/0013-use-yaml-front-matter-for-meta-data.html
+- https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes
+- https://docs.github.com/en/contributing/style-guide-and-content-model/quickstart-content-type
+- https://diataxis.fr/start-here/
 ---
 
 # Documentation organization strategy
+
+The September 30 sections below record the design-only baseline. The [October 1 extension](#october-1-user-documentation-extension) adds user documentation now that there is a CLI to teach and reference. The [documentation index](../README.md) owns current maintenance conventions.
 
 ## The problem to solve
 
@@ -49,3 +54,13 @@ The proposed compromise is nine linked documents with different maintenance life
 ## Evaluation
 
 The structure earns its place if a future reader can answer: what is chosen, what remains provisional, why a choice was made, where the evidence is, and when the owner actually supported it. A large amount of front matter is not itself a quality goal; missing approval must remain missing rather than being filled with an invented date or confident status.
+
+## October 1 user documentation extension
+
+The implemented CLI now needs a path for users, separate from the original decision archive. [GitHub's README guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes) emphasizes purpose, getting started, help and relative internal links. Its [quickstart guidance](https://docs.github.com/en/contributing/style-guide-and-content-model/quickstart-content-type) favors a focused result, explicit prerequisites and links instead of lengthy digressions. [Diátaxis](https://diataxis.fr/start-here/) distinguishes learning, task guidance, exact reference and explanation; it does not require us to build a documentation platform.
+
+Applied here: the root README has one runnable-example path. `guides/` covers setup, workspace authoring, verification/navigation and troubleshooting. `reference/` covers the CLI and executable/environment interface. The example README stays beside the scripts and shows expected observations at each stage. `docs/README.md` routes users to those pages before the maintainer archive.
+
+Only two new content directories are needed. There is no separate concepts directory, website generator, per-folder index, or environment-variable page for a five-variable table. The existing design/decision homes provide the explanation. Command repetition is limited to small runnable procedures; the reference is the canonical command inventory.
+
+This extension does not alter product scope or make historical proposals authoritative. The [documentation validation](documentation-validation.md) records source alignment, executed script checks and unavailable end-to-end verification separately.

@@ -1,0 +1,146 @@
+---
+id: CT-GUIDE-NAVIGATION
+title: Navigate and retry verification
+type: guide
+status: maintained
+created: '2026-10-01'
+updated: '2026-10-01'
+owner: christopher-caldwell
+authored_by: assistant
+sources:
+- ../decisions/0002-stage-navigation-and-verification.md
+- ../../crates/application/src/lib.rs
+- ../../crates/cli/tests/workbench_cli.rs
+- ../research/run-semantics-validation.md
+---
+
+# Navigate and retry verification
+
+A **completed stage** is Control Tower's last accepted position. A **pending transition** means a mutation succeeded but its verifier has not succeeded. Both facts can be true at once; the stored position is not a claim that the external system remained unchanged.
+
+## Move to a target
+
+With the [three-stage example](../../examples/uuid-file/README.md) prepared, run these from the repository root:
+
+```sh
+./target/debug/control-tower up --workspace "$workspace" --stage 2
+./target/debug/control-tower status --workspace "$workspace"
+./target/debug/control-tower up --workspace "$workspace" --stage 3
+./target/debug/control-tower down --workspace "$workspace" --stage 2
+```
+
+The first command applies stages 1 and 2 if starting from baseline. The last reverses only stage 3. Every transition is ordered:
+
+```text
+stage N/up   -> optional stage N/verify-up   -> accept higher position
+stage N/down -> optional stage N/verify-down -> accept lower position
+```
+
+An absent verifier adds no gate. A verifier that exists must pass before the destination is accepted. The next stage does not run until this one completes.
+
+## Understand a failure
+
+Suppose stage 2 is complete, stage 3/up succeeds, and stage 3/verify-up fails. Status should show:
+
+```text
+Completed stage: 2 (write-hello)
+UUID: <the same run UUID>
+Pending verification: up 3 (add-to-you)
+Discovered stages: 3
+```
+
+This is representative output, not a stable machine-readable format. The file may already contain stage 3's mutation. You have two choices:
+
+| Intent | Request | What runs |
+| --- | --- | --- |
+| Check stage 3 again after fixing the check or relevant application state | `up --stage 3` | Stage 3/verify-up only. The successful up does not run again. |
+| Back out stage 3 | `down --stage 2` | Stage 3/down, then its optional verify-down. |
+
+Changing application code does not itself redo the mutation. If you need to exercise the changed mutation, back out first and then run up again.
+
+Asking for `down --stage 1` first resolves stage 3's reversal, then reverses stage 2. It does not skip the unfinished stage.
+
+## Try a verification failure
+
+Use a **fresh disposable copy**, not a workspace containing valuable test state. These commands start from the repository root after building the executables:
+
+```sh
+workspace="$(mktemp -d)"
+cp -R examples/uuid-file/. "$workspace/"
+./target/debug/control-tower-db bootstrap-local "$workspace"
+./target/debug/control-tower-db migrate-local "$workspace"
+./target/debug/control-tower-db verify-local "$workspace"
+
+check="$workspace/stages/003-add-to-you/verify-up"
+cp "$check" "$workspace/verify-up.original"
+printf '#!/bin/sh\nexit 23\n' > "$check"
+chmod +x "$check"
+```
+
+Now deliberately run a command that fails. A nonzero exit here is the expected result, not failed setup:
+
+```sh
+./target/debug/control-tower up --workspace "$workspace" --stage 3
+```
+
+Run status separately even though the preceding command failed:
+
+```sh
+./target/debug/control-tower status --workspace "$workspace"
+cat "$workspace"/data/*
+printf '\n'
+```
+
+The file should contain `hello to you`, but completed position remains 2 with pending up verification for stage 3.
+
+### Back out and exercise the mutation again
+
+```sh
+./target/debug/control-tower down --workspace "$workspace" --stage 2
+cat "$workspace"/data/*
+printf '\n'
+
+cp "$workspace/verify-up.original" "$check"
+chmod +x "$check"
+./target/debug/control-tower up --workspace "$workspace" --stage 3
+./target/debug/control-tower status --workspace "$workspace"
+```
+
+After down, the file contains `hello`. After the repaired forward run it contains `hello to you`, with no pending verification.
+
+### Alternative: retry only the verifier
+
+Use this **instead of** the preceding back-out block while stage 3/up is still pending:
+
+```sh
+cp "$workspace/verify-up.original" "$check"
+chmod +x "$check"
+./target/debug/control-tower up --workspace "$workspace" --stage 3
+```
+
+Only stage 3/verify-up should appear in this invocation's role results. There is no standalone `verify` subcommand.
+
+When finished with either path:
+
+```sh
+./target/debug/control-tower down --workspace "$workspace" --stage 0
+./target/debug/control-tower status --workspace "$workspace"
+```
+
+## Downward and reverse verification
+
+The same rules apply in both directions. If completed stage 3/down succeeds but its verify-down fails, completed stays 3. Another downward request retries only verify-down; an upward request toward 3 runs stage 3/up and its optional verifier.
+
+Reversing an unfinished up has a different completed baseline. If stage 2 is complete, stage 3/up is pending, and stage 3/down succeeds but verify-down fails, completed stays **2**, with pending **down 3**. Another downward request retries only verify-down. The successful down is not repeated.
+
+The UUID stays available in all these cases, including a pending return to baseline. It clears only when the workspace successfully settles at 0. SQLite retains this bookkeeping across separate CLI processes.
+
+## A mutation failure is not a verifier failure
+
+If `up` or `down` itself exits nonzero, Control Tower reports the failure and stops before the verifier or later stages. It does not infer whether the script partially changed something, automatically back it out, or provide a dedicated recovery flow. A failed reverse mutation can leave the prior pending checkpoint recorded; that is not evidence about the external state.
+
+A Rust-process crash or SQLite failure likewise carries no external-state reconciliation guarantee. Do not treat a saved checkpoint as a transaction around an API/database mutation. See [troubleshooting](troubleshooting.md).
+
+## Evidence
+
+The [Application semantics tests](../../crates/application/tests/run_semantics.rs) check ordering and stored-position timing. The [CLI integrations](../../crates/cli/tests/workbench_cli.rs) cover the example and verifier retries/reversals across real processes with SQLite. The [run-semantics validation](../research/run-semantics-validation.md) records executed tests and manual runs, with toolchain/platform limits.
