@@ -69,8 +69,9 @@ Asking for `down --stage 1` first resolves stage 3's reversal, then reverses sta
 Use a **fresh disposable copy**, not a workspace containing valuable test state. These commands start from the repository root after building the executables:
 
 ```sh
-workspace="$(mktemp -d)"
-cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 ./target/debug/control-tower-db bootstrap-local "$workspace"
 ./target/debug/control-tower-db migrate-local "$workspace"
 ./target/debug/control-tower-db verify-local "$workspace"

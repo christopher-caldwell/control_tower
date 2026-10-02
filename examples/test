@@ -16,4 +16,4 @@ cd "$EXAMPLES_ROOT/tests"
 exec uv run --locked --project "$EXAMPLES_ROOT/tests" -- python -m pytest \
   -c "$EXAMPLES_ROOT/tests/pyproject.toml" -p no:cacheprovider \
   --junitxml "$EXAMPLES_ROOT/test-results/integration.xml" \
-  --basetemp "$EXAMPLES_ROOT/test-results/workspaces" "$@"
+  "$@"

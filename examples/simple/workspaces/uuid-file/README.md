@@ -1,4 +1,4 @@
-# Three-stage UUID-file example
+# Three-stage UUID-file workflow
 
 A runnable workspace and the fixture used by the CLI integration tests. Control Tower supplies one UUID; these scripts create a file named with it and change only its contents. No API, application database, or extra script runtime is required. Control Tower itself still uses SQLite for navigation state.
 
@@ -19,42 +19,40 @@ stages/
 
 The sample writes no trailing newline. The content checks use shell command substitution; they are checks for this sample, not a general binary-file comparison utility.
 
-## Build and prepare a copy
+## Prepare the workspace
 
-From the repository root, with [the prerequisites installed](../../../../docs/guides/getting-started.md#prerequisites):
+Follow [simple example setup](../../README.md#setup-and-run), then run from the copied example root. This shell-only workspace needs no Python or Node setup:
 
 ```sh
-cargo build --locked --workspace
-workspace="$(mktemp -d)"
-cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
+workspace=workspaces/uuid-file
 printf 'Example workspace: %s\n' "$workspace"
 
-./target/debug/control-tower-db bootstrap-local "$workspace"
-./target/debug/control-tower-db migrate-local "$workspace"
-./target/debug/control-tower-db verify-local "$workspace"
+control-tower-db bootstrap-local "$workspace"
+control-tower-db migrate-local "$workspace"
+control-tower-db verify-local "$workspace"
 ```
 
-Keep the printed path and use this terminal for the remaining steps. In a later terminal, set `$workspace` to that same path. Do not run against the checked-in example directory: the copy keeps generated files and SQLite state out of the acceptance fixture.
+Use this terminal for the remaining steps. In a later terminal, return to the copied simple example root and set `workspace=workspaces/uuid-file` again.
 
 ## Walk forward and observe
 
 ```sh
-./target/debug/control-tower status --workspace "$workspace"
-./target/debug/control-tower up --workspace "$workspace" --stage 1
-./target/debug/control-tower status --workspace "$workspace"
+control-tower status --workspace "$workspace"
+control-tower up --workspace "$workspace" --stage 1
+control-tower status --workspace "$workspace"
 ls -l "$workspace/data"
 ```
 
 Status starts at baseline, then reports stage 1 and a UUID. `data/` now contains one zero-byte file whose name is that UUID.
 
 ```sh
-./target/debug/control-tower up --workspace "$workspace" --stage 2
-./target/debug/control-tower status --workspace "$workspace"
+control-tower up --workspace "$workspace" --stage 2
+control-tower status --workspace "$workspace"
 cat "$workspace"/data/*
 printf '\n'
 
-./target/debug/control-tower up --workspace "$workspace" --stage 3
-./target/debug/control-tower status --workspace "$workspace"
+control-tower up --workspace "$workspace" --stage 3
+control-tower status --workspace "$workspace"
 cat "$workspace"/data/*
 printf '\n'
 ```
@@ -64,17 +62,17 @@ The same file contains `hello` at stage 2 and `hello to you` at stage 3. Each co
 ## Walk backward and observe
 
 ```sh
-./target/debug/control-tower down --workspace "$workspace" --stage 2
-./target/debug/control-tower status --workspace "$workspace"
+control-tower down --workspace "$workspace" --stage 2
+control-tower status --workspace "$workspace"
 cat "$workspace"/data/*
 printf '\n'
 
-./target/debug/control-tower down --workspace "$workspace" --stage 1
-./target/debug/control-tower status --workspace "$workspace"
+control-tower down --workspace "$workspace" --stage 1
+control-tower status --workspace "$workspace"
 wc -c "$workspace"/data/*
 
-./target/debug/control-tower down --workspace "$workspace" --stage 0
-./target/debug/control-tower status --workspace "$workspace"
+control-tower down --workspace "$workspace" --stage 0
+control-tower status --workspace "$workspace"
 ls -A "$workspace/data"
 ```
 
@@ -90,12 +88,12 @@ The database and directories remain. They are not deleted by stage 1/down. Anoth
 
 ## Try failed verification
 
-The [navigation guide](../../../../docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, then demonstrates retry or same-stage backout. It does not modify these checked-in scripts.
+The [navigation guide](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, then demonstrates retry or same-stage backout. It does not modify these checked-in scripts.
 
 ## Evidence and limits
 
-[CLI tests](../../../../crates/cli/tests/workbench_cli.rs) copy this workspace and spawn real Control Tower processes with SQLite. They check the full traversal, pending verification, reversal, UUID continuity and non-replay of successful mutations. [Application tests](../../../../crates/application/tests/run_semantics.rs) check the transition rules independently.
+[CLI tests](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/crates/cli/tests/workbench_cli.rs) copy this workspace and spawn real Control Tower processes with SQLite. They check the full traversal, pending verification, reversal, UUID continuity and non-replay of successful mutations. [Application tests](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/crates/application/tests/run_semantics.rs) check the transition rules independently.
 
-The [run-semantics record](../../../../docs/research/run-semantics-validation.md) records the worker's 31-test macOS run and manual CLI exercises. The [documentation validation](../../../../docs/research/documentation-validation.md) separately records script-only execution during this documentation pass and the checks that could not be rerun. Do not treat a script-only check as an independent full CLI acceptance run.
+The [run-semantics record](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/research/run-semantics-validation.md) records the worker's 31-test macOS run and manual CLI exercises. The [documentation validation](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/research/documentation-validation.md) separately records script-only execution during this documentation pass and the checks that could not be rerun. Do not treat a script-only check as an independent full CLI acceptance run.
 
-For your own operations, start with [creating a workspace](../../../../docs/guides/creating-a-workspace.md) and the [executable/environment reference](../../../../docs/reference/stage-executables.md).
+For your own operations, start with [creating a workspace](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/creating-a-workspace.md) and the [executable/environment reference](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/reference/stage-executables.md).

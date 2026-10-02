@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from common import (
-    RESULT, RECORD, CONTEXT, materialize_workspace, initialize, move, status,
+    RESULT, RECORD, CONTEXT, materialize_workspace, prepare_workspace, initialize, move, status,
     run, lock_contents, python_environment, assert_node_owner, native_environment,
 )
 
@@ -43,6 +43,11 @@ def assert_environment_ownership(sandbox, workspace, env, name):
         assert "example-tool" in info["packages"]
         assert "python-dateutil" in info["packages"]
         assert "jsonschema" not in info["packages"]
+        source = run(
+            ["uv", "run", "python", "-c", "import example_tool; print(example_tool.__file__)"],
+            cwd=project, env=env,
+        ).stdout.strip()
+        assert Path(source).resolve().is_relative_to(sandbox / "tools/example_tool/src")
     if name == "node-and-tool":
         assert_node_owner(workspace / "stages/003-node-inspect", sandbox, env)
     # Real PyCapsule child execution creates a distinct tool-owned environment.
@@ -51,7 +56,8 @@ def assert_environment_ownership(sandbox, workspace, env, name):
 
 @pytest.mark.parametrize(("name", "target"), PATTERNS)
 def test_workspace_pattern_runs_through_real_control_tower(tmp_path, cli_environment, name, target):
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name, cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     env = cli_environment
     locks_before = lock_contents(sandbox)
     initialize(sandbox, workspace, env)
@@ -77,8 +83,35 @@ def test_workspace_pattern_runs_through_real_control_tower(tmp_path, cli_environ
     assert lock_contents(sandbox) == locks_before
 
 
+def test_workspaces_reuse_one_copied_tool_with_separate_state(tmp_path, cli_environment):
+    sandbox, tool_only = materialize_workspace(tmp_path, "py_capsule", "tool-only")
+    node_and_tool = sandbox / "workspaces/node-and-tool"
+    env = cli_environment
+    locks = lock_contents(sandbox)
+    prepare_workspace(sandbox, node_and_tool, env)
+    for workspace in (tool_only, node_and_tool):
+        initialize(sandbox, workspace, env)
+        move(sandbox, workspace, env, "up", 3)
+        assert_artifacts(workspace, workspace.name, 3)
+        assert_environment_ownership(sandbox, workspace, env, workspace.name)
+    saved = {p.name: p.read_bytes() for p in (node_and_tool / "data").iterdir()}
+    tool_uuid = status(sandbox, tool_only, env, 3).split("UUID: ", 1)[1].splitlines()[0]
+    node_uuid = status(sandbox, node_and_tool, env, 3).split("UUID: ", 1)[1].splitlines()[0]
+    assert tool_uuid != node_uuid
+    move(sandbox, tool_only, env, "down", 0)
+    status(sandbox, tool_only, env, 0)
+    assert_artifacts(tool_only, "tool-only", 0)
+    status(sandbox, node_and_tool, env, 3)
+    assert {p.name: p.read_bytes() for p in (node_and_tool / "data").iterdir()} == saved
+    move(sandbox, node_and_tool, env, "down", 0)
+    status(sandbox, node_and_tool, env, 0)
+    assert_artifacts(node_and_tool, "node-and-tool", 0)
+    assert lock_contents(sandbox) == locks
+
+
 def test_new_ticket_needs_only_executable_python_roles(tmp_path, cli_environment):
-    sandbox, _ = materialize_workspace(tmp_path, "py_capsule", "tool-only", cli_environment)
+    sandbox, selected_workspace = materialize_workspace(tmp_path, "py_capsule", "tool-only")
+    prepare_workspace(sandbox, selected_workspace, cli_environment)
     workspace = sandbox / "workspaces/ticket_123"
     normalize = workspace / "stages/001-normalize"
     inspect = workspace / "stages/002-inspect"
@@ -156,7 +189,8 @@ if saved["runtime"]["conversation"]["metadata"]["last_tool"] != "normalize_recor
 
 def test_node_roles_work_without_a_usable_python_project(tmp_path, cli_environment):
     name = "node-and-tool"
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name, cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     env = cli_environment
     initialize(sandbox, workspace, env)
     # No uv/python on PATH and invalid family metadata expose accidental coupling.
@@ -184,7 +218,8 @@ def test_node_roles_work_without_a_usable_python_project(tmp_path, cli_environme
 @pytest.mark.parametrize("direction", ["up", "down"])
 def test_verifier_retry_does_not_repeat_mutation(tmp_path, cli_environment, direction):
     name = "tool-only"
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name, cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     env = cli_environment
     initialize(sandbox, workspace, env)
     stage = workspace / "stages/002-call-tool"
@@ -209,7 +244,8 @@ def test_verifier_retry_does_not_repeat_mutation(tmp_path, cli_environment, dire
 @pytest.mark.parametrize("owner", ["family", "tool"])
 def test_strict_validation_rejects_stale_dependency_lock(tmp_path, cli_environment, owner):
     name = "tool-only"
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name, cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     # Bootstrap/preceding tests cache these dependencies. Offline resolution avoids
     # registry refreshes while checking stale-lock rejection, including the child.
     env = dict(cli_environment, UV_LOCKED="1", UV_OFFLINE="1")

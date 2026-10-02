@@ -1,13 +1,13 @@
 # Ordinary Python dependencies
 
-A normal Python workspace owns `pyproject.toml` and `uv.lock`. Both stages use the
-nearest workspace environment through plain `uv run python`; `python-dateutil`
+The simple example owns `pyproject.toml` and `uv.lock`. Both stages discover its
+Python environment through plain `uv run python`; `python-dateutil`
 parses the input timestamp during seed and normalization.
 
 ## Prerequisites and progression
 
 Use a Unix shell, built Control Tower binaries, and uv and Python 3.12.
-Start the commands below from the Control Tower repository root.
+Follow [example setup](../../README.md#setup-and-run), then run these commands from the copied example root.
 
 ```text
 001 Python seed (dateutil) -> data/record.json
@@ -16,16 +16,12 @@ Start the commands below from the Control Tower repository root.
 
 Application data moves through the named files under `data/`; stdout is feedback.
 Every stage has forward/reverse verification. Verifiers observe rather than repair
-outputs. This workspace has no dependency on sibling workspaces or family helpers.
+outputs. Dependencies belong to the containing example; each workspace owns its stage outputs.
 
-## Run a disposable copy
+## Run the workspace
 
 ```sh
-cargo build --locked --workspace
-export PATH="$PWD/target/debug:$PATH"
-workspace=$(mktemp -d /tmp/control-tower-python-dependencies.XXXXXX)
-cp -R examples/simple/workspaces/python-dependencies/. "$workspace/"
-uv sync --locked --project "$workspace"
+workspace=workspaces/python-dependencies
 control-tower-db bootstrap-local "$workspace"
 control-tower-db migrate-local "$workspace"
 control-tower-db verify-local "$workspace"
@@ -47,6 +43,6 @@ away from these paths: reversal does not restore overwritten files.
 If a mutation fails after writing a file, inspect its partial output before
 retrying. These deterministic transformations can overwrite their own outputs on
 retry. After a verifier failure, repeating the same move retries only verification.
-For the global rules, see [navigation and verification](../../../../docs/guides/verification-and-navigation.md)
-and the [executable contract](../../../../docs/reference/stage-executables.md).
-Return to the [family](../../README.md).
+For the global rules, see [navigation and verification](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
+and the [executable contract](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/reference/stage-executables.md).
+Return to the [example](../../README.md).

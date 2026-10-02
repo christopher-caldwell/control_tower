@@ -1,8 +1,8 @@
 # Focused PostgreSQL ownership and recovery
 
 Three ordinary Python stages show input ownership, a real PostgreSQL write, and
-read-only inspection. The workspace owns its `psycopg[binary]` project, lock, schema,
-and role files. Copying this workspace supplies all scenario-specific files.
+read-only inspection. The simple example supplies `psycopg[binary]`; this workspace
+owns its schema and role files.
 The database row is keyed by the active Control Tower UUID.
 
 ```text
@@ -16,14 +16,11 @@ The database row is keyed by the active Control Tower UUID.
 Use Unix tools, built Control Tower binaries, uv / Python 3.12, and PostgreSQL.
 Put `initdb`, `pg_ctl`, `createdb`, and `psql` on PATH for the disposable-server
 walkthrough. Keep the server and connection setting available throughout forward,
-reverse, and recovery operations. Start from the Control Tower repository root.
+reverse, and recovery operations. Follow [example setup](../../README.md#setup-and-run),
+then start from the copied simple example root.
 
 ```sh
-cargo build --locked --workspace
-export PATH="$PWD/target/debug:$PATH"
-workspace=$(mktemp -d /tmp/control-tower-postgres.XXXXXX)
-cp -R examples/simple/workspaces/postgres/. "$workspace/"
-uv sync --locked --project "$workspace"
+workspace=workspaces/postgres
 
 # Start a separate cluster as a regular user, with a private socket and no TCP listener.
 export GALLERY_PG_DIR="$(mktemp -d /tmp/control-tower-gallery-pg.XXXXXX)"
@@ -82,7 +79,7 @@ partial effects produced by a mutation that failed before acceptance.
 
 The database commit and receipt write are separate operations. To reproduce the
 failure, start at baseline with the server running, schema prepared, and workspace
-initialized. Run the following from the repository root using the same `workspace`
+initialized. Run the following from the copied example root using the same `workspace`
 variable as above:
 
 ```sh
@@ -141,15 +138,17 @@ control-tower status --workspace "$workspace"
 Earlier stages' `down` roles do not clean later unaccepted database effects.
 Deleting `.control_tower/` or local output does not remove PostgreSQL rows.
 After a verifier failure, repeating the same move retries only the observational
-check without replaying the mutation. See [navigation guidance](../../../../docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
+check without replaying the mutation. See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
 
 ## Optional integration coverage
+
+From the Control Tower repository root:
 
 ```sh
 ./examples/test --family simple --postgres
 ```
 
-Tests copy this workspace, start private disposable clusters, and cover traversal,
+Tests copy the complete example, start private disposable clusters, and cover traversal,
 unrelated-row preservation, fresh UUIDs, missing schema, read-only verification,
 verifier retry, conflicting-row refusal, receipt failure, retry, and abandonment.
-Return to the [family](../../README.md).
+Return to the [example](../../README.md).

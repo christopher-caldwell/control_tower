@@ -1,4 +1,4 @@
-"""Copies ordinary workspaces outside the repository and walks their real stages."""
+"""Copies complete examples outside the repository and walks their real stages."""
 import json
 from pathlib import Path
 import sqlite3
@@ -7,7 +7,7 @@ import pytest
 
 from common import (
     RESULT, RECORD, NODE_INSPECTION, PYTHON_INSPECTION, assert_node_owner,
-    initialize, lock_contents, materialize_workspace, move, native_environment,
+    initialize, lock_contents, materialize_workspace, prepare_workspace, move, native_environment,
     python_environment, require_tools, run, status,
 )
 
@@ -69,13 +69,12 @@ def assert_artifacts(workspace, name, completed):
 
 
 @pytest.mark.parametrize(("family", "name", "target"), WORKSPACES)
-def test_independent_workspace_traversal(tmp_path, cli_environment, family, name, target):
+def test_copied_example_workspace_traversal(tmp_path, cli_environment, family, name, target):
     if name == "generated-id":
         require_tools("python3")
     env = cli_environment
-    sandbox, workspace = materialize_workspace(tmp_path, family, name, env)
-    assert not (sandbox / "pyproject.toml").exists()
-    assert not (sandbox / "package.json").exists()
+    sandbox, workspace = materialize_workspace(tmp_path, family, name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     locks = lock_contents(sandbox)
     initialize(sandbox, workspace, env)
     status(sandbox, workspace, env, 0)
@@ -90,9 +89,9 @@ def test_independent_workspace_traversal(tmp_path, cli_environment, family, name
     before = {p.name: p.stat().st_mtime_ns for p in (workspace / "data").iterdir()}
     move(sandbox, workspace, env, "up", target)
     assert before == {p.name: p.stat().st_mtime_ns for p in (workspace / "data").iterdir()}
-    if (workspace / "pyproject.toml").exists():
+    if name in ("python-dependencies", "python-isolated-stage", "shell-python-node"):
         info = python_environment(workspace / "stages/002-normalize", env)
-        assert Path(info["prefix"]).resolve() == (workspace / ".venv").resolve()
+        assert Path(info["prefix"]).resolve() == (sandbox / ".venv").resolve()
         assert "python-dateutil" in info["packages"]
         assert "example-tool" not in info["packages"]
         assert "jsonschema" not in info["packages"]
@@ -103,10 +102,10 @@ def test_independent_workspace_traversal(tmp_path, cli_environment, family, name
         assert "jsonschema" in info["packages"]
         assert "python-dateutil" not in info["packages"]
         assert "example-tool" not in info["packages"]
-        unavailable = run([str(workspace / ".venv/bin/python"), "-c", "import jsonschema"], cwd=workspace, env=env, expected=1)
+        unavailable = run([str(sandbox / ".venv/bin/python"), "-c", "import jsonschema"], cwd=workspace, env=env, expected=1)
         assert "ModuleNotFoundError" in unavailable.stderr
-    if (workspace / "package.json").exists():
-        assert_node_owner(workspace / "stages" / ("002-transform" if name == "node-dependencies" else "003-node-inspect"), workspace, env)
+    if name in ("node-dependencies", "shell-python-node"):
+        assert_node_owner(workspace / "stages" / ("002-transform" if name == "node-dependencies" else "003-node-inspect"), sandbox, env)
     for stage in range(target - 1, -1, -1):
         move(sandbox, workspace, env, "down", stage)
         status(sandbox, workspace, env, stage)
@@ -124,7 +123,8 @@ def test_independent_workspace_traversal(tmp_path, cli_environment, family, name
 @pytest.mark.family_simple
 def test_isolated_stage_uses_schema_and_rejects_stale_lock(tmp_path, cli_environment):
     env = cli_environment
-    sandbox, workspace = materialize_workspace(tmp_path, "simple", "python-isolated-stage", env)
+    sandbox, workspace = materialize_workspace(tmp_path, "simple", "python-isolated-stage")
+    prepare_workspace(sandbox, workspace, cli_environment)
     initialize(sandbox, workspace, env)
     move(sandbox, workspace, env, "up", 2)
     normalized = workspace / "data/normalized.json"
@@ -152,10 +152,11 @@ def test_isolated_stage_uses_schema_and_rejects_stale_lock(tmp_path, cli_environ
 @pytest.mark.family_multi_language
 def test_shell_and_node_are_independent_of_python(tmp_path, cli_environment):
     env = cli_environment
-    sandbox, workspace = materialize_workspace(tmp_path, "multi_language", "shell-python-node", env)
+    sandbox, workspace = materialize_workspace(tmp_path, "multi_language", "shell-python-node")
+    prepare_workspace(sandbox, workspace, cli_environment)
     initialize(sandbox, workspace, env)
     native = native_environment(sandbox, env, "node", "mkdir", "cat", "rm")
-    project = workspace / "pyproject.toml"
+    project = sandbox / "pyproject.toml"
     original = project.read_text()
     project.write_text("[invalid metadata\n")
     move(sandbox, workspace, native, "up", 1)

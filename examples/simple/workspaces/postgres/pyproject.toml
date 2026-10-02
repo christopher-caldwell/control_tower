@@ -1,8 +1,0 @@
-[project]
-name = "control-tower-postgres"
-version = "0.0.0"
-requires-python = ">=3.11"
-dependencies = ["psycopg[binary]>=3.2,<4"]
-
-[tool.uv]
-package = false

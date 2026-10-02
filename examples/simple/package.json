@@ -1,5 +1,5 @@
 {
-  "name": "control-tower-shell-python-node",
+  "name": "control-tower-simple-example",
   "private": true,
   "dependencies": {
     "dayjs": "^1.11.23"

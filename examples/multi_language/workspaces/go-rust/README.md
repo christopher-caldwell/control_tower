@@ -20,15 +20,12 @@ registry dependencies are needed. Generated Cargo output stays under its ignored
 002 shell -> cargo run --locked -> data/doubled.txt
 ```
 
-## Run a disposable copy
+## Run the workspace
 
-From the Control Tower repository root:
+Follow [example setup](../../README.md#setup-and-run), then run from the copied example root:
 
 ```sh
-cargo build --locked --workspace
-export PATH="$PWD/target/debug:$PATH"
-workspace=$(mktemp -d /tmp/control-tower-go-rust.XXXXXX)
-cp -R examples/multi_language/workspaces/go-rust/. "$workspace/"
+workspace=workspaces/go-rust
 # No third-party language dependencies; Cargo.lock is checked in.
 # The first up command compiles using your installed toolchains.
 control-tower-db bootstrap-local "$workspace"
@@ -52,6 +49,6 @@ away from these paths: reversal does not restore overwritten files.
 If a mutation fails after writing a file, inspect its partial output before
 retrying. These deterministic transformations can overwrite their own outputs on
 retry. After a verifier failure, repeating the same move retries only verification.
-For the global rules, see [navigation and verification](../../../../docs/guides/verification-and-navigation.md)
-and the [executable contract](../../../../docs/reference/stage-executables.md).
-Return to the [family](../../README.md).
+For the global rules, see [navigation and verification](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
+and the [executable contract](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/reference/stage-executables.md).
+Return to the [example](../../README.md).

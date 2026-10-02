@@ -37,34 +37,47 @@ def require_tools(*executables):
         pytest.skip("optional workspace prerequisites unavailable: " + ", ".join(missing))
 
 
-def materialize_workspace(tmp_path, family, name, env):
-    # This location has no repository ancestors or category project for ordinary
-    # workspaces. Copying that one directory must provide everything scenario-local.
-    sandbox = tmp_path / "copy with spaces and 'quotes'"
+def materialize_workspace(tmp_path, family, name):
+    # The portable unit is the complete example, including sibling scenarios.
+    sandbox = tmp_path / "copy with spaces and 'quotes'" / family
+    assert not sandbox.resolve().is_relative_to(REPOSITORY.resolve()), (
+        "example copies must be outside the repository; choose an external --basetemp"
+    )
     ignore = shutil.ignore_patterns(
         ".venv", "__pycache__", "*.egg-info", ".control_tower", "data", "node_modules", "target",
     )
-    if family == "py_capsule":
+    shutil.copytree(EXAMPLES / family, sandbox, ignore=ignore)
+    return sandbox, sandbox / "workspaces" / name
+
+
+def prepare_workspace(sandbox, workspace, env):
+    """Install only the selected scenario's runtimes using documented setup."""
+    name = workspace.name
+    python = name in (
+        "python-dependencies", "python-isolated-stage", "postgres", "shell-python-node",
+        "tool-only", "node-and-tool", "full-stack",
+    )
+    node = name in ("node-dependencies", "shell-python-node", "node-and-tool", "full-stack")
+    if python:
         require_tools("uv")
-        sandbox = sandbox / "py_capsule"
-        sandbox.mkdir(parents=True)
-        shared = EXAMPLES / family
-        shutil.copytree(shared / "tools/example_tool", sandbox / "tools/example_tool", ignore=ignore)
-        for filename in ("pyproject.toml", "uv.lock", ".python-version", "package.json", "package-lock.json"):
-            shutil.copy2(shared / filename, sandbox / filename)
-        workspace = sandbox / "workspaces" / name
-    else:
-        workspace = sandbox / name
-    shutil.copytree(EXAMPLES / family / "workspaces" / name, workspace, ignore=ignore)
-    if (workspace / "pyproject.toml").exists():
-        require_tools("uv")
-    if (workspace / "go.mod").exists():
-        require_tools("go", "cargo", "rustc")
-    node_owner = sandbox if family == "py_capsule" and name != "tool-only" else workspace
-    if (node_owner / "package.json").exists():
+    if node:
         require_tools("node", "npm")
-        run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=node_owner, env=env)
-    return sandbox, workspace
+    if name == "generated-id":
+        require_tools("python3")
+    if name == "go-rust":
+        require_tools("go", "cargo", "rustc")
+    locks = lock_contents(sandbox)
+    if python:
+        run(["uv", "sync", "--locked", "--project", str(sandbox)], cwd=sandbox, env=env)
+        if name == "python-isolated-stage":
+            run(["uv", "sync", "--locked", "--project", str(workspace / "stages/003-inspect")],
+                cwd=sandbox, env=env)
+        if sandbox.name == "py_capsule":
+            run(["uv", "sync", "--locked", "--project", str(sandbox / "tools/example_tool")],
+                cwd=sandbox, env=env)
+    if node:
+        run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=sandbox, env=env)
+    assert lock_contents(sandbox) == locks
 
 
 def initialize(sandbox, workspace, env):

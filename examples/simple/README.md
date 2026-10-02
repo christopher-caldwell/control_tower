@@ -1,21 +1,77 @@
-# Simple example family
+# Simple example
 
-Focused workspaces teach normal Control Tower stages, explicit application-owned
-data, dependency ownership, and recovery. Each workspace is independent: copy its
-directory, prepare its own dependencies, and run it with the ordinary CLIs.
+Copy this complete example to experiment with focused Control Tower workflows.
+The workspaces share ordinary Python and Node dependencies; each owns its stages,
+application data, and Control Tower checkpoint database.
 
 | Workspace | Additional prerequisites | Lesson |
 | --- | --- | --- |
-| [uuid-file](workspaces/uuid-file/README.md) | Unix shell | Smallest example: one runner UUID, verification, and reversal. |
+| [uuid-file](workspaces/uuid-file/README.md) | Unix shell | One runner UUID, verification, and reversal. |
 | [generated-id](workspaces/generated-id/README.md) | Python 3 with standard-library SQLite | Explicit handoff of an application-generated identifier. |
-| [python-dependencies](workspaces/python-dependencies/README.md) | uv / Python 3.12 | Ordinary workspace-owned Python dependencies. |
-| [node-dependencies](workspaces/node-dependencies/README.md) | Node / npm | Ordinary workspace-owned Node dependencies. |
-| [python-isolated-stage](workspaces/python-isolated-stage/README.md) | uv / Python 3.12 | A closer Python project supplies a real exceptional-stage dependency. |
-| [postgres](workspaces/postgres/README.md) | uv / Python 3.12 and PostgreSQL | Run-owned external effects, inspection, reversal, retry, and abandonment. |
+| [python-dependencies](workspaces/python-dependencies/README.md) | uv / Python 3.12 | Ordinary example-owned Python dependencies. |
+| [node-dependencies](workspaces/node-dependencies/README.md) | Node / npm | Ordinary example-owned Node dependencies. |
+| [python-isolated-stage](workspaces/python-isolated-stage/README.md) | uv / Python 3.12 | A closer stage project supplies a different dependency. |
+| [postgres](workspaces/postgres/README.md) | uv / Python 3.12 and PostgreSQL | Run-owned external effects, reversal, retry, and abandonment. |
 
-Every dependency project lives within its workspace. The PostgreSQL workspace uses
-ordinary Python/psycopg and stays focused on effect ownership. For reusable typed
-capabilities, see the separate [PyCapsule family](../py_capsule/README.md).
+## Setup and run
 
-Run `./examples/test --family simple` from the repository root; add `--postgres`
-for database integration. Return to the [gallery](../README.md).
+Install or build `control-tower` and `control-tower-db` and put both on PATH.
+You need a Unix shell; install the additional tools only for the scenarios you
+choose. See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/getting-started.md).
+
+From the Control Tower checkout, copy the complete example, then enter the copy:
+
+```sh
+example="$(mktemp -d /tmp/control-tower-simple.XXXXXX)/simple"
+cp -R examples/simple "$example"
+cd "$example"
+```
+
+Copy the authored tree before running it. When copying an already-used example,
+exclude generated `.venv`, `node_modules`, `data`, `.control_tower`, and caches.
+
+For the Python dependency, isolated-stage, or PostgreSQL workflows:
+
+```sh
+uv sync --locked
+```
+
+This installs ordinary `python-dateutil` and `psycopg[binary]` in the example's
+`.venv`. Stage working directories naturally discover this project. For the
+isolated-stage workflow, also prepare its closer project:
+
+```sh
+uv sync --locked --project workspaces/python-isolated-stage/stages/003-inspect
+```
+
+That stage uses `jsonschema`, which is absent from the example environment.
+For the Node workflow:
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+```
+
+Node roles resolve example-owned `dayjs` through normal ancestor lookup.
+The UUID workflow needs neither setup command; generated-ID uses only Python's
+standard library. PostgreSQL server/schema setup is documented in its workspace.
+
+Select a workspace from this example root:
+
+```sh
+workspace=workspaces/uuid-file
+control-tower-db bootstrap-local "$workspace"
+control-tower-db migrate-local "$workspace"
+control-tower-db verify-local "$workspace"
+control-tower up --workspace "$workspace" --stage 3
+cat "$workspace"/data/*
+control-tower down --workspace "$workspace" --stage 0
+```
+
+Each workspace README supplies its stage targets, artifacts, and recovery steps.
+Dependencies are installed once per example. Schema and generated-ID support code
+stay with their scenarios; only the exceptional Python stage has its own project.
+
+From the Control Tower repository root, run `./examples/test --family simple`;
+add `--postgres` for private disposable database tests. Return to the
+[gallery](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/README.md), or see the [PyCapsule example](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/py_capsule/README.md)
+for shared encapsulated tools.

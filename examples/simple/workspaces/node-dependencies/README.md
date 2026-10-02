@@ -1,13 +1,13 @@
 # Ordinary Node dependencies
 
-A standalone Node workspace owns `package.json` and `package-lock.json`. Node
-roles use normal module resolution to find workspace-local `dayjs`; no role
+The simple example owns `package.json` and `package-lock.json`. Node
+roles use normal module resolution to find example-owned `dayjs`; no role
 installs packages. The timestamp is normalized to UTC before downstream inspection.
 
 ## Prerequisites and progression
 
 Use a Unix shell, built Control Tower binaries, and Node and npm.
-Start the commands below from the Control Tower repository root.
+Follow [example setup](../../README.md#setup-and-run), then run these commands from the copied example root.
 
 ```text
 001 Node seed (dayjs UTC) -> data/record.json
@@ -16,16 +16,12 @@ Start the commands below from the Control Tower repository root.
 
 Application data moves through the named files under `data/`; stdout is feedback.
 Every stage has forward/reverse verification. Verifiers observe rather than repair
-outputs. This workspace has no dependency on sibling workspaces or family helpers.
+outputs. Dependencies belong to the containing example; each workspace owns its stage outputs.
 
-## Run a disposable copy
+## Run the workspace
 
 ```sh
-cargo build --locked --workspace
-export PATH="$PWD/target/debug:$PATH"
-workspace=$(mktemp -d /tmp/control-tower-node-dependencies.XXXXXX)
-cp -R examples/simple/workspaces/node-dependencies/. "$workspace/"
-npm ci --prefix "$workspace" --ignore-scripts --no-audit --no-fund
+workspace=workspaces/node-dependencies
 control-tower-db bootstrap-local "$workspace"
 control-tower-db migrate-local "$workspace"
 control-tower-db verify-local "$workspace"
@@ -46,6 +42,6 @@ away from these paths: reversal does not restore overwritten files.
 If a mutation fails after writing a file, inspect its partial output before
 retrying. These deterministic transformations can overwrite their own outputs on
 retry. After a verifier failure, repeating the same move retries only verification.
-For the global rules, see [navigation and verification](../../../../docs/guides/verification-and-navigation.md)
-and the [executable contract](../../../../docs/reference/stage-executables.md).
-Return to the [family](../../README.md).
+For the global rules, see [navigation and verification](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
+and the [executable contract](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/reference/stage-executables.md).
+Return to the [example](../../README.md).

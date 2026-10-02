@@ -60,13 +60,14 @@ An existing checkout only needs the build command from its repository root. With
 
 If you configure a different Cargo target directory, adjust the binary paths. See [CLI invocation forms](../reference/cli.md#invocation-forms) for Cargo and installed-binary alternatives.
 
-## Prepare a disposable example workspace
+## Copy the example and select a workspace
 
-Use a copy so the checked-in fixture stays clean:
+Copy the complete simple example so its workflows and dependency metadata stay together, then select the shell-only UUID workspace. It needs no Python or Node setup:
 
 ```sh
-workspace="$(mktemp -d)"
-cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 printf 'Example workspace: %s\n' "$workspace"
 ```
 

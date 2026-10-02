@@ -15,8 +15,9 @@ git clone https://github.com/christopher-caldwell/control_tower.git
 cd control_tower
 cargo build --locked --workspace
 
-workspace="$(mktemp -d)"
-cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 printf 'Example workspace: %s\n' "$workspace"
 
 ./target/debug/control-tower-db bootstrap-local "$workspace"
@@ -53,7 +54,7 @@ The example file is now absent; status reports baseline 0 and no UUID. The tempo
 
 For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/simple/workspaces/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
 
-The [example gallery](examples/README.md) also includes ordinary Python/Node dependencies, multi-language composition, PostgreSQL recovery, and shared PyCapsule tools. Each family explains its dependency ownership.
+The [example gallery](examples/README.md) also includes ordinary Python/Node dependencies, multi-language composition, PostgreSQL recovery, and shared PyCapsule tools. Copy a complete example directory; its README explains setup and workspace selection.
 
 Scripts run with your permissions and can change real systems. Control Tower does not guarantee that `down` undoes `up`, provide a sandbox, or reconcile external effects after a crash.
 

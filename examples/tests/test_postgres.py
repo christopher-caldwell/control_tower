@@ -12,7 +12,7 @@ import pytest
 
 from common import (
     RESULT, CONTEXT, NODE_INSPECTION, assert_node_owner, initialize, lock_contents,
-    materialize_workspace, move, native_environment, run, status,
+    materialize_workspace, prepare_workspace, move, native_environment, run, status,
 )
 
 pytestmark = pytest.mark.postgres
@@ -25,7 +25,8 @@ pytestmark = pytest.mark.postgres
 def postgres_workspace(request, tmp_path, cli_environment):
     family = request.param
     name = "postgres" if family == "simple" else "full-stack"
-    sandbox, workspace = materialize_workspace(tmp_path, family, name, cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, family, name)
+    prepare_workspace(sandbox, workspace, cli_environment)
     return sandbox, workspace, (2 if family == "simple" else 3), (3 if family == "simple" else 7)
 
 
@@ -208,7 +209,8 @@ def test_postgres_commit_survives_receipt_failure_and_retry(tmp_path, cli_enviro
 @pytest.mark.family_py_capsule
 @pytest.mark.parametrize("target", [5, 6])
 def test_psql_stages_stop_on_sql_error_and_retry(tmp_path, cli_environment, postgres_dsn, target):
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", "full-stack", cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", "full-stack")
+    prepare_workspace(sandbox, workspace, cli_environment)
     env = dict(cli_environment, GALLERY_POSTGRES_DSN=postgres_dsn)
     prepare_postgres(workspace, postgres_dsn)
     initialize(sandbox, workspace, env)
@@ -279,7 +281,8 @@ def test_postgres_unaccepted_commit_is_abandoned_with_run_owned_cleanup(tmp_path
 
 @pytest.mark.family_py_capsule
 def test_full_stack_native_boundaries_without_python(tmp_path, cli_environment, postgres_dsn):
-    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", "full-stack", cli_environment)
+    sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", "full-stack")
+    prepare_workspace(sandbox, workspace, cli_environment)
     env = dict(cli_environment, GALLERY_POSTGRES_DSN=postgres_dsn)
     prepare_postgres(workspace, postgres_dsn)
     initialize(sandbox, workspace, env)

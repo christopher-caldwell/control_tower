@@ -8,9 +8,8 @@ The final ordinary Python stage observes the value and runtime export.
 ## Prerequisites and progression
 
 Use built Control Tower binaries, Unix tools, uv / Python 3.12 and access to the pinned PyCapsule Git repository.
-Follow [family setup](../../README.md#setup-and-run). This workspace intentionally
-requires the shared family projects and sibling `tools/example_tool`; copying it
-alone omits the capability. The family README explains how to make a complete copy.
+Follow [example setup](../../README.md#setup-and-run). This workspace intentionally
+uses the example-owned Python project and shared `tools/example_tool`.
 
 ```text
 001 ordinary Python seed (dateutil) -> data/record.json
@@ -20,10 +19,10 @@ alone omits the capability. The family README explains how to make a complete co
 
 ## Run forward and backward
 
-From the repository root after setup, with `target/debug` on PATH:
+From the copied example root after setup:
 
 ```sh
-workspace=examples/py_capsule/workspaces/tool-only
+workspace=workspaces/tool-only
 control-tower-db bootstrap-local "$workspace"
 control-tower-db migrate-local "$workspace"
 control-tower-db verify-local "$workspace"
@@ -49,6 +48,6 @@ Tool value and runtime export are separate writes. On mutation failure, inspect
 partial output before retrying; this deterministic example starts a fresh runtime
 and can repeat its tool call. Do not infer safe replay of arbitrary external APIs.
 After a verifier failure, repeating the direction retries only that verifier.
-See [navigation guidance](../../../../docs/guides/verification-and-navigation.md)
+See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
 and the [tool implementation](../../tools/example_tool/README.md).
-Return to the [family](../../README.md).
+Return to the [example](../../README.md).
