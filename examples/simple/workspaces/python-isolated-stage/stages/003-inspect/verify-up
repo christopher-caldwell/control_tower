@@ -1,0 +1,17 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+from jsonschema import validate
+
+saved = json.loads((data / "validated.json").read_text())
+validate(saved, {
+    "type": "object", "required": ["record_id", "label"],
+    "properties": {"record_id": {"const": "123"}, "label": {"const": "EXAMPLE RECORD"}},
+    "additionalProperties": False,
+})
+if saved != json.loads((data / "normalized.json").read_text()):
+    raise SystemExit("validated output differs from input")

@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+test ! -e "$CONTROL_TOWER_WORKSPACE/data/psql_file.json"

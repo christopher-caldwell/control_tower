@@ -1,25 +1,23 @@
-# Application-generated ID example
+# Application-generated ID handoff
 
 This optional two-stage workspace creates a row in an **application SQLite database**, carries its generated integer ID in an author-owned JSON file, and changes/restores that same row. Control Tower still launches ordinary executables; it does not parse the ID from stdout or manage the handoff.
 
-You need the [usual build prerequisites](../../docs/guides/getting-started.md#prerequisites) **plus Python 3 with its standard-library `sqlite3` module**. No Python packages, separate SQLite installation, server, or credentials are needed. Python is a prerequisite only for this example; the [original UUID-file quickstart](../../README.md#try-the-three-stage-example) does not need it.
+You need the [usual build prerequisites](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md#prerequisites) **plus Python 3 with its standard-library `sqlite3` module**. No Python packages, separate SQLite installation, server, or credentials are needed. Python is a prerequisite for this scenario; the [original UUID-file quickstart](https://github.com/christopher-caldwell/control_tower/blob/main/README.md#try-the-three-stage-example) does not need it.
 
-## Prepare a disposable copy
+## Prepare the workspace
 
-Run from the repository root, in one Unix shell:
+Follow [simple example setup](../../README.md#setup-and-run), then run from the copied example root. This scenario needs no uv or npm setup:
 
 ```sh
-cargo build --locked --workspace
 python3 --version
 
-workspace="$(mktemp -d)"
-cp -R examples/generated-id/. "$workspace/"
+workspace=workspaces/generated-id
 printf 'Example workspace: %s\n' "$workspace"
 
-./target/debug/control-tower-db bootstrap-local "$workspace"
-./target/debug/control-tower-db migrate-local "$workspace"
-./target/debug/control-tower-db verify-local "$workspace"
-./target/debug/control-tower status --workspace "$workspace"
+control-tower-db bootstrap-local "$workspace"
+control-tower-db migrate-local "$workspace"
+control-tower-db verify-local "$workspace"
+control-tower status --workspace "$workspace"
 ```
 
 Status initially reports baseline 0. These commands prepare only Control Tower's `.control_tower/state.sqlite3`. Stage 1/up creates `data/application.sqlite3` and its `fixture` table, inserts a row, then writes its SQLite-generated ID to `data/record.json`. The ID is independent of `CONTROL_TOWER_UUID`.
@@ -27,20 +25,20 @@ Status initially reports baseline 0. These commands prepare only Control Tower's
 ## Walk 0 → 1 → 2 → 1 → 2 → 0
 
 ```sh
-./target/debug/control-tower up --workspace "$workspace" --stage 1
+control-tower up --workspace "$workspace" --stage 1
 cat "$workspace/data/record.json"
 handoff="$(cat "$workspace/data/record.json")"
 
-./target/debug/control-tower up --workspace "$workspace" --stage 2
+control-tower up --workspace "$workspace" --stage 2
 test "$(cat "$workspace/data/record.json")" = "$handoff"
-./target/debug/control-tower down --workspace "$workspace" --stage 1
+control-tower down --workspace "$workspace" --stage 1
 test "$(cat "$workspace/data/record.json")" = "$handoff"
-./target/debug/control-tower up --workspace "$workspace" --stage 2
+control-tower up --workspace "$workspace" --stage 2
 test "$(cat "$workspace/data/record.json")" = "$handoff"
 
-./target/debug/control-tower down --workspace "$workspace" --stage 0
+control-tower down --workspace "$workspace" --stage 0
 test ! -e "$workspace/data/record.json"
-./target/debug/control-tower status --workspace "$workspace"
+control-tower status --workspace "$workspace"
 ```
 
 Each mutation/check prints the ID and observed value. The JSON stays identical through stages 1 and 2 and their reversals; it is removed only by stage 1/down.
@@ -71,14 +69,13 @@ PY
 
 ## Fail a check, repair it, retry only the check
 
-Use another fresh disposable copy, from the repository root. This exercise logs the stage 2 mutation so a successful retry cannot silently repeat it:
+Prepare another fresh copy of the complete simple example using its README, then run from that example root. This exercise logs the stage 2 mutation so a successful retry cannot silently repeat it:
 
 ```sh
-workspace="$(mktemp -d)"
-cp -R examples/generated-id/. "$workspace/"
-./target/debug/control-tower-db bootstrap-local "$workspace"
-./target/debug/control-tower-db migrate-local "$workspace"
-./target/debug/control-tower-db verify-local "$workspace"
+workspace=workspaces/generated-id
+control-tower-db bootstrap-local "$workspace"
+control-tower-db migrate-local "$workspace"
+control-tower-db verify-local "$workspace"
 
 stage="$workspace/stages/002-change-record"
 cp "$stage/up" "$workspace/up.original"
@@ -97,20 +94,20 @@ chmod +x "$stage/verify-up"
 Run this separately. **Its nonzero exit is expected**:
 
 ```sh
-./target/debug/control-tower up --workspace "$workspace" --stage 2
+control-tower up --workspace "$workspace" --stage 2
 ```
 
 Stage 2/up has changed the row, but recorded completed position stays 1 with pending up 2. The movement prints commands for retrying that check or reversing the active stage. Repair and retry:
 
 ```sh
-./target/debug/control-tower status --workspace "$workspace"
+control-tower status --workspace "$workspace"
 cp "$workspace/verify-up.original" "$stage/verify-up"
 chmod +x "$stage/verify-up"
-./target/debug/control-tower up --workspace "$workspace" --stage 2
+control-tower up --workspace "$workspace" --stage 2
 test "$(cat "$workspace/mutation-calls")" = '2 up'
-./target/debug/control-tower status --workspace "$workspace"
-./target/debug/control-tower down --workspace "$workspace" --stage 0
-./target/debug/control-tower status --workspace "$workspace"
+control-tower status --workspace "$workspace"
+control-tower down --workspace "$workspace" --stage 0
+control-tower status --workspace "$workspace"
 ```
 
 Only stage 2/verify-up starts on retry. The single `2 up` log line proves the successful mutation ran once. Final status reports baseline 0 and no UUID.
@@ -119,4 +116,4 @@ Only stage 2/verify-up starts on retry. The single `2 up` log line proves the su
 
 The eight executable role files are thin entry points into `support/fixture.py`. They use the documented stage working directory/environment. All checks open the application DB with SQLite `mode=ro`; they never initialize a missing DB/schema, create data, or repair a wrong value. Missing data/schema produces a nonzero error, including with Python optimization enabled. Only stage 1/up initializes the application fixture.
 
-This is a small local fixture, not an SDK or managed context format. SQLite mutation, JSON publication, and Control Tower checkpoint writes are separate operations. If a mutation partially fails, inspect the row and handoff yourself; `down 0` is not guaranteed cleanup after a failed first mutation. `status` reports bookkeeping and does not query the application row. Finish/clean the run before structural stage edits. See [authoring](../../docs/guides/creating-a-workspace.md) and [navigation](../../docs/guides/verification-and-navigation.md).
+This is a small local fixture, not an SDK or managed context format. SQLite mutation, JSON publication, and Control Tower checkpoint writes are separate operations. If a mutation partially fails, inspect the row and handoff yourself; `down 0` is not guaranteed cleanup after a failed first mutation. `status` reports bookkeeping and does not query the application row. Finish/clean the run before structural stage edits. See [authoring](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/creating-a-workspace.md) and [navigation](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md).

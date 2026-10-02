@@ -4,7 +4,7 @@ title: Navigate and retry verification
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-01'
+updated: '2026-10-02'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -22,7 +22,7 @@ Movement shows the workspace/target, then a flushed start and captured result fo
 
 ## Move to a target
 
-With the [three-stage example](../../examples/uuid-file/README.md) prepared, run these from the repository root:
+With the [three-stage example](../../examples/simple/workspaces/uuid-file/README.md) prepared, run these from the repository root:
 
 ```sh
 ./target/debug/control-tower up --workspace "$workspace" --stage 2
@@ -69,8 +69,9 @@ Asking for `down --stage 1` first resolves stage 3's reversal, then reverses sta
 Use a **fresh disposable copy**, not a workspace containing valuable test state. These commands start from the repository root after building the executables:
 
 ```sh
-workspace="$(mktemp -d)"
-cp -R examples/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 ./target/debug/control-tower-db bootstrap-local "$workspace"
 ./target/debug/control-tower-db migrate-local "$workspace"
 ./target/debug/control-tower-db verify-local "$workspace"
@@ -146,6 +147,16 @@ The UUID stays available in all these cases, including a pending return to basel
 If `up` or `down` itself exits nonzero, Control Tower reports the failure and stops before the verifier or later stages. It does not infer whether the script partially changed something, automatically back it out, or provide a dedicated recovery flow. A failed reverse mutation can leave the prior pending checkpoint recorded; that is not evidence about the external state.
 
 Verifier retry/backout recipes are printed only for this invocation's failed verifier. After a mutation or save failure, inspect author-owned effects. In particular, a partially effective failed first up can leave baseline, a retained UUID and no pending check. Down 0 then runs no cleanup; retrying up can repeat effects with the same UUID.
+
+`down` reverses accepted workflow transitions. A failed mutation may leave an external
+effect while its stage remains unaccepted, so normal traversal will not invoke that
+stage's `down`. Recovery belongs to the workflow that owns the effect. In the
+[Postgres example](../../examples/simple/workspaces/postgres/README.md#failed-stage-002-retry-or-abandon),
+stage 2 can commit its run-owned row and then fail writing a local receipt: completed
+position stays at stage 1 and the UUID is retained. Repair/retry validates the same
+row; abandonment requires explicit UUID-scoped SQL cleanup before returning to
+baseline. Neither an earlier stage's reversal nor deleting checkpoint files performs
+that cleanup.
 
 After a save failure, the movement separates the last confirmed checkpoint from the attempted update, preserves role results, and stops. A pending-save failure can retain a successful mutation with no recorded pending check; a final-save failure can retain a pending check after the verifier succeeded. Those cases have different retry effects. No automatic retry/reconciliation is provided.
 

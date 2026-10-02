@@ -1,0 +1,9 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+if (data / "validated.json").exists():
+    raise SystemExit("validated.json remains after reversal")

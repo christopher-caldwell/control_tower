@@ -1,0 +1,10 @@
+#!/bin/sh
+# Prepare the shared caller, the separate PyCapsule child, and shared Node packages.
+set -eu
+GALLERY_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+unset UV_PROJECT UV_PROJECT_ENVIRONMENT UV_NO_SYNC UV_FROZEN VIRTUAL_ENV PYTHONPATH
+export PYTHONDONTWRITEBYTECODE=1
+uv sync --locked --project "$GALLERY_ROOT"
+uv sync --locked --project "$GALLERY_ROOT/tools/example_tool"
+npm ci --prefix "$GALLERY_ROOT" --ignore-scripts --no-audit --no-fund
+printf 'Ready. Run a workspace with control-tower and control-tower-db on PATH.\n'

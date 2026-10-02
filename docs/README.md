@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-01'
+updated: '2026-10-02'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -23,15 +23,16 @@ Control Tower is a local CLI workbench for user-owned executable stages. Start w
 | --- | --- |
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |
-| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/uuid-file/README.md) |
-| Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/generated-id/README.md) (Python 3) |
+| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workspaces/uuid-file/README.md) |
+| Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workspaces/generated-id/README.md) (Python 3) |
+| Choose a usage pattern | [Example gallery](../examples/README.md) |
 | Write your own stages | [Create a workspace](guides/creating-a-workspace.md) |
 | Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
 | Look up commands and database operations | [CLI reference](reference/cli.md) |
 | Look up role names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
 | Diagnose setup or script failures | [Troubleshooting](guides/troubleshooting.md) |
 
-Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence.
+Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence. The [October 2 gallery validation](research/2026-10-02-examples-gallery-validation.md) records the family/workspace restructure and its executed integration checks.
 
 ## Design and development
 

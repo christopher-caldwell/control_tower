@@ -4,7 +4,7 @@ title: Stage executables and environment
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-01'
+updated: '2026-10-02'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -93,7 +93,7 @@ This proves a minimal runner-supplied identifier handoff. There is no supported 
 
 Earlier discovery explored stage-produced IDs and richer context views. Those are not the shipped process interface. See [ADR-0003's implementation note](../decisions/0003-session-state-and-process-io.md#current-implementation-observation).
 
-The optional [generated-ID example](../../examples/generated-id/README.md) uses Python's standard-library SQLite client and an author-owned JSON file to carry the database-generated record ID through two stages. Its application database is separate from Control Tower's checkpoint file. Its checks open read-only connections and never initialize or repair the fixture. This is an ordinary authoring pattern, not a new runner protocol.
+The optional [generated-ID example](../../examples/simple/workspaces/generated-id/README.md) uses Python's standard-library SQLite client and an author-owned JSON file to carry the database-generated record ID through two stages. Its application database is separate from Control Tower's checkpoint file. Its checks open read-only connections and never initialize or repair the fixture. This is an ordinary authoring pattern, not a new runner protocol.
 
 ## Success, failure, and trust
 
@@ -107,4 +107,4 @@ Scripts run with your user permissions and inherited environment, including any 
 
 ## Implementation references
 
-[Discovery](../../crates/infrastructure/src/stage_discovery.rs), [process runner](../../crates/infrastructure/src/executable_runner.rs), and [UUID/transition lifecycle](../../crates/application/src/lib.rs) define these mechanics. For a runnable example, open [the UUID-file workspace](../../examples/uuid-file/README.md).
+[Discovery](../../crates/infrastructure/src/stage_discovery.rs), [process runner](../../crates/infrastructure/src/executable_runner.rs), and [UUID/transition lifecycle](../../crates/application/src/lib.rs) define these mechanics. For a runnable example, open [the UUID-file workspace](../../examples/simple/workspaces/uuid-file/README.md).

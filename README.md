@@ -15,8 +15,9 @@ git clone https://github.com/christopher-caldwell/control_tower.git
 cd control_tower
 cargo build --locked --workspace
 
-workspace="$(mktemp -d)"
-cp -R examples/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 printf 'Example workspace: %s\n' "$workspace"
 
 ./target/debug/control-tower-db bootstrap-local "$workspace"
@@ -49,9 +50,11 @@ The example file is now absent; status reports baseline 0 and no UUID. The tempo
 
 ## Use it in your work
 
-[Walk through the example one stage at a time](examples/uuid-file/README.md), then [create your own workspace](docs/guides/creating-a-workspace.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
+[Walk through the example one stage at a time](examples/simple/workspaces/uuid-file/README.md), then [create your own workspace](docs/guides/creating-a-workspace.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
 
-For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
+For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/simple/workspaces/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
+
+The [example gallery](examples/README.md) also includes ordinary Python/Node dependencies, multi-language composition, PostgreSQL recovery, and shared PyCapsule tools. Copy a complete example directory; its README explains setup and workspace selection.
 
 Scripts run with your permissions and can change real systems. Control Tower does not guarantee that `down` undoes `up`, provide a sandbox, or reconcile external effects after a crash.
 

@@ -1,0 +1,7 @@
+{
+  "name": "control-tower-multi-language-example",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.23"
+  }
+}

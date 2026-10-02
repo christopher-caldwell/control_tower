@@ -1,0 +1,6 @@
+#!/usr/bin/env -S uv run python
+import os
+from pathlib import Path
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+if (workspace / "data/postgres_inspection.json").exists():
+    raise SystemExit("database inspection remains after reversal")

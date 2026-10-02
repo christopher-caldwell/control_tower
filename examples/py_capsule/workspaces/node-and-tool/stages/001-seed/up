@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const data = path.join(process.env.CONTROL_TOWER_WORKSPACE, "data");
+const dayjs = require("dayjs");
+dayjs.extend(require("dayjs/plugin/utc"));
+fs.mkdirSync(data, {recursive: true});
+const record = {id: 123, label: "  example record  ", created_at: dayjs.utc("2026-01-02T03:04:05Z").format("YYYY-MM-DDTHH:mm:ssZ")};
+fs.writeFileSync(path.join(data, "record.json"), JSON.stringify(record, null, 2) + "\n");

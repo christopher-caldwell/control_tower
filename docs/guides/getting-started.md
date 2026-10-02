@@ -4,7 +4,7 @@ title: Build and run Control Tower
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-01'
+updated: '2026-10-02'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -60,13 +60,14 @@ An existing checkout only needs the build command from its repository root. With
 
 If you configure a different Cargo target directory, adjust the binary paths. See [CLI invocation forms](../reference/cli.md#invocation-forms) for Cargo and installed-binary alternatives.
 
-## Prepare a disposable example workspace
+## Copy the example and select a workspace
 
-Use a copy so the checked-in fixture stays clean:
+Copy the complete simple example so its workflows and dependency metadata stay together, then select the shell-only UUID workspace. It needs no Python or Node setup:
 
 ```sh
-workspace="$(mktemp -d)"
-cp -R examples/uuid-file/. "$workspace/"
+example="$(mktemp -d)/simple"
+cp -R examples/simple "$example"
+workspace="$example/workspaces/uuid-file"
 printf 'Example workspace: %s\n' "$workspace"
 ```
 
@@ -110,7 +111,7 @@ cat "$workspace"/data/*
 printf '\n'
 ```
 
-The final status should identify stage 3, show one UUID, and show no pending verification. The file should contain `hello to you`. Read the [example walkthrough](../../examples/uuid-file/README.md) to stop and inspect after each stage rather than running all three at once.
+The final status should identify stage 3, show one UUID, and show no pending verification. The file should contain `hello to you`. Read the [example walkthrough](../../examples/simple/workspaces/uuid-file/README.md) to stop and inspect after each stage rather than running all three at once.
 
 ```sh
 ./target/debug/control-tower down --workspace "$workspace" --stage 0

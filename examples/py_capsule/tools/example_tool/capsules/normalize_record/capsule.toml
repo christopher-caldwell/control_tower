@@ -1,0 +1,7 @@
+name = "normalize_record"
+tool = "./normalize_record.py"
+project = "../.."
+
+[inputs]
+record_id = "example"
+label = " example "

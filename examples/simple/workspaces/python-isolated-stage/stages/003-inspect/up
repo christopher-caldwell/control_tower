@@ -1,0 +1,17 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+from jsonschema import validate
+
+result = json.loads((data / "normalized.json").read_text())
+validate(result, {
+    "type": "object",
+    "properties": {"record_id": {"type": "string"}, "label": {"type": "string"}},
+    "required": ["record_id", "label"],
+    "additionalProperties": False,
+})
+(data / "validated.json").write_text(json.dumps(result, indent=2) + "\n")

@@ -1,0 +1,19 @@
+#!/bin/sh
+# Run optional examples through this checkout's ordinary CLIs, in disposable copies.
+set -eu
+EXAMPLES_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPOSITORY_ROOT=$(CDPATH= cd -- "$EXAMPLES_ROOT/.." && pwd)
+for executable in control-tower control-tower-db; do
+  if [ ! -x "$REPOSITORY_ROOT/target/debug/$executable" ]; then
+    printf 'Build Control Tower first: cargo build --locked --workspace (repository root).\n' >&2
+    exit 1
+  fi
+done
+unset UV_PROJECT UV_PROJECT_ENVIRONMENT UV_NO_SYNC UV_FROZEN VIRTUAL_ENV PYTHONPATH
+export PYTHONDONTWRITEBYTECODE=1
+mkdir -p "$EXAMPLES_ROOT/test-results"
+cd "$EXAMPLES_ROOT/tests"
+exec uv run --locked --project "$EXAMPLES_ROOT/tests" -- python -m pytest \
+  -c "$EXAMPLES_ROOT/tests/pyproject.toml" -p no:cacheprovider \
+  --junitxml "$EXAMPLES_ROOT/test-results/integration.xml" \
+  "$@"
