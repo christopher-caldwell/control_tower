@@ -15,7 +15,7 @@ sources:
 - ../research/2026-10-01-guided-usage-findings.md
 - ../research/2026-10-01-core-v0-completion.md
 - ../decisions/0002-stage-navigation-and-verification.md
-- ../decisions/0003-session-state-and-process-io.md
+- ../decisions/0003-session-state-and-process-io.md\n- ../decisions/0006-loopback-web-ui.md
 ---
 
 # Open questions and validation
@@ -36,12 +36,12 @@ The [guided-usage findings register](../research/2026-10-01-guided-usage-finding
 
 Filesystem authoring, application-generated IDs in author-owned files, and the application edit/backout/rerun loop have practical evidence in AR06/AR07 and the completion record. Farther pending continuation and layered compensation have fresh AR08 evidence. The remaining question is convenience across repeated actual owner tickets: where do authoring, setup, inspection or handoff costs recur enough to justify a small change?
 
-Answer these from use. They do not authorize a config language, output-patch system, extra action type or additional frontend before a real need appears.
+Answer these from use. They do not authorize a config language, output-patch system or extra action type before a real need appears. The first graphical Entry is now separately authorized by [ADR-0006](../decisions/0006-loopback-web-ui.md); its detailed information architecture and implementation remain future work rather than an open host-technology question.
 
 ## Deferred edge cases
 
 When an up/down executable itself exits nonzero, v0 reports failure and stops automatic movement. Richer cleanup/recovery for partially effective failed mutations remains deferred; it must not be confused with the already implemented reversal after a successful mutation's verifier fails.
 
-Also deferred: Rust-process crash reconciliation, directory-structure drift protection, concurrent instances, workspace-wide reset semantics, Tauri/HTTP, helper ecosystems and generalized context/value semantics. SQLite persistence does not bring those features into scope.
+Also deferred: Rust-process crash reconciliation, directory-structure drift protection, concurrent instances, workspace-wide reset semantics, helper ecosystems and generalized context/value semantics. Tauri versus HTTP is no longer open: ADR-0006 selects loopback HTTP/SSE with an embedded React build. Tauri/macOS app packaging, WebSockets and live byte-by-byte process-output streaming remain revisit-only choices that require new evidence. SQLite persistence does not bring those features into scope.
 
 Historical starting points are retained in the [discovery brief](discovery-brief.md) and [discovery record](../research/discovery-01.md). They should not be reissued as current implementation tasks without new evidence.

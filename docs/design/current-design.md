@@ -12,7 +12,7 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
-- ../decisions/0005-cli-first-driving-adapter.md
+- ../decisions/0005-cli-first-driving-adapter.md\n- ../decisions/0006-loopback-web-ui.md
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
 - ../research/2026-10-01-guided-usage-findings.md
@@ -58,13 +58,17 @@ down -> optional verify-down -> accept lower position
 
 The author is responsible for correctness and reversibility. A role name is not a sandbox or proof of side-effect freedom. Exact execution mechanics are in the [executable reference](../reference/stage-executables.md).
 
-## V0 entry architecture: CLI only
+## Entry architecture: CLI implemented; loopback web UI selected
 
-CLI is the only v0 Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly; future Tauri/HTTP delivery would call the same Application behavior.
+CLI is the implemented Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
-Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted; Infrastructure continues to buffer bytes for one role. Captured bytes remain in the Application outcome. Application also derives nearest retry/reversal targets for this invocation's failed verifier; CLI only quotes/formats those choices. No event bus, live stream or second navigation algorithm is introduced.
+[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the first graphical Entry: a built React frontend served by the Rust process over loopback HTTP, with ordinary HTTP commands/queries and SSE for server-to-browser execution observations. Production does not require Vite or Node. The graphical Entry is selected architecture, **not implemented behavior yet**; guides/reference continue to describe the CLI until that changes.
 
-The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
+The UI Entry calls the same Application/Workbench behavior rather than shelling out to the CLI. It does not own movement, verification, retry/reversal or persistence semantics. The intended distribution remains a normal Control Tower executable rather than requiring a Tauri/macOS app bundle; exact command spelling and module/crate layout remain implementation details.
+
+Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted. The UI may map those observations to SSE so a stage/role can visibly enter and leave a running state without introducing a second execution model. Infrastructure continues to buffer stdout/stderr for one role, and captured bytes remain in the Application outcome. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
+
+The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.
 
 ## Session-state architecture follows the Rust playbook
 
@@ -149,6 +153,6 @@ A workspace-wide reset executable remains a future idea, not a current command. 
 
 ## What still has not earned scope
 
-No UI/Tauri/HTTP, helper ecosystem, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection or external transaction system is selected for this implementation.
+The graphical UI delivery architecture is selected in ADR-0006 but is not implemented yet. Tauri/macOS app packaging, WebSockets and live byte-by-byte stdout/stderr streaming are not selected. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
 
 The first discovery and correction rounds have implementation evidence. The next useful input is actual use, not replaying the historical discovery queue as setup work. [Open questions](open-questions.md) keeps that future work separate; the [discovery brief](discovery-brief.md) and [earlier probe](three-step-workspace.md) remain historical inputs.
