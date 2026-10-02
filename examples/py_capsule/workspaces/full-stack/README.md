@@ -156,7 +156,7 @@ control-tower status --workspace "$workspace"
 Earlier stages' `down` roles do not clean later unaccepted database effects.
 Deleting `.control_tower/` or local output does not remove PostgreSQL rows.
 After a verifier failure, repeating the same move retries only the observational
-check without replaying the mutation. See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
+check without replaying the mutation. See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
 
 ## Optional integration coverage
 

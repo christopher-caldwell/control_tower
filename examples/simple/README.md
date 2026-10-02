@@ -17,7 +17,7 @@ application data, and Control Tower checkpoint database.
 
 Install or build `control-tower` and `control-tower-db` and put both on PATH.
 You need a Unix shell; install the additional tools only for the scenarios you
-choose. See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/getting-started.md).
+choose. See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
 
 From the Control Tower checkout, copy the complete example, then enter the copy:
 
@@ -73,5 +73,5 @@ stay with their scenarios; only the exceptional Python stage has its own project
 
 From the Control Tower repository root, run `./examples/test --family simple`;
 add `--postgres` for private disposable database tests. Return to the
-[gallery](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/README.md), or see the [PyCapsule example](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/py_capsule/README.md)
+[gallery](https://github.com/christopher-caldwell/control_tower/blob/main/examples/README.md), or see the [PyCapsule example](https://github.com/christopher-caldwell/control_tower/blob/main/examples/py_capsule/README.md)
 for shared encapsulated tools.

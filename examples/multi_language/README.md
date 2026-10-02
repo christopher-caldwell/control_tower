@@ -12,7 +12,7 @@ explicit files. Runtime boundaries are visible in the executable stage files.
 ## Setup and run
 
 Install or build `control-tower` and `control-tower-db` and put both on PATH.
-See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/getting-started.md).
+See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
 From the Control Tower checkout:
 
 ```sh
@@ -51,4 +51,4 @@ Workspace READMEs describe intermediate files and reversal.
 
 From the Control Tower repository root, run `./examples/test --family multi_language`.
 Unavailable optional toolchains produce skips; setup, compilation, and execution
-errors with available tools produce failures. Return to the [gallery](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/README.md).
+errors with available tools produce failures. Return to the [gallery](https://github.com/christopher-caldwell/control_tower/blob/main/examples/README.md).

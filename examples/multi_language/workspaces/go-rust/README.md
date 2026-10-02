@@ -49,6 +49,6 @@ away from these paths: reversal does not restore overwritten files.
 If a mutation fails after writing a file, inspect its partial output before
 retrying. These deterministic transformations can overwrite their own outputs on
 retry. After a verifier failure, repeating the same move retries only verification.
-For the global rules, see [navigation and verification](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
-and the [executable contract](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/reference/stage-executables.md).
+For the global rules, see [navigation and verification](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md)
+and the [executable contract](https://github.com/christopher-caldwell/control_tower/blob/main/docs/reference/stage-executables.md).
 Return to the [example](../../README.md).

@@ -49,6 +49,6 @@ Tool value and runtime export are separate writes. On mutation failure, inspect
 partial output before retrying; this deterministic example starts a fresh runtime
 and can repeat its tool call. Do not infer safe replay of arbitrary external APIs.
 After a verifier failure, repeating the direction retries only that verifier.
-See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md)
+See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md)
 and the [tool implementation](../../tools/example_tool/README.md).
 Return to the [example](../../README.md).

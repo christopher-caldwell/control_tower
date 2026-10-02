@@ -17,7 +17,7 @@ Python/Node projects and the reusable [example_tool](tools/example_tool/README.m
 Install or build `control-tower` and `control-tower-db` and put both on PATH.
 Use Unix tools, Git, uv, and Python 3.12. Node/npm are needed for `node-and-tool`
 and `full-stack`; PostgreSQL is needed only for `full-stack`. See the repository's
-[CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/getting-started.md).
+[CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
 Your GitHub SSH identity must have read access to the private
 `christopher-caldwell/py_capsule` repository to resolve the pinned dependency.
 
@@ -74,7 +74,7 @@ The shared Python environment includes `python-dateutil` for ordinary timestamp
 processing and `psycopg[binary]` for database stages. Node finds example-owned `dayjs`
 through normal module resolution. Native shell/psql stages run independently of
 Python metadata. Ordinary dependency ownership and nearest-project isolation are
-shown in the [simple example](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/simple/README.md), without tool encapsulation.
+shown in the [simple example](https://github.com/christopher-caldwell/control_tower/blob/main/examples/simple/README.md), without tool encapsulation.
 
 The PyCapsule Git revision remains pinned to
 `25edcfe51373cc2ebf0593ae5a033323f71b19e3` in both caller and tool projects because
@@ -94,7 +94,7 @@ under `~/.py_capsule/normalize_record/runs/` after workspace reversal.
 
 `down` reverses accepted transitions. Partial effects of a failed mutation belong
 to the workflow. See the [full-stack recovery procedure](workspaces/full-stack/README.md#failed-stage-003-retry-or-abandon)
-and maintained [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
+and maintained [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
 
 From the Control Tower repository root:
 
@@ -113,4 +113,4 @@ remain plain `uv run python`, with lock stability checked separately.
 These capabilities originated in `christopher-caldwell/control-tower-py-capsule-demo`,
 branch `feat/workspace-pattern-gallery`, commit
 `2c8095e8fab163b710166d89aedd6f57241b99a9`. Control Tower now owns this gallery's evolution.
-Return to the [gallery](https://github.com/christopher-caldwell/control_tower/blob/feat/examples-gallery/examples/README.md).
+Return to the [gallery](https://github.com/christopher-caldwell/control_tower/blob/main/examples/README.md).
