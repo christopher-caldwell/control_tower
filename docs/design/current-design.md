@@ -15,6 +15,8 @@ sources:
 - ../decisions/0005-cli-first-driving-adapter.md
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
+- ../research/2026-10-01-guided-usage-findings.md
+- ../research/2026-10-01-core-v0-completion.md
 - ../reference/cli.md
 - ../reference/stage-executables.md
 ---
@@ -28,6 +30,10 @@ This is the maintained implementation/intent summary. For commands, start with [
 Control Tower is a personal, local, migration-style workbench for user-owned executable actions. The author owns what operations mean. Control Tower owns ordered navigation, process execution, visible results, and the small amount of state needed between CLI invocations.
 
 It is not an orchestration platform: no hosted control plane, login, scheduler, workers, or built-in HTTP/database action language.
+
+## Core-v0 standing
+
+The core is complete as a candidate for repeated local owner use under the bounded [completion standard and evidence](../research/2026-10-01-core-v0-completion.md). Real-process layered navigation, farther continuation after pending verification, both runnable examples and normal development gates support the current contract. This milestone adds no product semantics, accepted decision, managed context or recovery guarantee. Actual owner tickets and recurring ergonomics should drive the next iteration; retained findings and untried research scenarios are not a new completion backlog.
 
 ## Core model
 
@@ -55,6 +61,8 @@ The author is responsible for correctness and reversibility. A role name is not 
 ## V0 entry architecture: CLI only
 
 CLI is the only v0 Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly; future Tauri/HTTP delivery would call the same Application behavior.
+
+Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted; Infrastructure continues to buffer bytes for one role. Captured bytes remain in the Application outcome. Application also derives nearest retry/reversal targets for this invocation's failed verifier; CLI only quotes/formats those choices. No event bus, live stream or second navigation algorithm is introduced.
 
 The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
@@ -87,6 +95,8 @@ Domain is deliberately absent in the current implementation: the modeled types r
 
 Application uses `WorkbenchQueries::read_checkpoint()` for an independent read and `WorkbenchWrites::record_checkpoint()` for one independent singleton upsert. Absence is `Option`; no Application-managed transaction is claimed across scripts or checkpoints, so no Store/UoW was added. The Query adapter uses a read-only connection and the Write adapter an existing read-write connection to the same local file.
 
+Checkpoint proposals are published to confirmed Application state only after a successful write. A save failure returns the latest confirmed state, attempted update, original error and all collected role results; further roles/writes stop. An absent initial row means default baseline, not a fabricated saved row. Last-confirmed bookkeeping does not prove current database contents after an ambiguous storage error.
+
 ### SQLite library and SQL default departure
 
 The compliance pass retained `rusqlite` as a documented DEFAULT deviation: this is a synchronous, short-lived CLI with blocking script execution and one local checkpoint read/upsert at a time. The tradeoff is losing SQLx compile-time query checking while avoiding an otherwise unused async execution/tooling path. Feature-local external SQL and real SQLite mapping/source tests provide runtime evidence, not compile-time checking. The full justification and its limits remain in the [ledger](../research/playbook-compliance.md#default-deviations-and-sql-inventory).
@@ -113,17 +123,21 @@ The [run-semantics validation](../research/run-semantics-validation.md) records 
 
 ## V0 state handoff is intentionally minimal
 
-The shipped runner generates one UUID before a run's first mutation and supplies it to every role. The sample stage 1 uses it to name a file; stage 1 does not currently generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
+The shipped runner generates one UUID before a run's first mutation and supplies it to every role. The original UUID-file sample uses it to name a file; it does not generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
 
-This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The sample proves a shared runner token and navigation, not arbitrary API-generated-ID capture. A richer script-produced handoff remains unimplemented and should not be invented during a documentation pass.
+This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
 
 The UUID persists while verification is pending and is cleared on successful settlement at baseline 0. SQLite remains prepared for the next run.
+
+A failed first mutation retains its preallocated UUID at baseline without pending verification. A down-0 no-op does not reset that UUID; a retry reuses it. Optional checks are rediscovered each invocation, so removing a pending verifier can accept without rechecking or mutation replay. Settled-target movement and status remain metadata-only with respect to external fixture correctness.
 
 ## Failure policy for v0
 
 A nonzero mutation stops the walk before its verifier or later stages. A successful mutation with failed verification retains the pending state for explicit retry or reversal across normal CLI exits. A failed reverse verifier retains the original completed position and the new pending direction.
 
 A Rust crash or failed checkpoint write carries no external-state reconciliation guarantee. Scripts may have changed external systems even if local bookkeeping was not updated. SQLite persistence is not a transaction around arbitrary executable side effects.
+
+Movement and status report actual numeric stage identifiers/labels for completed and pending positions, keeping persistence's internal count/index representation out of user-facing identity. Verifier-specific next steps depend on this invocation's failure, not just an old pending checkpoint after a failed reverse mutation or save. There is no automatic write retry, mutation retry or recovery flow.
 
 ## No concurrency or structural-drift machinery
 

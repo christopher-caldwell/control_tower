@@ -542,3 +542,277 @@ fn pending_down_reverses_up_and_reverse_verification_is_resumable_across_process
         assert_calls_and_uuid(&workspace, &expected, &uuid);
     }
 }
+
+#[test]
+fn role_feedback_arrives_while_roles_wait_and_output_is_not_replayed() {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Child, Stdio};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    struct Running {
+        child: Child,
+        workspace: PathBuf,
+    }
+    impl Drop for Running {
+        fn drop(&mut self) {
+            for n in [1, 2] {
+                let _ = fs::write(self.workspace.join(format!("release-{n}")), b"");
+            }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+    let workspace = Workspace::from_fixture();
+    for (n, name) in [(1, "001-create-file"), (2, "002-write-hello")] {
+        fs::remove_file(workspace.path().join("stages").join(name).join("verify-up")).unwrap();
+        let mutation = if n == 1 {
+            "mkdir -p \"$CONTROL_TOWER_WORKSPACE/data\"\n: > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\""
+        } else {
+            "printf hello > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\""
+        };
+        write_executable(
+            &workspace.path().join("stages").join(name).join("up"),
+            &format!(
+                "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKSPACE/waiting-{n}\"\nattempt=0\nwhile [ ! -e \"$CONTROL_TOWER_WORKSPACE/release-{n}\" ]; do attempt=$((attempt+1)); test \"$attempt\" -lt 400; sleep 0.05; done\n{mutation}\nprintf 'role-{n}-bytes'\nprintf 'role-{n}-stderr' >&2\n"
+            ),
+        );
+    }
+    let child = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["up", "--workspace"])
+        .arg(workspace.path())
+        .args(["--stage", "2"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut running = Running {
+        child,
+        workspace: workspace.path().to_owned(),
+    };
+    let stdout = running.child.stdout.take().unwrap();
+    let mut stderr = running.child.stderr.take().unwrap();
+    let (tx, rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if tx.send(line.unwrap()).is_err() {
+                break;
+            }
+        }
+    });
+    let mut text = String::new();
+    let mut until = |needle: &str| {
+        loop {
+            let line = rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("feedback before role release");
+            text.push_str(&line);
+            text.push('\n');
+            if line.contains(needle) {
+                break;
+            }
+        }
+    };
+    until("[stage 1 up (create-file)] starting");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !workspace.path().join("waiting-1").exists() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(running.child.try_wait().unwrap().is_none());
+    fs::write(workspace.path().join("release-1"), b"").unwrap();
+    until("[stage 1 up (create-file)] succeeded");
+    until("[stage 2 up (write-hello)] starting");
+    assert!(running.child.try_wait().unwrap().is_none());
+    fs::write(workspace.path().join("release-2"), b"").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(exit) = running.child.try_wait().unwrap() {
+            assert!(exit.success());
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    reader.join().unwrap();
+    for line in rx {
+        text.push_str(&line);
+        text.push('\n');
+    }
+    let mut errors = vec![];
+    stderr.read_to_end(&mut errors).unwrap();
+    assert_eq!(text.matches("role-1-bytes").count(), 1);
+    assert_eq!(text.matches("role-2-bytes").count(), 1);
+    assert!(text.contains("role-1-bytes\n[stage 1 up (create-file)] succeeded"));
+    assert!(
+        text.find("role-1-bytes").unwrap()
+            < text.find("[stage 2 up (write-hello)] starting").unwrap()
+    );
+    assert_eq!(errors,b"[stage 1 up (create-file)] stderr:\nrole-1-stderr\n[stage 2 up (write-hello)] stderr:\nrole-2-stderr\n");
+}
+
+fn suggested_command(text: &str, heading: &str) -> String {
+    text.split_once(heading)
+        .unwrap()
+        .1
+        .lines()
+        .nth(1)
+        .unwrap()
+        .trim()
+        .to_owned()
+}
+
+#[test]
+fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_stage() {
+    let mut workspace = Workspace::from_fixture();
+    let quoted = workspace.path().with_file_name(format!(
+        "{} user's fixture",
+        workspace.path().file_name().unwrap().to_string_lossy()
+    ));
+    fs::rename(workspace.path(), &quoted).unwrap();
+    workspace.0 = quoted;
+    for (old, new) in [
+        ("001-create-file", "010-create-file"),
+        ("002-write-hello", "200-write-hello"),
+        ("003-add-to-you", "900-add-to-you"),
+    ] {
+        fs::rename(
+            workspace.path().join("stages").join(old),
+            workspace.path().join("stages").join(new),
+        )
+        .unwrap();
+    }
+    observe_roles(&workspace);
+    fail_verifier_once(&workspace, "200-write-hello", "verify-up");
+    let failed = move_to(&workspace, "up", 900);
+    assert!(!failed.status.success());
+    let text = output_text(&failed);
+    assert!(text.contains("Completed stage: 10 (create-file)"));
+    assert!(text.contains("Pending verification: up 200 (write-hello)"));
+    assert!(!text.contains("stage index"));
+    let retry = suggested_command(&text, "Retry this check only:");
+    assert!(retry.ends_with("--stage 200"));
+    assert!(retry.contains("'\\''"));
+    assert!(retry.starts_with(&format!("'{}'", env!("CARGO_BIN_EXE_control-tower"))));
+    let retry_output = Command::new("sh")
+        .args(["-c", &retry])
+        .current_dir("/")
+        .output()
+        .unwrap();
+    assert!(
+        retry_output.status.success(),
+        "{}",
+        output_text(&retry_output)
+    );
+    assert_eq!(checkpoint(&workspace).completed_stage_count, 2);
+    let retry_text = output_text(&retry_output);
+    assert!(retry_text.contains("stage 200 verify-up"));
+    assert!(!retry_text.contains("stage 200 up"));
+    assert!(!retry_text.contains("stage 900"));
+    assert!(output_text(&move_to(&workspace, "up", 200)).contains("No roles ran"));
+    assert!(move_to(&workspace, "up", 900).status.success());
+    fail_verifier_once(&workspace, "900-add-to-you", "verify-down");
+    let failed = move_to(&workspace, "down", 0);
+    let text = output_text(&failed);
+    let reverse = suggested_command(&text, "Reverse the active stage:");
+    assert!(reverse.ends_with("--stage 900"));
+    let reversed = Command::new("sh")
+        .args(["-c", &reverse])
+        .current_dir("/")
+        .output()
+        .unwrap();
+    assert!(reversed.status.success(), "{}", output_text(&reversed));
+    assert!(!output_text(&reversed).contains("No roles ran"));
+    assert_eq!(
+        fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+        b"hello to you"
+    );
+    let failed = move_to(&workspace, "down", 0); // Once-failing check now passes, so the whole walk settles.
+    assert!(failed.status.success());
+    assert_eq!(
+        checkpoint(&workspace),
+        control_tower_application::WorkbenchState::default()
+    );
+}
+
+#[test]
+fn failure_choices_do_not_advertise_missing_reverse_or_misclassify_failed_reverse_mutation() {
+    let workspace = Workspace::from_fixture();
+    fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
+    let stage = workspace.path().join("stages/003-add-to-you");
+    fs::remove_file(stage.join("down")).unwrap();
+    fs::remove_file(stage.join("verify-down")).unwrap();
+    let failed = move_to(&workspace, "up", 3);
+    let text = output_text(&failed);
+    assert!(text.contains("Retry this check only:"));
+    assert!(!text.contains("Reverse the active stage:"));
+    write_executable(&stage.join("down"), "#!/bin/sh\nexit 17\n");
+    let failed = move_to(&workspace, "down", 2);
+    let text = output_text(&failed);
+    assert!(text.contains("Pending verification: up 3"));
+    assert!(text.contains("Inspect author-owned effects"));
+    assert!(!text.contains("Retry this check only:"));
+    assert!(!text.contains("Reverse the active stage:"));
+}
+
+#[test]
+fn conditional_sqlite_save_failures_report_confirmed_checkpoint_and_retain_role_output() {
+    for (name, condition, expected_calls) in [
+        (
+            "pending",
+            "NEW.pending_stage_index IS NOT NULL",
+            vec!["1 up"],
+        ),
+        (
+            "final",
+            "NEW.completed_stage_count = 1",
+            vec!["1 up", "1 verify-up"],
+        ),
+    ] {
+        let workspace = Workspace::from_fixture();
+        observe_roles(&workspace);
+        let database = workspace.path().join(".control_tower/state.sqlite3");
+        let connection = rusqlite::Connection::open(database).unwrap();
+        connection.execute_batch(&format!("CREATE TRIGGER reject_checkpoint BEFORE INSERT ON workbench_state WHEN {condition} BEGIN SELECT RAISE(FAIL, 'injected {name} failure'); END;")).unwrap();
+        let failed = move_to(&workspace, "up", 3);
+        assert!(!failed.status.success());
+        let text = String::from_utf8_lossy(&failed.stdout);
+        assert!(text.contains("created "));
+        assert!(text.contains("[stage 1 up (create-file)] succeeded"));
+        assert!(!text.contains("[stage 2"));
+        assert!(!text.contains("Retry this check only:"));
+        let (confirmed, attempted) = text
+            .split_once("Last confirmed checkpoint:\n")
+            .unwrap()
+            .1
+            .split_once("Unconfirmed checkpoint update:\n")
+            .unwrap();
+        let status = status(&workspace);
+        assert!(status.status.success());
+        assert_eq!(confirmed, String::from_utf8_lossy(&status.stdout));
+        assert!(confirmed.contains("Completed stage: baseline (0)"));
+        assert_eq!(
+            confirmed.contains("Pending verification: up 1"),
+            name == "final"
+        );
+        if name == "pending" {
+            assert!(attempted.contains("Pending verification: up 1"));
+            assert!(!text.contains("UUID file exists"));
+        } else {
+            assert!(attempted.contains("Completed stage: 1 (create-file)"));
+            assert!(text.contains("UUID file exists"));
+        }
+        let uuid = checkpoint(&workspace).uuid.unwrap();
+        assert_calls_and_uuid(&workspace, &expected_calls, &uuid);
+        connection
+            .execute_batch("DROP TRIGGER reject_checkpoint")
+            .unwrap();
+        let retry = move_to(&workspace, "up", 1);
+        assert!(retry.status.success());
+        let text = output_text(&retry);
+        assert_eq!(
+            text.contains("[stage 1 up (create-file)] starting"),
+            name == "pending"
+        );
+        assert_eq!(checkpoint(&workspace).completed_stage_count, 1);
+    }
+}

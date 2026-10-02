@@ -51,6 +51,10 @@ The example file is now absent; status reports baseline 0 and no UUID. The tempo
 
 [Walk through the example one stage at a time](examples/uuid-file/README.md), then [create your own workspace](docs/guides/creating-a-workspace.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
 
+For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
+
 Scripts run with your permissions and can change real systems. Control Tower does not guarantee that `down` undoes `up`, provide a sandbox, or reconcile external effects after a crash.
+
+The [core-v0 completion record](docs/research/2026-10-01-core-v0-completion.md) establishes the current navigation contract as ready for repeated local owner use, with executed evidence and platform/toolchain limits. Real development use should drive the next changes.
 
 [Setup and installation](docs/guides/getting-started.md) · [CLI reference](docs/reference/cli.md) · [Executable and environment contract](docs/reference/stage-executables.md) · [Troubleshooting](docs/guides/troubleshooting.md) · [All documentation](docs/README.md)

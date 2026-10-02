@@ -12,6 +12,8 @@ sources:
 - ../research/discovery-01.md
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
+- ../research/2026-10-01-guided-usage-findings.md
+- ../research/2026-10-01-core-v0-completion.md
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 ---
@@ -20,15 +22,19 @@ sources:
 
 The first implementation and its architecture/semantics corrections exist. This is not a setup checklist or a list of blockers before using the example. Start with [the user guide](../guides/getting-started.md).
 
+**Core v0 is complete as an owner-use candidate.** The [completion record](../research/2026-10-01-core-v0-completion.md) defines the bounded standard, fresh and inherited evidence, and remaining limits. These questions guide later real use; they do not reopen that milestone.
+
 ## Implemented experiments
 
 The four-role filesystem convention, SQLite across CLI invocations, verifier retry without mutation replay, and same-stage directional reversal have [executed implementation evidence](../research/run-semantics-validation.md). The [playbook ledger](../research/playbook-compliance.md) preserves the preceding architecture assessment. Keep their revision, platform and test limits when citing those records.
 
-The example uses one shared **runner-generated** UUID. That is the implemented minimal handoff, not a demonstration of a script publishing an arbitrary identifier back into managed state. The distinction is explicit in [the process reference](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
+The original example uses one shared **runner-generated** UUID. The optional [generated-ID example](../../examples/generated-id/README.md) adds an author-owned SQLite/JSON handoff without adding managed context. The distinction is explicit in [the process reference](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
+
+The [guided-usage findings register](../research/2026-10-01-guided-usage-findings.md) records the core feedback/checkpoint refinements, new acceptance evidence, and every F01–F15 disposition with corrections. Deferred findings are retained knowledge and future discussion inputs, **not an implementation backlog or additional acceptance criteria for this round**. Their revisit triggers do not authorize capabilities by themselves.
 
 ## Questions for actual use
 
-Does the filesystem-only authoring model stay convenient for a real work ticket? Does a runner-supplied token suffice, or does a concrete operation need to return an API/database-generated ID to later stages? Does the current CLI expose enough information for the edit, back out, rerun loop?
+Filesystem authoring, application-generated IDs in author-owned files, and the application edit/backout/rerun loop have practical evidence in AR06/AR07 and the completion record. Farther pending continuation and layered compensation have fresh AR08 evidence. The remaining question is convenience across repeated actual owner tickets: where do authoring, setup, inspection or handoff costs recur enough to justify a small change?
 
 Answer these from use. They do not authorize a config language, output-patch system, extra action type or additional frontend before a real need appears.
 

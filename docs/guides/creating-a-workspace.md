@@ -98,10 +98,16 @@ Your scripts can call APIs, use a database client, or invoke another project exe
 
 `CONTROL_TOWER_UUID` is a convenient run token, not a mechanism for collecting generated API IDs. The runner does not parse stdout into state. Scripts that need richer handoff must explicitly manage their own files for now; see [the current handoff limit](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
 
+For a copyable two-stage pattern, use the optional [application-generated-ID example](../../examples/generated-id/README.md). It adds Python 3's standard-library SQLite client: stage 1 creates a row and writes its generated ID to an author-owned JSON file; stage 2 changes/restores the same row. Its DB is separate from `.control_tower/state.sqlite3`. Verifiers use read-only connections, including on missing DB/schema paths, and fail instead of repairing their own assertions. Creation belongs to mutation/setup paths; use ordinary nonzero error handling that still works when interpreter assertions are disabled.
+
 ## Iterate without recreating everything
 
 You can edit a role's contents between CLI invocations. If its mutation succeeded and verification failed, repeating the same direction retries only that verifier. Reversing direction runs that active stage's opposite mutation and optional check. Read [navigation and verification](verification-and-navigation.md) before testing those paths.
 
+Role-level starts/results let you see what actually ran. The CLI's failed-verifier choices target only the active stage; a farther target can continue walking after resolution. Removing a pending optional check changes that resolution to acceptance without verification. A settled target and `status` do not check the fixture again.
+
 Do not rename, reorder, insert, or remove stage directories during a stored run and expect Control Tower to reconcile the old position. Finish the run before structural edits, or use a fresh workspace copy with fresh storage after handling external effects yourself. **Restarting the CLI is not a reset.**
 
 Neither a new workspace nor deleting local bookkeeping undoes API/database mutations from the old one. Only your scripts or manual cleanup know how to reverse those effects. There is no automatic reset/cleanup contract in v0.
+
+A failed first mutation may leave partial effects and a recorded UUID at baseline with no pending check. Down 0 is then a no-op, not cleanup. Inspect effects before retrying, since the successful parts may run again with the same UUID. Fixture writes, handoff files and Control Tower checkpoint writes are separate operations, even when the fixture also uses SQLite.
