@@ -1,0 +1,14 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+if json.loads((data / "tool_result.json").read_text()) != {"record_id": "123", "label": "EXAMPLE RECORD"}:
+    raise SystemExit("unexpected normalized record")
+context = json.loads((data / "runtime_context.json").read_text())
+if context != {
+    "session": {"values": {"last_record_id": "123"}, "events": []},
+    "conversation": {"metadata": {"last_tool": "normalize_record"}},
+}:
+    raise SystemExit("unexpected runtime export")

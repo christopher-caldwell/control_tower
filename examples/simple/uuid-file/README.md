@@ -21,12 +21,12 @@ The sample writes no trailing newline. The content checks use shell command subs
 
 ## Build and prepare a copy
 
-From the repository root, with [the prerequisites installed](../../docs/guides/getting-started.md#prerequisites):
+From the repository root, with [the prerequisites installed](../../../docs/guides/getting-started.md#prerequisites):
 
 ```sh
 cargo build --locked --workspace
 workspace="$(mktemp -d)"
-cp -R examples/uuid-file/. "$workspace/"
+cp -R examples/simple/uuid-file/. "$workspace/"
 printf 'Example workspace: %s\n' "$workspace"
 
 ./target/debug/control-tower-db bootstrap-local "$workspace"
@@ -90,12 +90,12 @@ The database and directories remain. They are not deleted by stage 1/down. Anoth
 
 ## Try failed verification
 
-The [navigation guide](../../docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, then demonstrates retry or same-stage backout. It does not modify these checked-in scripts.
+The [navigation guide](../../../docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, then demonstrates retry or same-stage backout. It does not modify these checked-in scripts.
 
 ## Evidence and limits
 
-[CLI tests](../../crates/cli/tests/workbench_cli.rs) copy this workspace and spawn real Control Tower processes with SQLite. They check the full traversal, pending verification, reversal, UUID continuity and non-replay of successful mutations. [Application tests](../../crates/application/tests/run_semantics.rs) check the transition rules independently.
+[CLI tests](../../../crates/cli/tests/workbench_cli.rs) copy this workspace and spawn real Control Tower processes with SQLite. They check the full traversal, pending verification, reversal, UUID continuity and non-replay of successful mutations. [Application tests](../../../crates/application/tests/run_semantics.rs) check the transition rules independently.
 
-The [run-semantics record](../../docs/research/run-semantics-validation.md) records the worker's 31-test macOS run and manual CLI exercises. The [documentation validation](../../docs/research/documentation-validation.md) separately records script-only execution during this documentation pass and the checks that could not be rerun. Do not treat a script-only check as an independent full CLI acceptance run.
+The [run-semantics record](../../../docs/research/run-semantics-validation.md) records the worker's 31-test macOS run and manual CLI exercises. The [documentation validation](../../../docs/research/documentation-validation.md) separately records script-only execution during this documentation pass and the checks that could not be rerun. Do not treat a script-only check as an independent full CLI acceptance run.
 
-For your own operations, start with [creating a workspace](../../docs/guides/creating-a-workspace.md) and the [executable/environment reference](../../docs/reference/stage-executables.md).
+For your own operations, start with [creating a workspace](../../../docs/guides/creating-a-workspace.md) and the [executable/environment reference](../../../docs/reference/stage-executables.md).

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+test -s "$CONTROL_TOWER_WORKSPACE/data/record.json"
+test -s "$CONTROL_TOWER_WORKSPACE/data/tool_result.json"
+test -s "$CONTROL_TOWER_WORKSPACE/data/runtime_context.json"
+test -s "$CONTROL_TOWER_WORKSPACE/data/node_inspection.json"
+printf 'ok\n' > "$CONTROL_TOWER_WORKSPACE/data/polyglot_complete"

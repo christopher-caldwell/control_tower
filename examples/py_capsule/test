@@ -1,0 +1,28 @@
+#!/bin/sh
+# Tests use this checkout's CLIs and disposable copies, never authored workspaces.
+set -eu
+GALLERY_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPOSITORY_ROOT=$(CDPATH= cd -- "$GALLERY_ROOT/../.." && pwd)
+for executable in control-tower control-tower-db; do
+  if [ ! -x "$REPOSITORY_ROOT/target/debug/$executable" ]; then
+    printf 'Build Control Tower first: cargo build --locked --workspace (repository root).\n' >&2
+    exit 1
+  fi
+done
+unset UV_PROJECT UV_PROJECT_ENVIRONMENT UV_NO_SYNC UV_FROZEN VIRTUAL_ENV PYTHONPATH
+export PYTHONDONTWRITEBYTECODE=1
+mkdir -p "$GALLERY_ROOT/test-results"
+# PostgreSQL is explicitly opt-in; ordinary tests never start a database server.
+unset GALLERY_TEST_POSTGRES
+if [ "${1:-}" = "--postgres" ]; then
+  export GALLERY_TEST_POSTGRES=1
+  shift
+fi
+# Lock policy belongs to validation. Ordinary-authoring tests clear UV_LOCKED;
+# stale-lock tests explicitly enable it, including for PyCapsule's child process.
+export UV_LOCKED=1
+cd "$GALLERY_ROOT"
+exec uv run --locked --project "$GALLERY_ROOT" --group dev -- python -m pytest \
+  -c "$GALLERY_ROOT/pyproject.toml" -p no:cacheprovider \
+  --junitxml "$GALLERY_ROOT/test-results/integration.xml" \
+  --basetemp "$GALLERY_ROOT/test-results/workspaces" "$@"

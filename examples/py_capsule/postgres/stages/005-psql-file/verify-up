@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+actual=$(PGCONNECT_TIMEOUT=5 PGOPTIONS="-c default_transaction_read_only=on" \
+  psql -X --no-password "$GALLERY_POSTGRES_DSN" --set=ON_ERROR_STOP=1 --set=run_id="$CONTROL_TOWER_UUID" \
+  --quiet --tuples-only --no-align --file ./inspect.sql)
+saved=$(cat "$CONTROL_TOWER_WORKSPACE/data/psql_file.json")
+if [ -z "$actual" ] || [ "$actual" != "$saved" ]; then
+  printf '%s\n' 'Saved SQL file output does not match this run database row.' >&2
+  exit 1
+fi

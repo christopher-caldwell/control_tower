@@ -96,3 +96,5 @@ Manual modified fixture: copied the scripts to `/tmp/control-tower-backout-x34cy
 The manual driver asserted every subprocess exit, exact script call order, a single UUID across every logged role, and an empty data directory at baseline. It observed stage-3 up once, stage-3 down once, verify-up once and verify-down twice. Application code never inspected fixture file contents.
 
 Re-read ADR-0002, current design, open questions, discovery record and historical playbook ledger after the fix. Current design's known backout gap is resolved, its stale generalized checkpoint example is replaced with the implemented minimal model, and ADR-0002 gains an evidence link without a change in authority or meaning. Discovery retains its historical baseline and gains a later-evidence link. Failed-mutation recovery, crash reconciliation, concurrency/drift handling and generalized context remain deferred. No code/accepted-document disagreement remains within this run-semantics scope.
+
+The fixture now lives at [examples/simple/uuid-file](../../examples/simple/uuid-file/README.md); the command paths above record the original validation run.

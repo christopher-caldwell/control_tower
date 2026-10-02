@@ -12,7 +12,7 @@ method: Pinned-source review, Markdown checks and direct shell-fixture execution
 sources:
 - ../../README.md
 - ../README.md
-- ../../examples/uuid-file/README.md
+- ../../examples/simple/uuid-file/README.md
 - ../reference/cli.md
 - ../reference/stage-executables.md
 - documentation-strategy.md
@@ -68,7 +68,7 @@ The existing [run-semantics validation](run-semantics-validation.md#executed-ver
 
 ## Reproduce full documentation acceptance locally
 
-From the checkout root, follow the root README exactly in a fresh workspace. Then execute the [stage-by-stage example](../../examples/uuid-file/README.md#walk-forward-and-observe) and [failed-verifier exercise](../guides/verification-and-navigation.md#try-a-verification-failure). Those instructions show expected outcomes and identify intentional nonzero exits.
+From the checkout root, follow the root README exactly in a fresh workspace. Then execute the [stage-by-stage example](../../examples/simple/uuid-file/README.md#walk-forward-and-observe) and [failed-verifier exercise](../guides/verification-and-navigation.md#try-a-verification-failure). Those instructions show expected outcomes and identify intentional nonzero exits.
 
 Run the workspace checks:
 

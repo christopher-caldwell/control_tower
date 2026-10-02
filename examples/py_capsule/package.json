@@ -1,0 +1,7 @@
+{
+  "name": "control-tower-py-capsule-examples",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.23"
+  }
+}

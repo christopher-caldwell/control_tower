@@ -4,7 +4,7 @@ title: Current design and decision audit
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-01'
+updated: '2026-10-02'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -125,7 +125,7 @@ The [run-semantics validation](../research/run-semantics-validation.md) records 
 
 The shipped runner generates one UUID before a run's first mutation and supplies it to every role. The original UUID-file sample uses it to name a file; it does not generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
 
-This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
+This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/simple/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
 
 The UUID persists while verification is pending and is cleared on successful settlement at baseline 0. SQLite remains prepared for the next run.
 

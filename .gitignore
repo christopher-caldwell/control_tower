@@ -2,4 +2,10 @@ target/
 .DS_Store
 .env
 .control_tower/
-examples/uuid-file/data/
+examples/**/data/
+examples/py_capsule/**/.venv/
+examples/py_capsule/**/node_modules/
+examples/py_capsule/**/__pycache__/
+examples/py_capsule/**/*.egg-info/
+examples/py_capsule/.pytest_cache/
+examples/py_capsule/test-results/

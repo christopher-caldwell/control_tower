@@ -2,7 +2,7 @@
 
 This optional two-stage workspace creates a row in an **application SQLite database**, carries its generated integer ID in an author-owned JSON file, and changes/restores that same row. Control Tower still launches ordinary executables; it does not parse the ID from stdout or manage the handoff.
 
-You need the [usual build prerequisites](../../docs/guides/getting-started.md#prerequisites) **plus Python 3 with its standard-library `sqlite3` module**. No Python packages, separate SQLite installation, server, or credentials are needed. Python is a prerequisite only for this example; the [original UUID-file quickstart](../../README.md#try-the-three-stage-example) does not need it.
+You need the [usual build prerequisites](../../../docs/guides/getting-started.md#prerequisites) **plus Python 3 with its standard-library `sqlite3` module**. No Python packages, separate SQLite installation, server, or credentials are needed. Python is a prerequisite only for this example; the [original UUID-file quickstart](../../../README.md#try-the-three-stage-example) does not need it.
 
 ## Prepare a disposable copy
 
@@ -13,7 +13,7 @@ cargo build --locked --workspace
 python3 --version
 
 workspace="$(mktemp -d)"
-cp -R examples/generated-id/. "$workspace/"
+cp -R examples/simple/generated-id/. "$workspace/"
 printf 'Example workspace: %s\n' "$workspace"
 
 ./target/debug/control-tower-db bootstrap-local "$workspace"
@@ -75,7 +75,7 @@ Use another fresh disposable copy, from the repository root. This exercise logs 
 
 ```sh
 workspace="$(mktemp -d)"
-cp -R examples/generated-id/. "$workspace/"
+cp -R examples/simple/generated-id/. "$workspace/"
 ./target/debug/control-tower-db bootstrap-local "$workspace"
 ./target/debug/control-tower-db migrate-local "$workspace"
 ./target/debug/control-tower-db verify-local "$workspace"
@@ -119,4 +119,4 @@ Only stage 2/verify-up starts on retry. The single `2 up` log line proves the su
 
 The eight executable role files are thin entry points into `support/fixture.py`. They use the documented stage working directory/environment. All checks open the application DB with SQLite `mode=ro`; they never initialize a missing DB/schema, create data, or repair a wrong value. Missing data/schema produces a nonzero error, including with Python optimization enabled. Only stage 1/up initializes the application fixture.
 
-This is a small local fixture, not an SDK or managed context format. SQLite mutation, JSON publication, and Control Tower checkpoint writes are separate operations. If a mutation partially fails, inspect the row and handoff yourself; `down 0` is not guaranteed cleanup after a failed first mutation. `status` reports bookkeeping and does not query the application row. Finish/clean the run before structural stage edits. See [authoring](../../docs/guides/creating-a-workspace.md) and [navigation](../../docs/guides/verification-and-navigation.md).
+This is a small local fixture, not an SDK or managed context format. SQLite mutation, JSON publication, and Control Tower checkpoint writes are separate operations. If a mutation partially fails, inspect the row and handoff yourself; `down 0` is not guaranteed cleanup after a failed first mutation. `status` reports bookkeeping and does not query the application row. Finish/clean the run before structural stage edits. See [authoring](../../../docs/guides/creating-a-workspace.md) and [navigation](../../../docs/guides/verification-and-navigation.md).

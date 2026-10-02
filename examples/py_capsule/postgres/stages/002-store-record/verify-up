@@ -1,0 +1,20 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+import psycopg
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+result = json.loads((data / "tool_result.json").read_text())
+run_id = os.environ["CONTROL_TOWER_UUID"]
+receipt = json.loads((data / "postgres_receipt.json").read_text())
+if receipt != {"run_id": run_id, **result}:
+    raise SystemExit("database receipt does not match this run's tool result")
+with psycopg.connect(os.environ["GALLERY_POSTGRES_DSN"], connect_timeout=5) as connection:
+    connection.read_only = True
+    row = connection.execute(
+        "SELECT record_id, label FROM public.gallery_records WHERE run_id = %s", (run_id,)
+    ).fetchone()
+if row != (result["record_id"], result["label"]):
+    raise SystemExit("database row does not match this run's tool result")

@@ -1,0 +1,5 @@
+#!/usr/bin/env -S uv run python
+import os
+from pathlib import Path
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+(workspace / "data/postgres_inspection.json").unlink(missing_ok=True)

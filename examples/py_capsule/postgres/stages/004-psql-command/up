@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+# A SQL string passed to psql. The run UUID is a session setting, not SQL text.
+PGCONNECT_TIMEOUT=5 PGOPTIONS="-c default_transaction_read_only=on -c gallery.run_id=$CONTROL_TOWER_UUID" \
+psql -X --no-password "$GALLERY_POSTGRES_DSN" --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align \
+  --command "SELECT json_build_object('run_id', run_id, 'label_length', char_length(label))
+             FROM public.gallery_records
+             WHERE run_id = current_setting('gallery.run_id')::uuid;" \
+  > "$CONTROL_TOWER_WORKSPACE/data/psql_command.json"
+if [ ! -s "$CONTROL_TOWER_WORKSPACE/data/psql_command.json" ]; then
+  printf '%s\n' 'No database row found for this run.' >&2
+  exit 1
+fi
