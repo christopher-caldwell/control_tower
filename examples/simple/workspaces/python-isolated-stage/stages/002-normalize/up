@@ -1,0 +1,16 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+from dateutil.parser import isoparse
+
+record = json.loads((data / "record.json").read_text())
+normalized = {"record_id": str(record["id"]), "label": record["label"].strip().upper()}
+(data / "normalized.json").write_text(json.dumps(normalized, indent=2) + "\n")
+(data / "inspection.json").write_text(json.dumps({
+    "runtime": "python", **normalized,
+    "created_date": isoparse(record["created_at"]).date().isoformat(),
+}, indent=2) + "\n")

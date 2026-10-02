@@ -3,9 +3,9 @@ target/
 .env
 .control_tower/
 examples/**/data/
-examples/py_capsule/**/.venv/
-examples/py_capsule/**/node_modules/
-examples/py_capsule/**/__pycache__/
-examples/py_capsule/**/*.egg-info/
-examples/py_capsule/.pytest_cache/
-examples/py_capsule/test-results/
+examples/**/.venv/
+examples/**/node_modules/
+examples/**/__pycache__/
+examples/**/*.egg-info/
+examples/**/.pytest_cache/
+examples/test-results/

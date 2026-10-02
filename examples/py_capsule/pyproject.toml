@@ -15,10 +15,3 @@ package = false
 [tool.uv.sources]
 example-tool = { path = "tools/example_tool", editable = true }
 py-capsule = { git = "ssh://git@github.com/christopher-caldwell/py_capsule.git", rev = "25edcfe51373cc2ebf0593ae5a033323f71b19e3" }
-
-[dependency-groups]
-dev = ["pytest>=8,<10"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-ra"

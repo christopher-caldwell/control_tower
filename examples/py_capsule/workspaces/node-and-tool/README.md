@@ -1,0 +1,55 @@
+# Node and an encapsulated Python tool
+
+This workspace reads explicit input, calls `from example_tool import normalize_record`,
+and persists explicit tool values and runtime exports. The tool invokes a real
+PyCapsule child with its own environment and injected Session/Conversation runtime.
+Node stages on either side of the Python call show that shared Python
+capabilities can be consumed in an ordinary multi-runtime investigation.
+
+## Prerequisites and progression
+
+Use built Control Tower binaries, Unix tools, uv / Python 3.12, Node / npm, and access to the pinned PyCapsule Git repository.
+Follow [family setup](../../README.md#setup-and-run). This workspace intentionally
+requires the shared family projects and sibling `tools/example_tool`; copying it
+alone omits the capability. The family README explains how to make a complete copy.
+
+```text
+001 Node seed (dayjs UTC) -> data/record.json
+002 Python typed tool -> data/tool_result.json and data/runtime_context.json
+003 Node inspection (dayjs UTC) -> data/node_inspection.json
+```
+
+## Run forward and backward
+
+From the repository root after setup, with `target/debug` on PATH:
+
+```sh
+workspace=examples/py_capsule/workspaces/node-and-tool
+control-tower-db bootstrap-local "$workspace"
+control-tower-db migrate-local "$workspace"
+control-tower-db verify-local "$workspace"
+control-tower up --workspace "$workspace" --stage 1
+cat "$workspace/data/record.json"
+control-tower up --workspace "$workspace" --stage 2
+cat "$workspace/data/tool_result.json"
+cat "$workspace/data/runtime_context.json"
+control-tower up --workspace "$workspace" --stage 3
+cat "$workspace/data/node_inspection.json"
+control-tower status --workspace "$workspace"
+control-tower down --workspace "$workspace" --stage 2
+control-tower down --workspace "$workspace" --stage 1
+control-tower down --workspace "$workspace" --stage 0
+```
+
+The normalized value is `{"record_id": "123", "label": "EXAMPLE RECORD"}`.
+The runtime export records `last_record_id` and `last_tool`; it is an explicit
+output, not automatic cross-stage state. Each stage owns only its named outputs.
+Reversal retains the checkpoint database, installed dependencies, and capsule logs.
+
+Tool value and runtime export are separate writes. On mutation failure, inspect
+partial output before retrying; this deterministic example starts a fresh runtime
+and can repeat its tool call. Do not infer safe replay of arbitrary external APIs.
+After a verifier failure, repeating the direction retries only that verifier.
+See [navigation guidance](../../../../docs/guides/verification-and-navigation.md)
+and the [tool implementation](../../tools/example_tool/README.md).
+Return to the [family](../../README.md).

@@ -1,0 +1,11 @@
+[package]
+name = "go-rust-transform"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "transform"
+path = "stages/002-transform/main.rs"
+
+# This example is its own Cargo workspace, even inside the Control Tower checkout.
+[workspace]

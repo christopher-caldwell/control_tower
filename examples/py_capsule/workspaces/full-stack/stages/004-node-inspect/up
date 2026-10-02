@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const dayjs = require("dayjs");
+dayjs.extend(require("dayjs/plugin/utc"));
+const workspace = process.env.CONTROL_TOWER_WORKSPACE;
+const data = path.join(workspace, "data");
+const record = JSON.parse(fs.readFileSync(path.join(data, "record.json"), "utf8"));
+const result = JSON.parse(fs.readFileSync(path.join(data, "tool_result.json"), "utf8"));
+const receipt = JSON.parse(fs.readFileSync(path.join(data, "postgres_receipt.json"), "utf8"));
+if (receipt.run_id !== process.env.CONTROL_TOWER_UUID || receipt.record_id !== result.record_id || receipt.label !== result.label) {
+  throw new Error("receipt does not belong to this run and tool result");
+}
+fs.writeFileSync(
+  path.join(data, "node_inspection.json"),
+  JSON.stringify({runtime: "node", runId: receipt.run_id, recordId: result.record_id, label: result.label, createdDate: dayjs.utc(record.created_at).format("YYYY-MM-DD")}, null, 2) + "\n"
+);

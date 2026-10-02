@@ -1,0 +1,7 @@
+{
+  "name": "control-tower-shell-python-node",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.23"
+  }
+}

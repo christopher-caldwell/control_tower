@@ -1,138 +1,106 @@
-# Control Tower with PyCapsule
+# PyCapsule example family
 
-These examples compose ordinary executable roles with a typed PyCapsule tool.
-Control Tower directly executes a role; the role chooses its runtime. The shared
-Python and Node projects belong to this category, not the Control Tower root.
+These workspaces intentionally share reusable typed Python capabilities. Each
+workspace owns its stages and explicit handoffs; the family owns the caller
+Python/Node projects and the reusable [example_tool](tools/example_tool/README.md).
 
-| Workflow | Final stage | Lesson |
+> `tools/` is not part of Control Tower's required workspace structure. It is an application-level pattern shown here because multiple workspaces intentionally reuse the same PyCapsule-backed capabilities.
+
+| Workspace | Stages | Lesson |
 | --- | --- | --- |
-| [repo-default-python](repo-default-python/README.md) | 3 | Ordinary Python stages import a typed tool without local project metadata. |
-| [isolated-python-stage](isolated-python-stage/README.md) | 3 | A closer project supplies JSON Schema validation to one exceptional stage. |
-| [polyglot](polyglot/README.md) | 4 | Shell → Python/PyCapsule → Node → shell, with normal Node module resolution. |
-| [postgres](postgres/README.md) | 5 | Run-owned database writes, Python/native psql inspection, reversal, and partial-effect recovery. |
+| [tool-only](workspaces/tool-only/README.md) | 3 | Explicit input → typed API → PyCapsule child → explicit output inspection. |
+| [node-and-tool](workspaces/node-and-tool/README.md) | 3 | Node input and inspection around an encapsulated Python capability. |
+| [full-stack](workspaces/full-stack/README.md) | 7 | Shared tool, ordinary Python, Node, PostgreSQL, native psql, and shell in one investigation. |
 
 ## Setup and run
 
-Start from the Control Tower repository root. Install Unix tools, Git, a stable
-Rust toolchain/C compiler, uv, and Node/npm. This category selects Python 3.12.
-PyCapsule is private: your GitHub SSH identity must have read access to
-`christopher-caldwell/py_capsule`. Repository clone access alone is not sufficient.
-Setup retrieves a pinned Git dependency through uv; no token belongs in these files.
+From the Control Tower repository root, install a stable Rust toolchain/linker,
+Unix tools, Git, and uv. The examples select Python 3.12. Node/npm are needed for
+`node-and-tool` and `full-stack`; PostgreSQL is needed only for `full-stack`.
+Your GitHub SSH identity must have read access to the private
+`christopher-caldwell/py_capsule` repository to resolve the pinned dependency.
 
 ```sh
 cargo build --locked --workspace
-./examples/py_capsule/bootstrap
 export PATH="$PWD/target/debug:$PATH"
+# Python-only setup:
+uv sync --locked --project examples/py_capsule
+uv sync --locked --project examples/py_capsule/tools/example_tool
+# For Node workflows, also install the family-owned packages:
+npm ci --prefix examples/py_capsule --ignore-scripts --no-audit --no-fund
+# Or prepare all shared Python and Node dependencies together:
+./examples/py_capsule/bootstrap
 
-workspace=examples/py_capsule/repo-default-python
+workspace=examples/py_capsule/workspaces/tool-only
 control-tower-db bootstrap-local "$workspace"
 control-tower-db migrate-local "$workspace"
 control-tower-db verify-local "$workspace"
-control-tower up --workspace "$workspace" --stage 1
-cat "$workspace/data/record.json"
-control-tower up --workspace "$workspace" --stage 2
+control-tower up --workspace "$workspace" --stage 3
 cat "$workspace/data/tool_result.json"
 cat "$workspace/data/runtime_context.json"
-control-tower up --workspace "$workspace" --stage 3
-control-tower status --workspace "$workspace"
 control-tower down --workspace "$workspace" --stage 0
 ```
 
-This walkthrough writes ignored runtime files beside the example. Tests instead use
-fresh disposable copies. See each workflow README for its workspace and target;
-PostgreSQL server/schema setup is explicitly opt-in.
+These commands write ignored output in the authored workspace. For a disposable
+copy, copy this family directory including `pyproject.toml`, `uv.lock`,
+`.python-version`, Node metadata when needed, `tools/example_tool`, and the chosen
+`workspaces/` directory. Exclude existing `.venv`, `node_modules`, `data`, and
+`.control_tower` directories, and run dependency setup at the copied family root.
+Copying only a PyCapsule workspace omits the shared capability it demonstrates.
 
-## Shared environment and tool boundary
+## Dependency and execution boundaries
 
-An ordinary Python role starts with:
+Python roles use `#!/usr/bin/env -S uv run python`. Control Tower invokes them
+from their stage directory; uv finds this family's Python project. Stages call:
 
 ```python
-#!/usr/bin/env -S uv run python
 from example_tool import normalize_record
 ```
 
-Control Tower runs the executable with its stage working directory. uv walks upward
-to this category's `pyproject.toml`: ordinary workspaces/stages need no project,
-lock, `--project`, `--locked`, `UV_LOCKED`, or `PYTHONPATH` configuration. The shared
-project installs editable `example-tool`, `python-dateutil` for timestamp parsing,
-and `psycopg[binary]` for the optional PostgreSQL workflow. Installing that driver
-does not start a server.
+The typed API owns the capsule invocation and runtime injection. The tool owns its
+capsule manifest/body and a separate child Python project. The caller environment
+and PyCapsule child environment remain distinct. Workspaces persist tool values and
+runtime exports as explicit files; Control Tower does not interpret those files.
 
-Use the shared category environment by default. Stage 003 of
-`isolated-python-stage` has a closer project for actual `jsonschema` validation;
-that dependency is absent from the shared environment. The isolated stage reads
-explicit files and does not import the tool.
+The shared Python environment includes `python-dateutil` for ordinary timestamp
+processing and `psycopg[binary]` for database stages. Node finds family-owned `dayjs`
+through normal module resolution. Native shell/psql stages run independently of
+Python metadata. Ordinary dependency ownership and nearest-project isolation are
+shown in the [simple family](../simple/README.md), without tool encapsulation.
 
-[example_tool](tools/example_tool/README.md) owns the typed API, PyCapsule invocation,
-capsule manifest/body, injected Session/Conversation runtime, and its child Python
-project. The child environment is distinct from the caller environment. Workspaces
-own sequencing, explicit input reads/output writes, validation, and reversal.
-Control Tower neither parses these files nor turns stdout into application state.
+The PyCapsule Git revision remains pinned to
+`25edcfe51373cc2ebf0593ae5a033323f71b19e3` in both caller and tool projects because
+uv source overrides are not inherited from dependencies. Replacing those source
+overrides with a validated released `py-capsule` dependency and regenerating the
+two locks will not change stage imports. Publishing PyCapsule is separate work.
+The editable example tool keeps its capsule assets in this source tree.
 
-Node uses this category's `package.json`, `package-lock.json`, and `node_modules`
-through normal module resolution. Setup runs `npm ci`; no role installs packages.
-Shell/Node/native psql roles run independently of Python metadata.
+## Recovery and validation
 
-## Local validation and maintenance
+Each stage reverses only its own effects. Tool result and runtime export are
+separate writes, so inspect partial local output before retrying a failed tool
+stage. This deterministic example can be repeated; it does not establish safe
+replay for an arbitrary external API. A fresh tool call starts a fresh simulated
+runtime; its previous export is output, not implicit input. Diagnostics remain
+under `~/.py_capsule/normalize_record/runs/` after workspace reversal.
 
-```sh
-./examples/py_capsule/test
-# Optional: requires initdb, pg_ctl, and psql; starts private disposable clusters.
-./examples/py_capsule/test --postgres
-```
-
-The category-local pytest suite runs this checkout's built binaries, uv shebangs,
-and the real PyCapsule child. It checks intermediate artifacts, reversal, fresh
-runs, verifier-only retries, environment ownership, lock stability, and native
-runtime independence. Reports and disposable workspaces live in `test-results/`.
-The PostgreSQL tests ignore your application DSN, start clusters with private Unix
-sockets/no TCP listener, and test both retry and abandonment after commit/receipt
-failure. Ordinary tests start no database server.
-
-When dependency metadata changes, update each affected independently owned lock:
+`down` reverses accepted transitions. Partial effects of a failed mutation belong
+to the workflow. See the [full-stack recovery procedure](workspaces/full-stack/README.md#failed-stage-003-retry-or-abandon)
+and maintained [navigation guidance](../../docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
 
 ```sh
-uv lock --project examples/py_capsule
-uv lock --project examples/py_capsule/tools/example_tool
-uv lock --project examples/py_capsule/isolated-python-stage/stages/003-inspect
-./examples/py_capsule/bootstrap
-./examples/py_capsule/test
+./examples/test --family py_capsule
+./examples/test --family py_capsule --postgres
 ```
 
-Setup enforces locks. Ordinary roles deliberately use plain `uv run python`, which
-may update a stale lock; tests separately verify strict stale-lock rejection.
-For editor completion, select `examples/py_capsule/.venv/bin/python`; the isolated
-stage has its own interpreter. Extensionless roles may need Python language mode.
+The suite checks real child execution, typed API usage, shared environments,
+explicit handoffs, verifier retries, locks, and native runtime independence.
+Database tests use private disposable clusters. When dependency metadata changes,
+update `uv.lock` at the family and affected tool project, or `package-lock.json`
+for Node, then rerun setup and tests. Setup enforces locks; ordinary stage shebangs
+remain plain `uv run python`, with lock stability checked separately.
 
-## Recovery and provenance
-
-The file workflows write `tool_result.json` and `runtime_context.json` separately;
-a write failure may leave only one. Inspect and repair local output before retrying
-a failed mutation, which invokes the tool again. These sample normalization/file
-writes are deterministic; they do not establish safe replay of a real external API
-call. A tool call starts a fresh simulated runtime with empty incoming context and
-does not consume its previous export as input.
-
-Each `down` removes its own named outputs and does not restore overwritten files;
-keep unrelated files away from those paths. PyCapsule diagnostics remain under
-`~/.py_capsule/normalize_record/runs/`, and the Control Tower checkpoint database
-remains after reversal.
-
-Each `down` owns only its stage's effects. Deleting local output does not compensate
-arbitrary external calls. A successful mutation with a failed verifier can retry
-only the check. A failed mutation can leave partial effects without being accepted;
-normal `down` traversal does not reverse that unaccepted stage. See the maintained
-[navigation guidance](../../docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure)
-and the concrete [Postgres recovery procedure](postgres/README.md#failed-stage-002-retry-or-abandon).
-
-These direct-composition workflows originated in
-`christopher-caldwell/control-tower-py-capsule-demo`, branch
-`feat/workspace-pattern-gallery`, commit
-`2c8095e8fab163b710166d89aedd6f57241b99a9`. Control Tower now owns their evolution.
-PyCapsule uses development Git wiring pinned to
-`25edcfe51373cc2ebf0593ae5a033323f71b19e3`, declared in both category and tool sources
-because a dependency's uv source overrides are not inherited. The intended later
-state is a released `py-capsule` dependency: remove those overrides and regenerate
-the two locks when a validated release is available. Publishing PyCapsule is separate
-work. The local editable example tool is not presented as a distributable wheel;
-its capsule assets and child project remain source-owned.
+These capabilities originated in `christopher-caldwell/control-tower-py-capsule-demo`,
+branch `feat/workspace-pattern-gallery`, commit
+`2c8095e8fab163b710166d89aedd6f57241b99a9`. Control Tower now owns this gallery's evolution.
+Return to the [gallery](../README.md).

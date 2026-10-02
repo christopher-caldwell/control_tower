@@ -1,6 +1,6 @@
 # example-tool
 
-The shared [PyCapsule category project](../../README.md) installs this typed editable
+The shared [PyCapsule family project](../../README.md) installs this typed editable
 API for ordinary stages:
 
 ```python
@@ -15,8 +15,8 @@ runtime, PyCapsule invocation, and tool-specific dependencies. It owns no scenar
 filesystem handoff or stage mapping.
 
 The manifest selects this project's child `.venv`, separate from the caller's
-shared or isolated environment. Declare body/runtime requirements here, then update
-both the tool and category locks. Category `bootstrap` validates both with locked
+shared environment. Declare body/runtime requirements here, then update
+both the tool and family locks. Category `bootstrap` validates both with locked
 syncs; strict child validation is tested without flags in ordinary roles.
 
 Both projects resolve `py-capsule` from the same pinned private SSH Git source.

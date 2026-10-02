@@ -66,7 +66,7 @@ Use a copy so the checked-in fixture stays clean:
 
 ```sh
 workspace="$(mktemp -d)"
-cp -R examples/simple/uuid-file/. "$workspace/"
+cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
 printf 'Example workspace: %s\n' "$workspace"
 ```
 
@@ -110,7 +110,7 @@ cat "$workspace"/data/*
 printf '\n'
 ```
 
-The final status should identify stage 3, show one UUID, and show no pending verification. The file should contain `hello to you`. Read the [example walkthrough](../../examples/simple/uuid-file/README.md) to stop and inspect after each stage rather than running all three at once.
+The final status should identify stage 3, show one UUID, and show no pending verification. The file should contain `hello to you`. Read the [example walkthrough](../../examples/simple/workspaces/uuid-file/README.md) to stop and inspect after each stage rather than running all three at once.
 
 ```sh
 ./target/debug/control-tower down --workspace "$workspace" --stage 0

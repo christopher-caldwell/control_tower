@@ -1,0 +1,7 @@
+{
+  "name": "control-tower-node-dependencies",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.23"
+  }
+}

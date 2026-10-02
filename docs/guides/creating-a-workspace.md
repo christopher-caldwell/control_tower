@@ -11,7 +11,7 @@ sources:
 - ../reference/stage-executables.md
 - ../decisions/0001-user-owned-executables.md
 - ../decisions/0002-stage-navigation-and-verification.md
-- ../../examples/simple/uuid-file/README.md
+- ../../examples/simple/workspaces/uuid-file/README.md
 ---
 
 # Create a workspace
@@ -86,7 +86,7 @@ Add another numbered directory for the next useful state. For example, `002-asso
 
 A stage number identifies a position in the ordered sequence. `up --stage 3` walks through any earlier unapplied stages; it does not jump directly to stage 3. `down --stage 1` reverses stage 3 and then stage 2, leaving stage 1 applied. You do not write pairwise reset scripts for every possible source/target combination.
 
-For a complete concrete example, inspect the checked-in [UUID-file workspace](../../examples/simple/uuid-file/README.md). Copy it before editing rather than modifying the acceptance fixture in place.
+For a complete concrete example, inspect the checked-in [UUID-file workspace](../../examples/simple/workspaces/uuid-file/README.md). Copy it before editing rather than modifying the acceptance fixture in place.
 
 Use fixed role filenames without extensions. Numbered stages can have gaps, but numeric prefixes must be unique. Put shared support files in a separate workspace directory such as `support/`, not a nonnumeric directory under `stages/`. The [executable reference](../reference/stage-executables.md#workspace-layout) lists exact discovery rules.
 
@@ -98,7 +98,7 @@ Your scripts can call APIs, use a database client, or invoke another project exe
 
 `CONTROL_TOWER_UUID` is a convenient run token, not a mechanism for collecting generated API IDs. The runner does not parse stdout into state. Scripts that need richer handoff must explicitly manage their own files for now; see [the current handoff limit](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
 
-For a copyable two-stage pattern, use the optional [application-generated-ID example](../../examples/simple/generated-id/README.md). It adds Python 3's standard-library SQLite client: stage 1 creates a row and writes its generated ID to an author-owned JSON file; stage 2 changes/restores the same row. Its DB is separate from `.control_tower/state.sqlite3`. Verifiers use read-only connections, including on missing DB/schema paths, and fail instead of repairing their own assertions. Creation belongs to mutation/setup paths; use ordinary nonzero error handling that still works when interpreter assertions are disabled.
+For a copyable two-stage pattern, use the optional [application-generated-ID example](../../examples/simple/workspaces/generated-id/README.md). It adds Python 3's standard-library SQLite client: stage 1 creates a row and writes its generated ID to an author-owned JSON file; stage 2 changes/restores the same row. Its DB is separate from `.control_tower/state.sqlite3`. Verifiers use read-only connections, including on missing DB/schema paths, and fail instead of repairing their own assertions. Creation belongs to mutation/setup paths; use ordinary nonzero error handling that still works when interpreter assertions are disabled.
 
 ## Iterate without recreating everything
 
@@ -115,5 +115,5 @@ A failed first mutation may leave partial effects and a recorded UUID at baselin
 A failed later mutation can likewise remain unaccepted while its external effect
 exists; normal traversal does not invoke that stage's `down`. Follow the
 [mutation-failure guidance](verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure)
-and the concrete [Postgres retry/abandon procedure](../../examples/py_capsule/postgres/README.md#failed-stage-002-retry-or-abandon)
+and the concrete [Postgres retry/abandon procedure](../../examples/simple/workspaces/postgres/README.md#failed-stage-002-retry-or-abandon)
 before returning to baseline. Recovery is owned by the workflow that made the effect.

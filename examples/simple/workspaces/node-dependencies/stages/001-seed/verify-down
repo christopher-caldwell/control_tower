@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const data = path.join(process.env.CONTROL_TOWER_WORKSPACE, "data");
+if (fs.existsSync(path.join(data, "record.json"))) throw new Error("record.json remains after reversal");

@@ -23,7 +23,7 @@ impl Workspace {
             NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed)
         ));
         copy_directory(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/simple/uuid-file"),
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/simple/workspaces/uuid-file"),
             &workspace,
         );
         let database = workspace.join(".control_tower/state.sqlite3");

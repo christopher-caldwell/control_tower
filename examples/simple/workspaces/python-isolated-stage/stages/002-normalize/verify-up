@@ -1,0 +1,16 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+
+workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
+data = workspace / "data"
+from dateutil.parser import isoparse
+
+record = json.loads((data / "record.json").read_text())
+if isoparse(record["created_at"]).date().isoformat() != "2026-01-02":
+    raise SystemExit("unexpected input date")
+if json.loads((data / "normalized.json").read_text()) != {'record_id': '123', 'label': 'EXAMPLE RECORD'}:
+    raise SystemExit("unexpected normalized record")
+if json.loads((data / "inspection.json").read_text()) != {'runtime': 'python', 'record_id': '123', 'label': 'EXAMPLE RECORD', 'created_date': '2026-01-02'}:
+    raise SystemExit("unexpected Python inspection")

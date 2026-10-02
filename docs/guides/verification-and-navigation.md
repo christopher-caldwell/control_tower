@@ -22,7 +22,7 @@ Movement shows the workspace/target, then a flushed start and captured result fo
 
 ## Move to a target
 
-With the [three-stage example](../../examples/simple/uuid-file/README.md) prepared, run these from the repository root:
+With the [three-stage example](../../examples/simple/workspaces/uuid-file/README.md) prepared, run these from the repository root:
 
 ```sh
 ./target/debug/control-tower up --workspace "$workspace" --stage 2
@@ -70,7 +70,7 @@ Use a **fresh disposable copy**, not a workspace containing valuable test state.
 
 ```sh
 workspace="$(mktemp -d)"
-cp -R examples/simple/uuid-file/. "$workspace/"
+cp -R examples/simple/workspaces/uuid-file/. "$workspace/"
 ./target/debug/control-tower-db bootstrap-local "$workspace"
 ./target/debug/control-tower-db migrate-local "$workspace"
 ./target/debug/control-tower-db verify-local "$workspace"
@@ -150,7 +150,7 @@ Verifier retry/backout recipes are printed only for this invocation's failed ver
 `down` reverses accepted workflow transitions. A failed mutation may leave an external
 effect while its stage remains unaccepted, so normal traversal will not invoke that
 stage's `down`. Recovery belongs to the workflow that owns the effect. In the
-[Postgres example](../../examples/py_capsule/postgres/README.md#failed-stage-002-retry-or-abandon),
+[Postgres example](../../examples/simple/workspaces/postgres/README.md#failed-stage-002-retry-or-abandon),
 stage 2 can commit its run-owned row and then fail writing a local receipt: completed
 position stays at stage 1 and the UUID is retained. Repair/retry validates the same
 row; abandonment requires explicit UUID-scoped SQL cleanup before returning to
