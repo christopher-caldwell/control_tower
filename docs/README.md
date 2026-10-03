@@ -44,7 +44,11 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 | [ADR-0002](decisions/0002-stage-navigation-and-verification.md) | Accepted leading mechanism | Ordered up/down and optional directional verification before completion. |
 | [ADR-0003](decisions/0003-session-state-and-process-io.md) | Proposed | Minimal identifier handoff; shipped runner-generated UUID and unimplemented output ideas are distinguished. |
 | [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Application-owned storage contracts with SQLite as the v0 runtime adapter. |
-| [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |\n| [ADR-0006](decisions/0006-loopback-web-ui.md) | Accepted | First graphical Entry uses embedded React over loopback HTTP/SSE; Tauri and live byte streaming remain unselected. |
+| [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |
+| [ADR-0006](decisions/0006-loopback-web-ui.md) | Accepted | First graphical Entry uses embedded React over loopback HTTP/SSE; Tauri and live byte streaming remain unselected. |
+| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with persistent collapsible rails, declarative progression and a stage inspector. |
+
+[The UI reference review](research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright screenshots/patterns behind ADR-0007. It is reference evidence, not a second UI specification.
 
 [Playbook compliance](research/playbook-compliance.md) records the architecture correction. [Run-semantics validation](research/run-semantics-validation.md) records the later behavior correction and executed evidence. Neither is a replacement for the accepted decisions or a universal certification of future changes.
 

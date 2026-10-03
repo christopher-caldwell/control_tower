@@ -12,7 +12,10 @@ sources:
 - ../decisions/0002-stage-navigation-and-verification.md
 - ../decisions/0003-session-state-and-process-io.md
 - ../decisions/0004-session-storage-port-and-adapters.md
-- ../decisions/0005-cli-first-driving-adapter.md\n- ../decisions/0006-loopback-web-ui.md
+- ../decisions/0005-cli-first-driving-adapter.md
+- ../decisions/0006-loopback-web-ui.md
+- ../decisions/0007-desktop-ui-shell.md
+- ../research/2026-10-02-ui-reference-review.md
 - ../research/playbook-compliance.md
 - ../research/run-semantics-validation.md
 - ../research/2026-10-01-guided-usage-findings.md
@@ -69,6 +72,27 @@ The UI Entry calls the same Application/Workbench behavior rather than shelling 
 Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted. The UI may map those observations to SSE so a stage/role can visibly enter and leave a running state without introducing a second execution model. Infrastructure continues to buffer stdout/stderr for one role, and captured bytes remain in the Application outcome. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
 
 The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.
+
+## Selected UI shell: desktop project -> workspace -> stage workbench
+
+[ADR-0007](../decisions/0007-desktop-ui-shell.md) fixes the first UI's information architecture before implementation. The launch directory is the v0 **Project** context; the UI discovers and switches among project-local **Workspaces**. Switching to unrelated projects from inside the running UI is deferred.
+
+The primary desktop shell keeps three contexts visible together:
+
+```text
+left: project-local workspaces
+center: ordered vertical stages
+right: selected-stage inspector
+bottom: declarative progression/recovery actions
+```
+
+The left and right rails are visible by default and may be manually collapsed. The right inspector is also resizable and may remember local width/collapse preference. Stage selection is inspection only; it does not execute anything or alter the legal next transition.
+
+Primary actions describe intent such as **Advance to 003 · Add suffix**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
+
+The interface is explicitly desktop-only. Responsive breakpoints must not turn the workbench into stacked cards, hamburger navigation, temporary mobile drawers, bottom sheets or a single-pane drill-down flow. Manual rail collapse is a user choice, not responsive behavior.
+
+The [UI reference review](../research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright source screenshots that informed density, simultaneous context and inspector behavior.
 
 ## Session-state architecture follows the Rust playbook
 
@@ -153,6 +177,6 @@ A workspace-wide reset executable remains a future idea, not a current command. 
 
 ## What still has not earned scope
 
-The graphical UI delivery architecture is selected in ADR-0006 but is not implemented yet. Tauri/macOS app packaging, WebSockets and live byte-by-byte stdout/stderr streaming are not selected. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
+The graphical UI delivery architecture and desktop shell are selected in ADR-0006/ADR-0007 but are not implemented yet. Tauri/macOS app packaging, project switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming are not selected. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
 
 The first discovery and correction rounds have implementation evidence. The next useful input is actual use, not replaying the historical discovery queue as setup work. [Open questions](open-questions.md) keeps that future work separate; the [discovery brief](discovery-brief.md) and [earlier probe](three-step-workspace.md) remain historical inputs.

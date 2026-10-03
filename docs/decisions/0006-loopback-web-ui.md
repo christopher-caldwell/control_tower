@@ -115,7 +115,7 @@ workspace/run context
 
 Completed position and an active pending transition must remain visibly distinct. Stages are ordered migration-like states, not a DAG; the UI must not imply branching/dependency semantics that Control Tower does not have.
 
-Exact navigation, component library, styling, sizing and panel behavior remain design work.
+The desktop information architecture, project/workspace terminology, rail behavior and declarative progression controls are now settled by [ADR-0007](0007-desktop-ui-shell.md). Component library, exact styling and pixel sizing remain implementation/design tuning.
 
 ## Consequences
 
