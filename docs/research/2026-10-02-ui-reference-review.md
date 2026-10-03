@@ -4,11 +4,11 @@ title: UI reference review for the first graphical workbench
 type: research
 status: recorded
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
-verified_on: '2026-10-02'
-method: source-doc-reading-source-code-inspection-and-public-screenshot-review
+verified_on: '2026-10-03'
+method: source-doc-reading-source-code-inspection-public-screenshot-review-and-image-link-check
 sources:
 - https://docs.dagu.sh/overview/web-ui
 - https://github.com/dagucloud/dagu/blob/3cce8be87f2ad9b205105ecdef90a527fc70cb63/ui/src/features/dags/components/step-details/StepDetailsDrawer.tsx
@@ -96,3 +96,7 @@ project context
 ```
 
 The borrowed principle is **simultaneous context**. The product-specific semantics remain Control Tower's: project -> workspace -> ordered stage, accepted position distinct from a pending transition, and Application-owned legal next actions.
+
+On 2026-10-03, each of the four publisher screenshot URLs above returned HTTP 200
+with an image content type. They remain attributed remote references rather than
+copied product assets; availability may change at the source.

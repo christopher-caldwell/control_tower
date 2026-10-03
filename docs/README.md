@@ -51,6 +51,10 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 
 [The UI reference review](research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright screenshots/patterns behind ADR-0007. It is reference evidence, not a second UI specification.
 
+[The macOS delivery validation](research/2026-10-03-macos-ui-delivery.md) records the
+production binary owner walkthrough, browser screenshots, Rust/frontend checks,
+isolated installation, and graceful idle shutdown.
+
 [Playbook compliance](research/playbook-compliance.md) records the architecture correction. [Run-semantics validation](research/run-semantics-validation.md) records the later behavior correction and executed evidence. Neither is a replacement for the accepted decisions or a universal certification of future changes.
 
 [Guided-usage findings and core refinement](research/2026-10-01-guided-usage-findings.md) retains all F01–F15 findings/corrections and distinguishes inherited experiments from newly executed phase acceptance. Deferred entries are retained knowledge, not additional acceptance criteria or an implementation backlog for this round.

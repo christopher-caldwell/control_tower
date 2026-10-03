@@ -255,7 +255,9 @@ observation publication finish. Reads and SSE continue while a role runs. A seco
 tab or reconnect receives the current busy state and latest observation.
 
 Press Ctrl-C in the launching terminal to close the listener when idle. Shutdown
-does not request rollback or promise a new child-cancellation guarantee. Forced
+closes open SSE streams as part of graceful shutdown, then exits when idle. It does
+not request rollback or send a cancellation signal to an active role; a blocking
+Workbench call can keep graceful shutdown waiting until that call returns. Forced
 termination and interruption of an active role do not prove what external effects
 occurred; inspect the workspace and durable checkpoint yourself. Concurrent direct
 CLI mutation of a UI-active workspace is unsupported. There is no interprocess
@@ -268,3 +270,8 @@ The [UI reference review](../research/2026-10-02-ui-reference-review.md) retains
 publisher-attributed screenshot links and patterns borrowed from Dagu, Inngest,
 Decagon and Playwright. Remote images are source links, not runtime assets or
 screenshots newly captured by this implementation.
+
+The [macOS delivery validation](../research/2026-10-03-macos-ui-delivery.md)
+records the installed-binary walkthrough, supported Rust checks, graceful idle
+shutdown check, and separate implementation screenshots at the laptop minimum
+width and a larger desktop viewport.

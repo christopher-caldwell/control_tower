@@ -29,7 +29,7 @@ use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener as TokioTcpListener;
 use tokio::signal;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 #[derive(RustEmbed)]
@@ -66,6 +66,7 @@ struct ServerContext {
     bootstrap_token: String,
     session_token: String,
     observations: Arc<ObservationStore>,
+    shutdown: watch::Sender<bool>,
 }
 
 struct ObservationStore {
@@ -344,6 +345,7 @@ fn run_on_macos(project_root: &Path) -> Result<(), String> {
     let origin = format!("http://{host}");
     let bootstrap_token = Uuid::new_v4().to_string();
     let session_token = Uuid::new_v4().to_string();
+    let (shutdown, _) = watch::channel(false);
     let url = format!("{origin}/#session={bootstrap_token}");
     let context = Arc::new(ServerContext {
         project,
@@ -352,6 +354,7 @@ fn run_on_macos(project_root: &Path) -> Result<(), String> {
         bootstrap_token,
         session_token,
         observations: Arc::new(ObservationStore::new()),
+        shutdown: shutdown.clone(),
     });
 
     println!("Control Tower UI: {url}");
@@ -375,8 +378,9 @@ fn run_on_macos(project_root: &Path) -> Result<(), String> {
         let listener = TokioTcpListener::from_std(listener)
             .map_err(|error| format!("cannot start the UI listener: {error}"))?;
         serve(listener, router(context))
-            .with_graceful_shutdown(async {
+            .with_graceful_shutdown(async move {
                 let _ = signal::ctrl_c().await;
+                shutdown.send_replace(true);
             })
             .await
             .map_err(|error| format!("the UI server stopped unexpectedly: {error}"))
@@ -715,6 +719,7 @@ async fn workspace_events(
     // Subscribe before taking the first snapshot. An operation that begins in
     // the gap is either represented in the snapshot or queued for this stream.
     let receiver = runtime.events.subscribe();
+    let shutdown = context.shutdown.subscribe();
     let snapshot = runtime.snapshot(&id, &context.observations.server_instance_id);
     let stream_id = id.clone();
     let server_instance_id = context.observations.server_instance_id.clone();
@@ -725,23 +730,50 @@ async fn workspace_events(
             runtime,
             stream_id,
             server_instance_id,
+            shutdown,
         ),
-        |(mut receiver, initial, runtime, workspace_id, server_instance_id)| async move {
+        |(mut receiver, initial, runtime, workspace_id, server_instance_id, mut shutdown)| async move {
+            if *shutdown.borrow() {
+                return None;
+            }
             if let Some(snapshot) = initial {
                 let event = sse_json_event("snapshot", &snapshot);
                 return Some((
                     Ok::<_, std::convert::Infallible>(event),
-                    (receiver, None, runtime, workspace_id, server_instance_id),
+                    (
+                        receiver,
+                        None,
+                        runtime,
+                        workspace_id,
+                        server_instance_id,
+                        shutdown,
+                    ),
                 ));
             }
             loop {
-                match receiver.recv().await {
+                let received = tokio::select! {
+                    result = receiver.recv() => Some(result),
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            return None;
+                        }
+                        continue;
+                    }
+                };
+                match received.expect("the event or shutdown branch completed") {
                     Ok(event) if event.workspace_id == workspace_id => {
                         let kind = event.kind;
                         let next = sse_json_event(kind, &event);
                         return Some((
                             Ok(next),
-                            (receiver, None, runtime, workspace_id, server_instance_id),
+                            (
+                                receiver,
+                                None,
+                                runtime,
+                                workspace_id,
+                                server_instance_id,
+                                shutdown,
+                            ),
                         ));
                     }
                     Ok(_) => continue,
@@ -750,7 +782,14 @@ async fn workspace_events(
                         let event = sse_json_event("resync", &snapshot);
                         return Some((
                             Ok(event),
-                            (receiver, None, runtime, workspace_id, server_instance_id),
+                            (
+                                receiver,
+                                None,
+                                runtime,
+                                workspace_id,
+                                server_instance_id,
+                                shutdown,
+                            ),
                         ));
                     }
                     Err(broadcast::error::RecvError::Closed) => return None,
@@ -2170,6 +2209,7 @@ mod tests {
     }
 
     fn context_at(project: ProjectContext, host: &str) -> Arc<ServerContext> {
+        let (shutdown, _) = watch::channel(false);
         Arc::new(ServerContext {
             project,
             expected_host: host.to_owned(),
@@ -2177,6 +2217,7 @@ mod tests {
             bootstrap_token: "startup-secret".to_owned(),
             session_token: "browser-session".to_owned(),
             observations: Arc::new(ObservationStore::new()),
+            shutdown,
         })
     }
 
@@ -2377,6 +2418,53 @@ mod tests {
             serve(listener, router(task_context)).await.unwrap();
         });
         (host, context, task)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn graceful_shutdown_closes_idle_sse_clients_and_releases_listener() {
+        let temp = TempDir::new();
+        let project = temp.path().join("demo");
+        fs::create_dir_all(&project).unwrap();
+        workspace(&project, "fixture", "010-seed", true);
+        let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+        let host = listener.local_addr().unwrap().to_string();
+        let context = context_at(discover_project(&project).unwrap(), &host);
+        let shutdown = context.shutdown.clone();
+        let (signal_shutdown, wait_for_shutdown) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            serve(listener, router(context))
+                .with_graceful_shutdown(async move {
+                    let _ = wait_for_shutdown.await;
+                    shutdown.send_replace(true);
+                })
+                .await
+                .unwrap();
+        });
+
+        let origin = format!("http://{host}");
+        let mut events = NetworkResponse::open(
+            &host,
+            "/api/workspaces/fixture/events",
+            "GET",
+            None,
+            true,
+            Some(&origin),
+            None,
+        )
+        .await;
+        assert_eq!(events.status, StatusCode::OK.as_u16());
+        assert!(events.sse_event().await.contains("event: snapshot"));
+
+        signal_shutdown.send(()).unwrap();
+        let closed = tokio::time::timeout(Duration::from_secs(2), events.next_body_chunk())
+            .await
+            .expect("idle SSE clients should close during graceful shutdown");
+        assert!(closed.is_none());
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("graceful server shutdown should finish")
+            .unwrap();
+        assert!(TokioTcpStream::connect(&host).await.is_err());
     }
 
     #[cfg(unix)]
