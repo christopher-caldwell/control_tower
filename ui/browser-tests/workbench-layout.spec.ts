@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { DefinitionView, MovementObservation, ProjectView, RuntimeSnapshot, WorkspaceView } from "../src/types";
+import type { DefinitionView, MovementObservation, ProjectView, RuntimeSnapshot, WorkspaceView, MovementChoice } from "../src/types";
+
+const baselineChoices: MovementChoice[] = [{ direction: "up", target_stage: 10 }];
+const middleChoices: MovementChoice[] = [{ direction: "up", target_stage: 200 }];
+const pendingChoices: MovementChoice[] = [{ direction: "up", target_stage: 200 }, { direction: "down", target_stage: 10 }];
+const finalChoices: MovementChoice[] = [{ direction: "down", target_stage: 10 }];
 
 const project: ProjectView = {
   name: "layout-project",
@@ -28,7 +33,7 @@ const workspace: WorkspaceView = {
     accepted_stage: { number: 200, name: "finish" },
     pending_transition: { direction: "down", stage: { number: 200, name: "finish" } },
     workflow_started: true,
-  },
+  }, movement_choices: pendingChoices,
   selected_stage_number: 200,
   stages: [
     {
@@ -114,6 +119,17 @@ test("collapse and reopen keep the inspector in its explicit right-rail column",
   await expect(inspector).toBeVisible();
 });
 
+test("the action dock consumes supplied choices without enabling configured opposite roles", async ({ page }) => {
+  await installApiFixtures(page, project, { ...workspace, movement_choices: [{ direction: "down", target_stage: 10 }] });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Continue pending down/ })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Reapply Stage/ })).toHaveCount(0);
+  await installApiFixtures(page, project, { ...workspace, movement_choices: [] });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /No immediate movement available/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Continue pending|Reapply Stage/ })).toHaveCount(0);
+});
+
 test("resizing at minimum desktop width preserves the central narrative and viewport fit", async ({ page }) => {
   const handle = page.getByRole("separator", { name: "Resize stage inspector" });
   const handleBox = await handle.boundingBox();
@@ -170,7 +186,7 @@ test("reload and fresh tab select the accepted checkpoint after a retained downw
   const workspaceWithDownResult: WorkspaceView = {
     ...workspace,
     observation_revision: 8,
-    checkpoint,
+    checkpoint, movement_choices: middleChoices,
     selected_stage_number: 200,
     observation: {
       workspace_id: "fixture", operation_id: "retained-down-result", server_instance_id: "layout-server", revision: 8,
@@ -180,7 +196,7 @@ test("reload and fresh tab select the accepted checkpoint after a retained downw
         message: null, elapsed_ms: 3, output_id: "down-output", output_state: "available",
         stdout_bytes: 12, stderr_bytes: 0, stdout_truncated: false, stderr_truncated: false,
       }],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, movement_choices: middleChoices, attempted_checkpoint: null,
       failure: null, verification_choices: null,
     },
     stages: workspace.stages.map((stage) => ({
@@ -218,7 +234,7 @@ test("an observing browser tab reconciles another tab's completion into its rail
   };
   const baselineWorkspace: WorkspaceView = {
     ...workspace,
-    checkpoint: baseline,
+    checkpoint: baseline, movement_choices: baselineChoices,
     observation: null,
     selected_stage_number: 10,
     stages: workspace.stages.map((stage) => ({
@@ -264,16 +280,17 @@ test("an observing browser tab reconciles another tab's completion into its rail
   await otherTab.goto("/");
   await expect(otherTab.getByRole("button", { name: /fixture At baseline/ })).toBeVisible();
 
+  const choices: MovementChoice[] = [...middleChoices, { direction: "down", target_stage: 0 }];
   const checkpoint = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
   const observation: MovementObservation = {
     workspace_id: "fixture", operation_id: "other-tab-complete", server_instance_id: "layout-server", revision: 10,
     direction: "up", target_stage: 10, state: "complete", active_role: null,
     role_results: [], omitted_role_results: 0, outputs_evicted: 0,
-    confirmed_checkpoint: checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+    confirmed_checkpoint: checkpoint, movement_choices: choices, attempted_checkpoint: null, failure: null, verification_choices: null,
   };
   const snapshot: RuntimeSnapshot = {
     workspace_id: "fixture", server_instance_id: "layout-server", revision: 10, movement_busy: false,
-    checkpoint, observation,
+    checkpoint, movement_choices: choices, observation,
   };
   await page.evaluate((value) => {
     (window as unknown as Window & { __emitControlTowerEvent: (name: string, snapshot: RuntimeSnapshot) => void })

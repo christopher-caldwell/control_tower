@@ -7,8 +7,8 @@ use super::{
 };
 use axum::http::StatusCode;
 use control_tower_application::{
-    Direction, ExecutionProgress, MoveStatus, MoveToError, MoveToInput, MovementChoice, Stage,
-    TransitionFailure, WorkbenchState,
+    Direction, ExecutionProgress, MoveStatus, MoveToError, MoveToInput, Stage, TransitionFailure,
+    WorkbenchState,
 };
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
@@ -42,6 +42,7 @@ pub(super) fn execute_movement(
                     omitted_role_results: 0,
                     outputs_evicted: 0,
                     confirmed_checkpoint: None,
+                    movement_choices: None,
                     attempted_checkpoint: None,
                     failure: None,
                     verification_choices: None,
@@ -185,11 +186,19 @@ pub(super) fn execute_movement(
             omitted_role_results: 0,
             outputs_evicted: 0,
             confirmed_checkpoint: None,
+            movement_choices: None,
             attempted_checkpoint: None,
             failure: None,
             verification_choices: None,
         });
     observation.verification_choices = choices;
+    observation.movement_choices = Some(
+        outcome
+            .movement_choices()
+            .into_iter()
+            .map(movement_choice_view)
+            .collect(),
+    );
     match &outcome.status {
         MoveStatus::Complete(state) => {
             observation.state = "complete";
@@ -207,13 +216,6 @@ pub(super) fn execute_movement(
     WorkerResult {
         observation,
         error: None,
-    }
-}
-
-pub(super) fn movement_choice_view(choice: MovementChoice) -> RecoveryChoiceView {
-    RecoveryChoiceView {
-        direction: choice.direction.as_str(),
-        target_stage: choice.target_stage,
     }
 }
 

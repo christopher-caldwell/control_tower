@@ -1,3 +1,4 @@
+use control_tower_application::MovementChoice;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
@@ -20,6 +21,7 @@ pub(super) struct RuntimeSnapshot {
     pub(super) revision: u64,
     pub(super) movement_busy: bool,
     pub(super) checkpoint: Option<CheckpointView>,
+    pub(super) movement_choices: Option<Vec<MovementChoiceView>>,
     pub(super) observation: Option<MovementObservation>,
 }
 
@@ -37,6 +39,7 @@ pub(super) struct MovementObservation {
     pub(super) omitted_role_results: usize,
     pub(super) outputs_evicted: usize,
     pub(super) confirmed_checkpoint: Option<CheckpointView>,
+    pub(super) movement_choices: Option<Vec<MovementChoiceView>>,
     pub(super) attempted_checkpoint: Option<CheckpointView>,
     pub(super) failure: Option<FailureView>,
     pub(super) verification_choices: Option<RecoveryChoicesView>,
@@ -74,12 +77,12 @@ pub(super) struct FailureView {
 
 #[derive(Clone, Serialize)]
 pub(super) struct RecoveryChoicesView {
-    pub(super) retry: RecoveryChoiceView,
-    pub(super) reverse: Option<RecoveryChoiceView>,
+    pub(super) retry: MovementChoiceView,
+    pub(super) reverse: Option<MovementChoiceView>,
 }
 
 #[derive(Clone, Serialize)]
-pub(super) struct RecoveryChoiceView {
+pub(super) struct MovementChoiceView {
     pub(super) direction: &'static str,
     pub(super) target_stage: u32,
 }
@@ -160,6 +163,7 @@ pub(super) struct WorkspaceView {
     pub(super) project_name: String,
     pub(super) workspace: WorkspaceIdentity,
     pub(super) checkpoint: CheckpointView,
+    pub(super) movement_choices: Vec<MovementChoiceView>,
     pub(super) selected_stage_number: Option<u32>,
     pub(super) stages: Vec<StageView>,
     pub(super) server_instance_id: String,
@@ -204,4 +208,11 @@ pub(super) struct DefinitionView {
     pub(super) contents: Option<String>,
     pub(super) truncated: bool,
     pub(super) issue: Option<String>,
+}
+
+pub(super) fn movement_choice_view(choice: MovementChoice) -> MovementChoiceView {
+    MovementChoiceView {
+        direction: choice.direction.as_str(),
+        target_stage: choice.target_stage,
+    }
 }

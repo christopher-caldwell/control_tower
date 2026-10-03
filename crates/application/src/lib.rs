@@ -254,6 +254,15 @@ pub struct VerificationChoices {
 }
 
 impl MoveOutcome {
+    /// Immediate mechanically available movements from the last confirmed
+    /// checkpoint. These are not recommendations about author-owned effects.
+    pub fn movement_choices(&self) -> Vec<MovementChoice> {
+        let state = match &self.status {
+            MoveStatus::Complete(state) | MoveStatus::Stopped { state, .. } => state,
+        };
+        movement_choices(state, &self.stages)
+    }
+
     /// Only this invocation's failed verifier earns verifier-specific choices.
     /// An old pending checkpoint after a failed mutation/save is insufficient.
     pub fn verification_choices(&self) -> Option<VerificationChoices> {
@@ -273,38 +282,14 @@ impl MoveOutcome {
         if role != ExecutableRole::for_direction(pending.direction, true) {
             return None;
         }
-        let stage = &self.stages[pending.stage_index];
-        let lower = pending
-            .stage_index
-            .checked_sub(1)
-            .map_or(0, |i| self.stages[i].number);
-        let (retry, reverse) = match pending.direction {
-            Direction::Up => (
-                MovementChoice {
-                    direction: Direction::Up,
-                    target_stage: stage.number,
-                },
-                MovementChoice {
-                    direction: Direction::Down,
-                    target_stage: lower,
-                },
-            ),
-            Direction::Down => (
-                MovementChoice {
-                    direction: Direction::Down,
-                    target_stage: lower,
-                },
-                MovementChoice {
-                    direction: Direction::Up,
-                    target_stage: stage.number,
-                },
-            ),
-        };
+        let choices = self.movement_choices();
         Some(VerificationChoices {
-            retry,
-            reverse: stage
-                .executable(ExecutableRole::for_direction(reverse.direction, false))
-                .map(|_| reverse),
+            retry: *choices
+                .iter()
+                .find(|choice| choice.direction == pending.direction)?,
+            reverse: choices
+                .into_iter()
+                .find(|choice| choice.direction != pending.direction),
         })
     }
 }
@@ -313,6 +298,50 @@ impl MoveOutcome {
 pub struct WorkbenchStatus {
     pub state: WorkbenchState,
     pub stages: Vec<Stage>,
+}
+
+impl WorkbenchStatus {
+    /// Immediate mechanical choices from this authoritative status. Ordering is
+    /// up then down, not recovery preference. No processes or storage are touched.
+    pub fn movement_choices(&self) -> Vec<MovementChoice> {
+        movement_choices(&self.state, &self.stages)
+    }
+}
+
+fn movement_choices(state: &WorkbenchState, stages: &[Stage]) -> Vec<MovementChoice> {
+    let mut choices = Vec::with_capacity(2);
+    for direction in [Direction::Up, Direction::Down] {
+        let (index, run_mutation) = if let Some(pending) = state.pending {
+            (Some(pending.stage_index), direction != pending.direction)
+        } else {
+            (
+                match direction {
+                    Direction::Up => Some(state.completed_stage_count),
+                    Direction::Down => state.completed_stage_count.checked_sub(1),
+                },
+                true,
+            )
+        };
+        let Some(index) = index else { continue };
+        let Some(stage) = stages.get(index) else {
+            continue;
+        };
+        if run_mutation
+            && stage
+                .executable(ExecutableRole::for_direction(direction, false))
+                .is_none()
+        {
+            continue;
+        }
+        choices.push(MovementChoice {
+            direction,
+            target_stage: match direction {
+                Direction::Up => stage.number,
+                Direction::Down => index.checked_sub(1).map_or(0, |i| stages[i].number),
+            },
+        });
+    }
+    choices
 }
 
 pub trait StageDiscovery {

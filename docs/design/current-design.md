@@ -69,6 +69,20 @@ CLI is the implemented Application-driving adapter. It parses intent, calls Appl
 
 The UI Entry composes a workspace-bound Workbench inside the CLI package rather than shelling out to the CLI or changing Application ownership. Project scope comes from the launch directory, workspace discovery is startup-only under `workspaces/`, and each workspace retains its own existing storage. Reads do not bootstrap or repair databases, and a workspace failure does not hide its neighbors. The normal executable embeds prebuilt assets and attempts to open the system browser. The UI target is macOS-only and desktop-only; exact component styling remains an implementation detail.
 
+Application exposes pure immediate movement choices on `WorkbenchStatus` and
+`MoveOutcome`, using the same pending-transition derivation as verifier-failure
+guidance. These choices identify mechanically available directions and actual
+stage-number targets; they do not establish safe recovery after ambiguous
+authored effects or failed persistence. HTTP mechanically maps and carries them
+with the corresponding confirmed checkpoint through reads, movement results,
+and SSE snapshots. React consumes supplied choices and owns wording and emphasis.
+
+The web implementation remains inside CLI/Entry, with internal modules for DTOs,
+HTTP/security/static delivery, workspace discovery/read mapping, in-process
+observations/output retention, and the blocking movement bridge. The launch
+composition stays explicit in `web.rs`; the test harness is separate. This split
+adds no Application services, shared Workbench requirements, or persistence model.
+
 Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted. The UI maps those observations to SSE and retains bounded role summaries/output in process so a role can visibly enter and leave a running state and completed output is available before the next role returns. Infrastructure continues to buffer stdout/stderr for one role, and captured bytes remain in the Application outcome. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
 
 The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.

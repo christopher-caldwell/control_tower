@@ -94,20 +94,31 @@ impl WorkspaceRuntime {
     pub(super) fn snapshot(&self, workspace_id: &str, server_instance_id: &str) -> RuntimeSnapshot {
         let record = lock_unpoison(&self.record);
         let observation = record.observation.clone();
+        // Select checkpoint and choices from the same source under the same lock.
+        let (checkpoint, movement_choices) = observation
+            .as_ref()
+            .and_then(|current| {
+                current
+                    .confirmed_checkpoint
+                    .clone()
+                    .map(|checkpoint| (Some(checkpoint), current.movement_choices.clone()))
+            })
+            .or_else(|| {
+                record.last_known_view.as_ref().map(|view| {
+                    (
+                        Some(view.checkpoint.clone()),
+                        Some(view.movement_choices.clone()),
+                    )
+                })
+            })
+            .unwrap_or((None, None));
         RuntimeSnapshot {
             workspace_id: workspace_id.to_owned(),
             server_instance_id: server_instance_id.to_owned(),
             revision: self.next_revision.load(Ordering::Relaxed),
             movement_busy: record.busy,
-            checkpoint: observation
-                .as_ref()
-                .and_then(|current| current.confirmed_checkpoint.clone())
-                .or_else(|| {
-                    record
-                        .last_known_view
-                        .as_ref()
-                        .map(|view| view.checkpoint.clone())
-                }),
+            checkpoint,
+            movement_choices,
             observation,
         }
     }
@@ -149,6 +160,7 @@ impl WorkspaceRuntime {
             omitted_role_results: 0,
             outputs_evicted: 0,
             confirmed_checkpoint: None,
+            movement_choices: None,
             attempted_checkpoint: None,
             failure: None,
             verification_choices: None,
@@ -473,6 +485,7 @@ impl Drop for OperationGuard {
                 omitted_role_results: 0,
                 outputs_evicted: 0,
                 confirmed_checkpoint: None,
+                movement_choices: None,
                 attempted_checkpoint: None,
                 failure: None,
                 verification_choices: None,

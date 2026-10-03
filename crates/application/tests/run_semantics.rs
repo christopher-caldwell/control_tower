@@ -877,6 +877,13 @@ fn verifier_choices_resolve_only_active_sparse_stage_and_exclude_other_failures(
             );
             let outcome = fixture.move_to(direction, if direction == Up { 900 } else { 0 });
             let choices = outcome.verification_choices().unwrap();
+            let mechanical = outcome.movement_choices();
+            assert!(mechanical.contains(&choices.retry));
+            assert!(
+                choices
+                    .reverse
+                    .is_none_or(|reverse| mechanical.contains(&reverse))
+            );
             let upper = fixture.stages[index].number;
             let lower = if first_stage { 0 } else { 10 };
             assert_eq!(
@@ -926,4 +933,251 @@ fn verifier_choices_resolve_only_active_sparse_stage_and_exclude_other_failures(
     let fixture = Fixture::new();
     fixture.fail(1, UpRole);
     assert!(fixture.move_to(Up, 1).verification_choices().is_none());
+}
+
+#[test]
+fn immediate_settled_choices_use_adjacent_sparse_identities_and_execute_only_that_stage() {
+    let expected = [
+        vec![(Up, 10)],
+        vec![(Up, 200), (Down, 0)],
+        vec![(Up, 900), (Down, 10)],
+        vec![(Down, 200)],
+    ];
+    for (completed, expected) in expected.into_iter().enumerate() {
+        let mut fixture = Fixture::new();
+        for (stage, number) in fixture.stages.iter_mut().zip([10, 200, 900]) {
+            stage.number = number;
+        }
+        let state = WorkbenchState {
+            completed_stage_count: completed,
+            uuid: (completed > 0).then(|| "run".to_owned()),
+            pending: None,
+        };
+        fixture.memory.borrow_mut().checkpoint = Some(state.clone());
+        let status = fixture.workbench().status(Path::new("/fixture")).unwrap();
+        let choices = status.movement_choices();
+        assert_eq!(
+            choices
+                .iter()
+                .map(|c| (c.direction, c.target_stage))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(fixture.calls().is_empty());
+        assert!(fixture.memory.borrow().writes.is_empty());
+        assert_eq!(fixture.state(), state);
+        for choice in choices {
+            fixture.memory.borrow_mut().checkpoint = Some(state.clone());
+            fixture.clear_calls();
+            assert!(matches!(
+                fixture
+                    .move_to(choice.direction, choice.target_stage)
+                    .status,
+                MoveStatus::Complete(_)
+            ));
+            let index = if choice.direction == Up {
+                completed
+            } else {
+                completed - 1
+            };
+            let number = fixture.stages[index].number;
+            let roles = if choice.direction == Up {
+                [UpRole, VerifyUp]
+            } else {
+                [DownRole, VerifyDown]
+            };
+            assert_eq!(fixture.calls(), roles.map(|role| (number, role)));
+        }
+    }
+}
+
+#[test]
+fn immediate_pending_choices_resolve_the_active_stage_from_either_accepted_side() {
+    for index in 0..3 {
+        for completed in [index, index + 1] {
+            for direction in [Up, Down] {
+                let mut fixture = Fixture::new();
+                for (stage, number) in fixture.stages.iter_mut().zip([10, 200, 900]) {
+                    stage.number = number;
+                }
+                let state = WorkbenchState {
+                    completed_stage_count: completed,
+                    uuid: Some("run".into()),
+                    pending: Some(PendingTransition {
+                        stage_index: index,
+                        direction,
+                    }),
+                };
+                fixture.memory.borrow_mut().checkpoint = Some(state.clone());
+                let choices = fixture
+                    .workbench()
+                    .status(Path::new("/fixture"))
+                    .unwrap()
+                    .movement_choices();
+                let number = fixture.stages[index].number;
+                let lower = if index == 0 {
+                    0
+                } else {
+                    fixture.stages[index - 1].number
+                };
+                assert_eq!(
+                    choices,
+                    vec![
+                        MovementChoice {
+                            direction: Up,
+                            target_stage: number
+                        },
+                        MovementChoice {
+                            direction: Down,
+                            target_stage: lower
+                        }
+                    ]
+                );
+                assert!(fixture.calls().is_empty());
+                assert!(fixture.memory.borrow().writes.is_empty());
+                for choice in choices {
+                    fixture.memory.borrow_mut().checkpoint = Some(state.clone());
+                    fixture.clear_calls();
+                    let outcome = fixture.move_to(choice.direction, choice.target_stage);
+                    assert!(matches!(outcome.status, MoveStatus::Complete(_)));
+                    let mutation = if choice.direction == Up {
+                        UpRole
+                    } else {
+                        DownRole
+                    };
+                    let verify = if choice.direction == Up {
+                        VerifyUp
+                    } else {
+                        VerifyDown
+                    };
+                    let expected = if choice.direction == direction {
+                        vec![(number, verify)]
+                    } else {
+                        vec![(number, mutation), (number, verify)]
+                    };
+                    assert_eq!(fixture.calls(), expected);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn immediate_choices_exclude_missing_mutations_without_blocking_pending_continuation() {
+    let mut fixture = Fixture::new();
+    fixture.stages[0].up = None;
+    assert!(
+        fixture
+            .workbench()
+            .status(Path::new("/fixture"))
+            .unwrap()
+            .movement_choices()
+            .is_empty()
+    );
+    fixture.stages[0].up = Some("up".into());
+    fixture.memory.borrow_mut().checkpoint = Some(WorkbenchState {
+        completed_stage_count: 3,
+        uuid: Some("run".into()),
+        pending: None,
+    });
+    fixture.stages[2].down = None;
+    assert!(
+        fixture
+            .workbench()
+            .status(Path::new("/fixture"))
+            .unwrap()
+            .movement_choices()
+            .is_empty()
+    );
+    for direction in [Up, Down] {
+        for missing_matching in [false, true] {
+            let mut fixture = Fixture::new();
+            let missing = if missing_matching {
+                direction
+            } else if direction == Up {
+                Down
+            } else {
+                Up
+            };
+            match missing {
+                Up => {
+                    fixture.stages[0].up = None;
+                    fixture.stages[0].verify_up = None;
+                }
+                Down => {
+                    fixture.stages[0].down = None;
+                    fixture.stages[0].verify_down = None;
+                }
+            }
+            fixture.memory.borrow_mut().checkpoint = Some(WorkbenchState {
+                completed_stage_count: usize::from(direction == Down),
+                uuid: Some("run".into()),
+                pending: Some(PendingTransition {
+                    stage_index: 0,
+                    direction,
+                }),
+            });
+            let choices = fixture
+                .workbench()
+                .status(Path::new("/fixture"))
+                .unwrap()
+                .movement_choices();
+            assert_eq!(choices.len(), if missing_matching { 2 } else { 1 });
+            let continuation = choices
+                .iter()
+                .find(|choice| choice.direction == direction)
+                .unwrap();
+            assert!(matches!(
+                fixture.move_to(direction, continuation.target_stage).status,
+                MoveStatus::Complete(_)
+            ));
+            assert_eq!(
+                fixture.calls(),
+                if missing_matching {
+                    vec![]
+                } else {
+                    vec![(
+                        1,
+                        if direction == Up {
+                            VerifyUp
+                        } else {
+                            VerifyDown
+                        },
+                    )]
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn outcome_choices_use_confirmed_state_without_claiming_recovery_after_a_failed_save() {
+    let fixture = Fixture::new();
+    fixture.memory.borrow_mut().fail_write_at = Some(3);
+    let outcome = fixture.move_to(Up, 3);
+    assert!(outcome.verification_choices().is_none());
+    assert_eq!(
+        outcome.movement_choices(),
+        vec![
+            MovementChoice {
+                direction: Up,
+                target_stage: 1
+            },
+            MovementChoice {
+                direction: Down,
+                target_stage: 0
+            }
+        ]
+    );
+    let MoveStatus::Stopped {
+        state,
+        failure: TransitionFailure::StateCouldNotBeSaved { attempted, .. },
+    } = outcome.status
+    else {
+        panic!("expected final checkpoint failure")
+    };
+    assert_eq!(state.completed_stage_count, 0);
+    assert!(state.pending.is_some());
+    assert_eq!(attempted.completed_stage_count, 1);
+    assert!(attempted.pending.is_none());
 }

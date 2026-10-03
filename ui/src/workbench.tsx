@@ -408,6 +408,8 @@ export function App() {
   const finalAccepted = Boolean(workspace?.stages.length
     && !workspace.checkpoint.pending_transition
     && workspace.checkpoint.accepted_stage?.number === workspace.stages.at(-1)?.number);
+  const finalAcceptedLabel = workspace?.movement_choices.some((choice) => choice.direction === "down")
+    ? "All stages applied; backout remains available" : "All stages applied";
   const inactiveActionLabel = !selectedWorkspaceId
     ? "Select a workspace"
     : workspaceIssue || selectedSummary?.available === false
@@ -416,22 +418,19 @@ export function App() {
         ? "Loading workspace"
         : workspace?.stages.length === 0
           ? "No stages available"
-          : "All stages applied";
+          : finalAccepted ? "All stages applied" : "No immediate movement available";
   const inactiveActionDetail = !selectedWorkspaceId
     ? "Choose a project-local Workspace to inspect its stages."
     : workspaceIssue || selectedSummary?.available === false
       ? "Resolve the Workspace availability issue before moving."
       : workspace?.stages.length === 0
         ? "This Workspace has no numbered stage definitions."
-        : "The current accepted position is at baseline.";
-  const ambiguousEffects = Boolean(workspace?.observation?.failure
-    && (workspace.observation.failure.kind === "checkpoint_save_failed"
-      || (["up", "down"].includes(workspace.observation.failure.role ?? "")
-        && ["process_failed", "launch_failed"].includes(workspace.observation.failure.kind))));
+        : "No movement is currently available at this checkpoint.";
+  const ambiguousEffects = hasAmbiguousEffects(workspace?.observation);
 
   async function runMovement(action: MovementAction) {
     if (!selectedWorkspaceId || !workspace || controlsBusy || !selectedSummary?.available
-      || workspace.storage_issue || action.disabledReason) return;
+      || workspace.storage_issue) return;
     const workspaceId = selectedWorkspaceId;
     const requestId = ++movementSequence.current;
     activeMovementRequests.current.set(workspaceId, requestId);
@@ -474,6 +473,8 @@ export function App() {
         revision: observation.revision,
         movement_busy: false,
         checkpoint: observation.confirmed_checkpoint ?? previousSnapshot?.checkpoint ?? workspace.checkpoint,
+        movement_choices: observation.confirmed_checkpoint ? observation.movement_choices
+          : previousSnapshot?.checkpoint ? previousSnapshot.movement_choices : workspace.movement_choices,
         observation,
       };
       latestSnapshots.current.set(workspaceId, snapshot);
@@ -654,12 +655,12 @@ export function App() {
           </div>
 
           <div className="action-dock">
-            <div className="action-summary"><span className="action-orbit">{workspace?.movement_busy ? "◌" : "↗"}</span><div><b>{workspace?.observation?.state === "stopped" ? "Movement stopped at the last confirmed checkpoint" : workspace?.observation?.state === "complete" ? "Movement completed" : workspace?.movement_busy ? "Movement is in progress" : finalAccepted ? "All stages applied; backout remains available" : activeAction?.label ?? inactiveActionLabel}</b><small>{workspace?.observation?.active_role ? `Attempt in progress · Stage ${workspace.observation.active_role.stage.number} ${workspace.observation.active_role.role}. Captured bytes appear when the role returns.` : activeAction?.detail ?? inactiveActionDetail}</small></div></div>
+            <div className="action-summary"><span className="action-orbit">{workspace?.movement_busy ? "◌" : "↗"}</span><div><b>{workspace?.observation?.state === "stopped" ? "Movement stopped at the last confirmed checkpoint" : workspace?.observation?.state === "complete" ? "Movement completed" : workspace?.movement_busy ? "Movement is in progress" : finalAccepted ? finalAcceptedLabel : activeAction?.label ?? inactiveActionLabel}</b><small>{workspace?.observation?.active_role ? `Attempt in progress · Stage ${workspace.observation.active_role.stage.number} ${workspace.observation.active_role.role}. Captured bytes appear when the role returns.` : activeAction?.detail ?? inactiveActionDetail}</small></div></div>
             {movementIssue && <span className="movement-issue" role="status">{movementIssue}</span>}
             {ambiguousEffects && <span className="movement-warning" role="alert">Inspect author-owned effects before continuing. The pending checkpoint alone does not make retry or reversal safe.</span>}
             <div className="movement-buttons">
-              {alternateAction && <button className="secondary-action" onClick={() => void runMovement(alternateAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available || Boolean(alternateAction.disabledReason)} title={workspace?.storage_issue ?? alternateAction.disabledReason}>{alternateAction.label}<span aria-hidden="true">↶</span></button>}
-              {activeAction && <button className="primary-action" onClick={() => void runMovement(activeAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available || Boolean(activeAction.disabledReason)} title={workspace?.storage_issue ?? activeAction.disabledReason}>{controlsBusy ? "Movement in progress" : activeAction.label}<span aria-hidden="true">{activeAction.choice.direction === "up" ? "→" : "↶"}</span></button>}
+              {alternateAction && <button className="secondary-action" onClick={() => void runMovement(alternateAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available} title={workspace?.storage_issue ?? undefined}>{alternateAction.label}<span aria-hidden="true">↶</span></button>}
+              {activeAction && <button className="primary-action" onClick={() => void runMovement(activeAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available} title={workspace?.storage_issue ?? undefined}>{controlsBusy ? "Movement in progress" : activeAction.label}<span aria-hidden="true">{activeAction.choice.direction === "up" ? "→" : "↶"}</span></button>}
               {!activeAction && <button className="primary-action" disabled>{inactiveActionLabel}<span aria-hidden="true">{workspace?.stages.length ? "✓" : "·"}</span></button>}
             </div>
           </div>
@@ -777,7 +778,7 @@ function RolePreview({ role, stage, definitions, results, failure }: { role: str
     ? `Observed failure · ${observedRoleFailure.message}`
     : configured
       ? stage.state === "accepted" ? "Applied · historical result unavailable" : stage.state === "pending" ? stageHasEvidence ? "No retained result for this role" : "Prior outcome unavailable" : "Not attempted"
-    : role.startsWith("verify-") ? "Not configured" : "Missing · movement unavailable";
+    : role.startsWith("verify-") ? "Not configured" : "Missing · mutation unavailable";
   const status = result?.state === "succeeded" ? "Process OK"
     : result?.state === "failed" ? `Exit ${result.exit_code ?? "unknown"}`
       : result?.state === "launch_failed" ? "Launch failed"
@@ -871,85 +872,61 @@ type MovementAction = {
   choice: MovementChoice;
   label: string;
   detail: string;
-  disabledReason?: string;
 };
 
 function movementActionsFor(workspace: WorkspaceView): MovementAction[] {
-  const stages = workspace.stages;
-  const checkpoint = workspace.checkpoint;
-  const pending = checkpoint.pending_transition;
+  const pending = workspace.checkpoint.pending_transition;
   const observation = workspace.observation;
-  const action = (choice: MovementChoice, label: string, detail: string, disabledReason?: string): MovementAction => ({ choice, label, detail, disabledReason });
-  const stageFor = (number: number) => stages.find((stage) => stage.number === number);
+  const stageFor = (number: number) => workspace.stages.find((stage) => stage.number === number);
   const targetLabel = (number: number) => number === 0 ? "baseline" : `Stage ${number} · ${stageFor(number)?.name ?? "unknown"}`;
-
-  if (pending) {
-    const stage = stageFor(pending.stage.number);
-    const lowerNumber = stages.findIndex((candidate) => candidate.number === pending.stage.number) - 1;
-    const actualLowerTarget = lowerNumber < 0 ? 0 : stages[lowerNumber]?.number ?? 0;
-    const lowerName = targetLabel(actualLowerTarget);
-    const verificationFailure = observation?.state === "stopped" && observation.verification_choices;
-    if (verificationFailure) {
-      const retry = verificationFailure.retry;
-      const retryName = pending.direction === "up" ? "Retry verify-up" : "Retry verify-down";
-      const reverse = verificationFailure.reverse;
-      const reverseLabel = pending.direction === "up"
-        ? `Back out Stage ${pending.stage.number} to ${targetLabel(reverse?.target_stage ?? actualLowerTarget)}`
-        : `Reapply Stage ${pending.stage.number} upward`;
-      return [
-        action(retry, `${retryName} for Stage ${pending.stage.number}`, "The mutation is not repeated by this verifier retry."),
-        ...(reverse ? [action(reverse, reverseLabel, pending.direction === "down" ? "Runs the upward mutation and optional verify-up for the pending down Stage." : "Runs the downward mutation and optional verify-down for the pending up Stage.")] : []),
-      ];
-    }
-
-    const ambiguous = Boolean(observation?.state === "stopped" && observation.failure
-      && (observation.failure.kind === "checkpoint_save_failed"
-        || (["up", "down"].includes(observation.failure.role ?? "")
-          && ["process_failed", "launch_failed"].includes(observation.failure.kind))));
-    if (ambiguous) {
-      return [
-        action({ direction: "up", target_stage: pending.stage.number }, `Continue up toward Stage ${pending.stage.number}`, "Inspect author-owned effects before continuing.", stage?.definitions.some((item) => item.role === "up") ? undefined : "Stage has no up executable."),
-        action({ direction: "down", target_stage: actualLowerTarget }, `Continue down toward ${lowerName}`, "Inspect author-owned effects before continuing.", stage?.definitions.some((item) => item.role === "down") ? undefined : "Stage has no down executable."),
-      ];
-    }
-
-    if (pending.direction === "up") {
-      return [
-        action({ direction: "up", target_stage: pending.stage.number }, `Continue pending up · Stage ${pending.stage.number}`, "Prior execution result is unavailable; this resumes the pending upward transition.", stage?.definitions.some((item) => item.role === "up") ? undefined : "Stage has no up executable."),
-        action({ direction: "down", target_stage: actualLowerTarget }, `Back out Stage ${pending.stage.number} to ${lowerName}`, "Uses the pending Stage’s down role.", stage?.definitions.some((item) => item.role === "down") ? undefined : "Stage has no down executable."),
-      ];
-    }
+  const verification = pending && observation?.state === "stopped" ? observation.verification_choices : null;
+  if (pending && verification) {
+    const retry = verification.retry;
+    const reverse = verification.reverse;
     return [
-      action({ direction: "down", target_stage: actualLowerTarget }, `Continue pending down · Stage ${pending.stage.number}`, "Prior execution result is unavailable; this resumes the pending downward transition.", stage?.definitions.some((item) => item.role === "down") ? undefined : "Stage has no down executable."),
-      action({ direction: "up", target_stage: pending.stage.number }, `Reapply Stage ${pending.stage.number} upward`, "Runs the upward mutation and optional verify-up.", stage?.definitions.some((item) => item.role === "up") ? undefined : "Stage has no up executable."),
+      { choice: retry, label: `Retry verify-${retry.direction} for Stage ${pending.stage.number}`, detail: "The mutation is not repeated by this verifier retry." },
+      ...(reverse ? [{ choice: reverse,
+        label: reverse.direction === "down" ? `Back out Stage ${pending.stage.number} to ${targetLabel(reverse.target_stage)}` : `Reapply Stage ${pending.stage.number} upward`,
+        detail: `Runs the ${reverse.direction === "up" ? "upward" : "downward"} mutation and optional verify-${reverse.direction} for the pending ${pending.direction} Stage.`,
+      }] : []),
     ];
   }
+  const ambiguous = hasAmbiguousEffects(observation);
+  const actions = workspace.movement_choices.map((choice): MovementAction => {
+    if (ambiguous) return {
+      choice,
+      label: `Continue ${choice.direction} toward ${choice.direction === "up" ? `Stage ${choice.target_stage}` : targetLabel(choice.target_stage)}`,
+      detail: "Inspect author-owned effects before continuing.",
+    };
+    if (pending) return {
+      choice,
+      label: choice.direction === pending.direction
+        ? `Continue pending ${choice.direction} · Stage ${pending.stage.number}`
+        : choice.direction === "down" ? `Back out Stage ${pending.stage.number} to ${targetLabel(choice.target_stage)}` : `Reapply Stage ${pending.stage.number} upward`,
+      detail: choice.direction === pending.direction
+        ? `Prior execution result is unavailable; this resumes the pending ${choice.direction === "up" ? "upward" : "downward"} transition.`
+        : `Runs the ${choice.direction === "up" ? "upward" : "downward"} mutation and optional verify-${choice.direction}.`,
+    };
+    const stage = choice.direction === "up" ? stageFor(choice.target_stage) : workspace.checkpoint.accepted_stage;
+    const definitions = stage ? stageFor(stage.number)?.definitions : undefined;
+    return {
+      choice,
+      label: choice.direction === "up" ? `Advance to ${targetLabel(choice.target_stage)}` : `Back out Stage ${stage?.number ?? "unknown"} to ${targetLabel(choice.target_stage)}`,
+      detail: `Runs Stage ${stage?.number ?? "unknown"} ${choice.direction}${definitions?.some((item) => item.role === `verify-${choice.direction}`) ? ` then verify-${choice.direction}` : `; no verify-${choice.direction} is configured`}.`,
+    };
+  });
+  // Primary/secondary emphasis is presentation; choices and targets are supplied.
+  return pending && !ambiguous
+    ? actions.sort((left, right) => Number(right.choice.direction === pending.direction) - Number(left.choice.direction === pending.direction))
+    : actions;
+}
 
-  const acceptedIndex = checkpoint.accepted_stage
-    ? stages.findIndex((stage) => stage.number === checkpoint.accepted_stage?.number)
-    : -1;
-  const acceptedCount = acceptedIndex + 1;
-  const next = stages[acceptedCount];
-  const actions: MovementAction[] = [];
-  if (next) {
-    actions.push(action(
-      { direction: "up", target_stage: next.number },
-      `Advance to Stage ${next.number} · ${next.name}`,
-      `Runs Stage ${next.number} up${next.definitions.some((item) => item.role === "verify-up") ? " then verify-up" : "; no verify-up is configured"}.`,
-      next.definitions.some((item) => item.role === "up") ? undefined : "This Stage has no up executable.",
-    ));
-  }
-  if (acceptedCount > 0) {
-    const reversing = stages[acceptedCount - 1];
-    const target = acceptedCount > 1 ? stages[acceptedCount - 2].number : 0;
-    actions.push(action(
-      { direction: "down", target_stage: target },
-      `Back out Stage ${reversing.number} to ${targetLabel(target)}`,
-      `Runs Stage ${reversing.number} down${reversing.definitions.some((item) => item.role === "verify-down") ? " then verify-down" : "; no verify-down is configured"}.`,
-      reversing.definitions.some((item) => item.role === "down") ? undefined : "This Stage has no down executable.",
-    ));
-  }
-  return actions;
+function hasAmbiguousEffects(observation: MovementObservation | null | undefined): boolean {
+  return Boolean(observation?.failure
+    && (observation.failure.kind === "checkpoint_save_failed"
+      || observation.failure.kind === "worker_interrupted"
+      || (["up", "down"].includes(observation.failure.role ?? "")
+        && ["process_failed", "launch_failed"].includes(observation.failure.kind))));
 }
 
 function applyRuntimeSnapshot(view: WorkspaceView, snapshot: RuntimeSnapshot): WorkspaceView {
@@ -964,7 +941,8 @@ function applyRuntimeSnapshot(view: WorkspaceView, snapshot: RuntimeSnapshot): W
     movement_busy: snapshot.movement_busy,
     observation: snapshot.observation,
   };
-  return checkpoint ? applyCheckpoint(updated, checkpoint) : updated;
+  const choices = snapshot.observation?.confirmed_checkpoint ? snapshot.observation.movement_choices : snapshot.movement_choices;
+  return checkpoint ? applyCheckpoint({ ...updated, movement_choices: choices ?? [] }, checkpoint) : updated;
 }
 
 function preferredInspectionStage(
@@ -1007,6 +985,7 @@ function rememberWorkspaceView(snapshots: Map<string, RuntimeSnapshot>, view: Wo
     revision: view.observation_revision,
     movement_busy: view.movement_busy,
     checkpoint: view.checkpoint,
+    movement_choices: view.movement_choices,
     observation: view.observation,
   };
   const current = snapshots.get(view.workspace.id);

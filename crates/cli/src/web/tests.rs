@@ -9,7 +9,9 @@ use axum::{
     body::Body,
     http::{HeaderValue, Request, Response, StatusCode},
 };
-use control_tower_application::{Direction, ExecutableRole, Stage};
+use control_tower_application::{
+    Direction, ExecutableRole, PendingTransition, Stage, WorkbenchState, WorkbenchWrites,
+};
 use control_tower_database::operations;
 use http_body_util::BodyExt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -397,6 +399,14 @@ async fn next_sse_block(body: &mut Body) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
+fn sse_data(block: &str) -> serde_json::Value {
+    let data = block
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .expect("SSE JSON data");
+    serde_json::from_str(data).unwrap()
+}
+
 async fn wait_for_idle(app: &Router, workspace_id: &str) -> serde_json::Value {
     tokio::time::timeout(Duration::from_secs(8), async {
         loop {
@@ -509,6 +519,103 @@ fn bad_workspace_layout_and_escaped_candidate_remain_local_to_each_item() {
                 .unwrap()
                 .contains("outside the discovered workspaces/")
     }));
+}
+
+#[tokio::test]
+async fn fresh_http_status_maps_application_choices_for_settled_and_persisted_pending_states() {
+    let temp = TempDir::new();
+    let project = temp.path().join("demo");
+    fs::create_dir_all(&project).unwrap();
+    let root = workspace(&project, "fixture", "010-seed", true);
+    workspace(&project, "fixture", "200-finish", true);
+    for stage in ["010-seed", "200-finish"] {
+        fs::write(
+            root.join("stages").join(stage).join("down"),
+            "#!/bin/sh\nexit 0\n",
+        )
+        .unwrap();
+    }
+    let up10 = serde_json::json!([{ "direction": "up", "target_stage": 10 }]);
+    let adjacent = serde_json::json!([{ "direction": "up", "target_stage": 200 }, { "direction": "down", "target_stage": 0 }]);
+    let down10 = serde_json::json!([{ "direction": "down", "target_stage": 10 }]);
+    let pending_choices = serde_json::json!([{ "direction": "up", "target_stage": 200 }, { "direction": "down", "target_stage": 10 }]);
+    let mut cases = vec![(0, None, up10), (1, None, adjacent), (2, None, down10)];
+    for direction in [Direction::Up, Direction::Down] {
+        for completed in [1, 2] {
+            cases.push((
+                completed,
+                Some(PendingTransition {
+                    stage_index: 1,
+                    direction,
+                }),
+                pending_choices.clone(),
+            ));
+        }
+    }
+    let writes = control_tower_database::workbench::SqliteWorkbenchWrites::open(
+        &root.join(".control_tower/state.sqlite3"),
+    )
+    .unwrap();
+    for (completed, pending, expected) in cases {
+        writes
+            .record_checkpoint(&WorkbenchState {
+                completed_stage_count: completed,
+                uuid: (completed > 0 || pending.is_some()).then(|| "run".to_owned()),
+                pending,
+            })
+            .unwrap();
+        // A fresh server has no verifier evidence from the process that saved this state.
+        let server = context(discover_project(&project).unwrap());
+        let runtime = server.observations.workspace_state("fixture");
+        let response = router(server.clone())
+            .oneshot(api_request("GET", "/api/workspaces/fixture", None))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let view = response_json(response).await;
+        assert_eq!(view["movement_choices"], expected);
+        assert!(view["observation"].is_null());
+        if pending.is_some() && completed == 2 {
+            assert_eq!(view["stages"][1]["state"], "pending");
+            assert_eq!(view["stages"][1]["is_accepted_checkpoint"], true);
+        }
+        let snapshot = serde_json::to_value(
+            runtime.snapshot("fixture", &server.observations.server_instance_id),
+        )
+        .unwrap();
+        assert_eq!(snapshot["checkpoint"], view["checkpoint"]);
+        assert_eq!(snapshot["movement_choices"], expected);
+    }
+    // Missing opposite mutation removes reversal; missing matching mutation does
+    // not block the persisted continuation (there is no verifier configured).
+    for missing in ["up", "down"] {
+        writes
+            .record_checkpoint(&WorkbenchState {
+                completed_stage_count: 2,
+                uuid: Some("run".into()),
+                pending: Some(PendingTransition {
+                    stage_index: 1,
+                    direction: Direction::Down,
+                }),
+            })
+            .unwrap();
+        let path = root.join("stages/200-finish").join(missing);
+        fs::remove_file(&path).unwrap();
+        let app = router(context(discover_project(&project).unwrap()));
+        let view = response_json(
+            app.oneshot(api_request("GET", "/api/workspaces/fixture", None))
+                .await
+                .unwrap(),
+        )
+        .await;
+        let expected = if missing == "up" {
+            serde_json::json!([{ "direction": "down", "target_stage": 10 }])
+        } else {
+            pending_choices.clone()
+        };
+        assert_eq!(view["movement_choices"], expected);
+        fs::write(path, "#!/bin/sh\nexit 0\n").unwrap();
+    }
 }
 
 #[test]
@@ -742,7 +849,15 @@ async fn lagged_sse_subscriber_receives_a_resynchronization_snapshot() {
     fs::create_dir_all(&project).unwrap();
     let root = workspace(&project, "fixture", "010-seed", true);
     let server_context = context(discover_project(&project).unwrap());
-    let events = router(server_context.clone())
+    let app = router(server_context.clone());
+    let view = response_json(
+        app.clone()
+            .oneshot(api_request("GET", "/api/workspaces/fixture", None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let events = app
         .oneshot(api_request("GET", "/api/workspaces/fixture/events", None))
         .await
         .unwrap();
@@ -750,6 +865,10 @@ async fn lagged_sse_subscriber_receives_a_resynchronization_snapshot() {
     let mut event_body = events.into_body();
     let initial_event = next_sse_block(&mut event_body).await;
     assert!(initial_event.contains("event: snapshot"));
+    assert_eq!(
+        sse_data(&initial_event)["movement_choices"],
+        view["movement_choices"]
+    );
 
     let runtime = server_context.observations.workspace_state("fixture");
     let server_instance_id = server_context.observations.server_instance_id.clone();
@@ -786,6 +905,11 @@ async fn lagged_sse_subscriber_receives_a_resynchronization_snapshot() {
     assert!(resync.contains("event: resync"), "lag response: {resync:?}");
     assert!(resync.contains("\"movement_busy\":true"));
     assert!(resync.contains("\"number\":10"));
+    assert_eq!(sse_data(&resync)["checkpoint"], view["checkpoint"]);
+    assert_eq!(
+        sse_data(&resync)["movement_choices"],
+        view["movement_choices"]
+    );
 }
 
 #[tokio::test]
@@ -813,6 +937,10 @@ async fn workspace_reads_overlay_retained_checkpoint_and_failure_when_storage_is
         )
         .unwrap();
     observation.state = "stopped";
+    observation.movement_choices = Some(vec![MovementChoiceView {
+        direction: "up",
+        target_stage: 200,
+    }]);
     observation.confirmed_checkpoint = Some(CheckpointView {
         accepted_stage: Some(StageIdentity {
             number: 10,
@@ -859,6 +987,10 @@ async fn workspace_reads_overlay_retained_checkpoint_and_failure_when_storage_is
     assert_eq!(response.status(), StatusCode::OK);
     let fresh_storage_with_retained_outcome = response_json(response).await;
     assert_eq!(
+        fresh_storage_with_retained_outcome["movement_choices"],
+        serde_json::json!([{ "direction": "up", "target_stage": 200 }])
+    );
+    assert_eq!(
         fresh_storage_with_retained_outcome["checkpoint"]["accepted_stage"]["number"], 10,
         "the runtime's newer confirmed checkpoint must overlay the stale status read"
     );
@@ -879,6 +1011,10 @@ async fn workspace_reads_overlay_retained_checkpoint_and_failure_when_storage_is
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let cached = response_json(response).await;
+    assert_eq!(
+        cached["movement_choices"],
+        fresh_storage_with_retained_outcome["movement_choices"]
+    );
     assert!(cached["storage_issue"].is_string());
     assert_eq!(cached["checkpoint"]["accepted_stage"]["number"], 10);
     assert_eq!(
@@ -1472,6 +1608,11 @@ async fn loopback_http_retains_pending_and_final_checkpoint_save_failures() {
     let pending: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let pending = &pending["observation"];
     assert_eq!(pending["state"], "stopped");
+    assert_eq!(
+        pending["movement_choices"],
+        serde_json::json!([{ "direction": "up", "target_stage": 10 }])
+    );
+    assert!(pending["verification_choices"].is_null());
     assert_eq!(pending["failure"]["kind"], "checkpoint_save_failed");
     assert_eq!(
         pending["confirmed_checkpoint"]["pending_transition"],
@@ -1508,6 +1649,14 @@ async fn loopback_http_retains_pending_and_final_checkpoint_save_failures() {
     .await;
     let pending_snapshot = pending_reconnect.sse_event().await;
     assert!(pending_snapshot.contains("\"state\":\"stopped\""));
+    assert_eq!(
+        sse_data(&pending_snapshot)["movement_choices"],
+        pending["movement_choices"]
+    );
+    assert_eq!(
+        sse_data(&pending_snapshot)["checkpoint"],
+        pending["confirmed_checkpoint"]
+    );
     assert!(pending_snapshot.contains("\"pending_transition\":null"));
 
     let mut final_events = NetworkResponse::open(
@@ -1535,6 +1684,11 @@ async fn loopback_http_retains_pending_and_final_checkpoint_save_failures() {
     let final_failure: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let final_failure = &final_failure["observation"];
     assert_eq!(final_failure["state"], "stopped");
+    assert_eq!(
+        final_failure["movement_choices"],
+        serde_json::json!([{ "direction": "up", "target_stage": 10 }])
+    );
+    assert!(final_failure["verification_choices"].is_null());
     assert_eq!(final_failure["failure"]["kind"], "checkpoint_save_failed");
     assert_eq!(
         final_failure["confirmed_checkpoint"]["accepted_stage"],
@@ -1578,6 +1732,14 @@ async fn loopback_http_retains_pending_and_final_checkpoint_save_failures() {
     .await;
     let final_snapshot = final_reconnect.sse_event().await;
     assert!(final_snapshot.contains("\"state\":\"stopped\""));
+    assert_eq!(
+        sse_data(&final_snapshot)["movement_choices"],
+        final_failure["movement_choices"]
+    );
+    assert_eq!(
+        sse_data(&final_snapshot)["checkpoint"],
+        final_failure["confirmed_checkpoint"]
+    );
     assert!(final_snapshot.contains("\"accepted_stage\":null"));
     assert!(final_snapshot.contains("\"pending_transition\":{\"direction\":\"up\""));
     server.abort();
@@ -1717,6 +1879,10 @@ async fn failed_verify_down_supports_check_only_retry_and_reapply_intents() {
     assert_eq!(stopped["state"], "stopped");
     assert_eq!(stopped["failure"]["role"], "verify-down");
     assert_eq!(
+        stopped["movement_choices"],
+        serde_json::json!([{ "direction": "up", "target_stage": 200 }, { "direction": "down", "target_stage": 0 }])
+    );
+    assert_eq!(
         stopped["verification_choices"]["retry"]["direction"],
         "down"
     );
@@ -1808,6 +1974,10 @@ async fn failed_verify_up_can_back_out_the_same_sparse_stage_without_trusting_se
     let stopped = response_json(up).await["observation"].clone();
     assert_eq!(stopped["state"], "stopped");
     assert_eq!(stopped["failure"]["role"], "verify-up");
+    assert_eq!(
+        stopped["movement_choices"],
+        serde_json::json!([{ "direction": "up", "target_stage": 200 }, { "direction": "down", "target_stage": 0 }])
+    );
     assert_eq!(stopped["verification_choices"]["retry"]["direction"], "up");
     assert_eq!(
         stopped["verification_choices"]["retry"]["target_stage"],

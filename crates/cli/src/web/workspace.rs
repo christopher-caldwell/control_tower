@@ -234,6 +234,11 @@ pub(super) fn workspace_snapshot(
             pending_transition: pending,
             workflow_started: status.state.uuid.is_some(),
         },
+        movement_choices: status
+            .movement_choices()
+            .into_iter()
+            .map(movement_choice_view)
+            .collect(),
         selected_stage_number,
         stages,
         server_instance_id: String::new(),

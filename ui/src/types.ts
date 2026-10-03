@@ -38,6 +38,7 @@ export type WorkspaceView = {
     pending_transition: PendingTransition | null;
     workflow_started: boolean;
   };
+  movement_choices: MovementChoice[];
   selected_stage_number: number | null;
   stages: StageView[];
   server_instance_id: string;
@@ -83,6 +84,7 @@ export type MovementObservation = {
   omitted_role_results: number;
   outputs_evicted: number;
   confirmed_checkpoint: CheckpointView | null;
+  movement_choices: MovementChoice[] | null;
   attempted_checkpoint: CheckpointView | null;
   failure: {
     kind: string;
@@ -102,6 +104,7 @@ export type RuntimeSnapshot = {
   revision: number;
   movement_busy: boolean;
   checkpoint: CheckpointView | null;
+  movement_choices: MovementChoice[] | null;
   observation: MovementObservation | null;
 };
 

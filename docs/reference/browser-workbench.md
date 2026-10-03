@@ -83,10 +83,13 @@ the first stage. The accepted checkpoint remains separate from the selected
 stage. A pending stage reports its direction and an unknown prior outcome; it is
 not presented as a fresh verifier failure.
 
-The fixed action dock is derived from the durable checkpoint and ordered stage
-list, never from the selected inspection stage. At a settled position it names
-the actual next stage and the stage that would be reversed. The last accepted
-stage has a backout action and no forward action. During a pending transition,
+The fixed action dock consumes Application's immediate `movement_choices`, never
+deriving movement targets or mutation availability from the selected inspection
+stage, checkpoint, or stage definitions in React. At a settled position it names
+the supplied next stage and backout target. At the final accepted position there
+is no forward action; backout is offered when its mutation exists. Unavailable
+movements are omitted, while missing roles remain visible in the inspector.
+During a pending transition,
 controls distinguish `Retry verify-up`, `Retry verify-down`, backing out a
 pending-up transition, and reapplying a pending-down transition. Only a verifier
 failure observed in this server process receives verifier-specific choices from
@@ -94,6 +97,16 @@ failure observed in this server process receives verifier-specific choices from
 execution result is unavailable. After mutation or checkpoint-save failure, the
 UI warns the user to inspect author-owned effects; the pending marker is not
 treated as proof that retry or reversal is safe.
+
+`WorkbenchStatus::movement_choices()` and `MoveOutcome::movement_choices()` are
+pure, synchronous Application queries. They return mechanically available
+immediate movements in up/down order, without recommending recovery or promising
+that authored effects are safe. Pending continuation does not require replaying
+the matching mutation; reversal requires the opposite mutation. Pending choices
+resolve the active stage only, including sparse identities and baseline `0`.
+`MoveOutcome::verification_choices()` uses the same derivation and adds the
+stronger retry/reversal guidance earned by this invocation's verifier failure.
+React owns wording and primary/secondary emphasis.
 
 Selecting earlier or future stages remains inspection only. It never changes the
 movement target. A stopped 2xx movement response is displayed as stopped, and the
@@ -161,6 +174,10 @@ downward movement. A delivered movement result is `{ "observation": ... }`:
       "pending_transition": { "direction": "up", "stage": { "number": 200, "name": "finish" } },
       "workflow_started": true
     },
+    "movement_choices": [
+      { "direction": "up", "target_stage": 200 },
+      { "direction": "down", "target_stage": 10 }
+    ],
     "attempted_checkpoint": null,
     "failure": {
       "kind": "process_failed",
@@ -186,6 +203,15 @@ counts and per-stream truncation flags. Output state is `not_returned`,
 checkpoint reported by Workbench; `attempted_checkpoint` is populated when a
 save failed. Neither a successful role event nor a successful HTTP response
 alone implies accepted movement.
+
+Workspace GET responses include a `movement_choices` array for their reported
+checkpoint. Movement observations and SSE snapshots include that same field,
+using `null` when no checkpoint/choice pair is available and `[]` when the
+checkpoint has no immediate movement choices. The host retains and reconciles
+choices with their confirmed checkpoint; attempted checkpoint values do not
+supply actions. React replaces choices alongside checkpoint updates and never
+reconstructs missing choices. These mechanical choices remain distinct from
+`verification_choices`, which is null after mutation or checkpoint-save failure.
 
 Movement errors use `{ "error": { "code": string, "message": string },
 "operation_id": string | null }`. Other API errors use

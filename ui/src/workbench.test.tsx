@@ -2,7 +2,12 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./workbench";
-import type { DefinitionView, MovementObservation, ProjectView, RoleObservation, RuntimeSnapshot, WorkspaceView } from "./types";
+import type { DefinitionView, MovementObservation, ProjectView, RoleObservation, RuntimeSnapshot, WorkspaceView, MovementChoice } from "./types";
+
+const baselineChoices: MovementChoice[] = [{ direction: "up", target_stage: 10 }];
+const middleChoices: MovementChoice[] = [{ direction: "up", target_stage: 200 }, { direction: "down", target_stage: 0 }];
+const pendingChoices: MovementChoice[] = [{ direction: "up", target_stage: 200 }, { direction: "down", target_stage: 10 }];
+const finalChoices: MovementChoice[] = [{ direction: "down", target_stage: 10 }];
 
 const project: ProjectView = {
   name: "example-project",
@@ -42,7 +47,7 @@ const workspace: WorkspaceView = {
     accepted_stage: { number: 200, name: "finish" },
     pending_transition: { direction: "down", stage: { number: 200, name: "finish" } },
     workflow_started: true,
-  },
+  }, movement_choices: pendingChoices,
   selected_stage_number: 200,
   stages: [
     {
@@ -194,10 +199,120 @@ afterEach(() => {
 });
 
 describe("desktop workbench", () => {
+  it("renders and submits only supplied choices despite configured opposite mutations", async () => {
+    const user = userEvent.setup();
+    activeWorkspace = { ...workspace, movement_choices: [{ direction: "down", target_stage: 10 }] };
+    movementResponse = {
+      workspace_id: "fixture", operation_id: "supplied-choice", server_instance_id: "server-one", revision: 2,
+      direction: "down", target_stage: 10, state: "complete", active_role: null, role_results: [],
+      omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true },
+      movement_choices: middleChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    render(<App />);
+    const button = await screen.findByRole("button", { name: /Continue pending down/ });
+    expect(screen.queryByRole("button", { name: /Reapply Stage/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /STAGE 010/ }));
+    await user.click(button);
+    const call = mockFetch.mock.calls.find(([path, init]) => path === "/api/workspaces/fixture/movements" && init?.method === "POST");
+    expect(JSON.parse(call![1]!.body as string)).toEqual({ direction: "down", target_stage: 10 });
+  });
+
+  it("keeps a supplied pending continuation available without its matching mutation", async () => {
+    activeWorkspace = {
+      ...workspace,
+      stages: workspace.stages.map((stage) => stage.number === 200
+        ? { ...stage, definitions: stage.definitions.filter((definition) => definition.role !== "down") }
+        : stage),
+    };
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /Continue pending down/ })).toBeEnabled();
+    expect(screen.getByText("Missing · mutation unavailable")).toBeInTheDocument();
+  });
+
+  it("does not invent reversal when the observed verifier guidance supplies retry only", async () => {
+    const checkpoint: WorkspaceView["checkpoint"] = {
+      accepted_stage: { number: 10, name: "seed" },
+      pending_transition: { direction: "up", stage: { number: 200, name: "finish" } },
+      workflow_started: true,
+    };
+    activeWorkspace = {
+      ...workspace, checkpoint, movement_choices: [{ direction: "up", target_stage: 200 }], observation_revision: 4,
+      observation: {
+        workspace_id: "fixture", operation_id: "retry-only", server_instance_id: "server-one", revision: 4,
+        direction: "up", target_stage: 200, state: "stopped", active_role: null, role_results: [],
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint,
+        movement_choices: [{ direction: "up", target_stage: 200 }], attempted_checkpoint: null,
+        failure: { kind: "process_failed", message: "verify-up exited with status 9", stage: checkpoint.pending_transition!.stage, role: "verify-up" },
+        verification_choices: { retry: { direction: "up", target_stage: 200 }, reverse: null },
+      },
+    };
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /Retry verify-up for Stage 200/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Back out|Reapply/ })).not.toBeInTheDocument();
+  });
+
+  it("does not reconstruct baseline actions when Application supplies no choices", async () => {
+    activeWorkspace = {
+      ...workspace, movement_choices: baselineChoices,
+      checkpoint: { accepted_stage: null, pending_transition: null, workflow_started: false },
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /Advance to Stage 10/ })).toBeEnabled();
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    act(() => source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 2, movement_busy: false,
+      checkpoint: activeWorkspace.checkpoint, movement_choices: [], observation: null,
+    }));
+    expect(screen.getByRole("button", { name: /No immediate movement available/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Advance to Stage/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps choices paired with the retained checkpoint when a POST has no confirmed state", async () => {
+    const user = userEvent.setup();
+    const response = deferred<Response>();
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    mockFetch.mockImplementation((input, init) => String(input) === "/api/workspaces/fixture/movements" && init?.method === "POST"
+      ? response.promise : originalFetch(input, init));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Continue pending down/ }));
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    act(() => source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 2, movement_busy: true,
+      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      movement_choices: null, observation: null,
+    }));
+    const unavailable: MovementObservation = {
+      workspace_id: "fixture", operation_id: "interrupted", server_instance_id: "server-one", revision: 3,
+      direction: "down", target_stage: 10, state: "unavailable", active_role: null, role_results: [],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: null, movement_choices: null,
+      attempted_checkpoint: null, verification_choices: null,
+      failure: { kind: "worker_interrupted", message: "Inspect authored effects", stage: null, role: null },
+    };
+    await act(async () => { response.resolve(jsonResponse({ observation: unavailable })); });
+    await screen.findByText(/Movement unavailable: Inspect authored effects/);
+    expect(screen.queryByRole("button", { name: /Advance|Back out|Continue pending|Reapply/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Inspect author-owned effects");
+  });
+
+  it.each([null, []])("replaces stale choices with an unavailable or empty checkpoint choice set (%s)", async (choices) => {
+    render(<App />);
+    await screen.findByRole("button", { name: /Continue pending down/ });
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    act(() => source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 3, movement_busy: false,
+      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      movement_choices: choices, observation: null,
+    }));
+    expect(screen.queryByRole("button", { name: /Back out|Continue pending|Reapply/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/backout remains available/)).not.toBeInTheDocument();
+  });
+
   it("keeps backout available while clearly identifying the final accepted position", async () => {
     activeWorkspace = {
       ...workspace,
-      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true }, movement_choices: finalChoices,
       observation: null,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "accepted", is_accepted_checkpoint: stage.number === 200 })),
     };
@@ -213,11 +328,11 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "retained-down-result", server_instance_id: "server-one", revision: 7,
       direction: "down", target_stage: 10, state: "complete", active_role: null,
       role_results: [roleResult(200, "down", "retained-stage-200-down")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: accepted, attempted_checkpoint: null, failure: null, verification_choices: null,
+      confirmed_checkpoint: accepted, movement_choices: middleChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     activeWorkspace = {
       ...workspace,
-      checkpoint: accepted,
+      checkpoint: accepted, movement_choices: middleChoices,
       observation_revision: 7,
       observation: downResult,
       selected_stage_number: 200,
@@ -250,7 +365,7 @@ describe("desktop workbench", () => {
     const accepted = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
     activeWorkspace = {
       ...workspace,
-      checkpoint: startCheckpoint,
+      checkpoint: startCheckpoint, movement_choices: finalChoices,
       observation: null,
       selected_stage_number: 200,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "accepted", is_accepted_checkpoint: stage.number === 200 })),
@@ -259,7 +374,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "local-down-result", server_instance_id: "server-one", revision: 8,
       direction: "down", target_stage: 10, state: "complete", active_role: null,
       role_results: [roleResult(200, "down", "local-stage-200-down")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: accepted, attempted_checkpoint: null, failure: null, verification_choices: null,
+      confirmed_checkpoint: accepted, movement_choices: middleChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     render(<App />);
 
@@ -323,7 +438,7 @@ describe("desktop workbench", () => {
         accepted_stage: { number: 10, name: "seed" },
         pending_transition: { direction: "up", stage: { number: 200, name: "finish" } },
         workflow_started: true,
-      },
+      }, movement_choices: pendingChoices,
       stages: workspace.stages.map((stage) => stage.number === 200
         ? { ...stage, is_accepted_checkpoint: false }
         : stage),
@@ -344,7 +459,7 @@ describe("desktop workbench", () => {
         workspace_id: "fixture", operation_id: "old-operation", server_instance_id: "server-one", revision: 4,
         direction: "down", target_stage: 10, state: "stopped", active_role: null, role_results: [],
         omitted_role_results: 0, outputs_evicted: 0,
-        confirmed_checkpoint: workspace.checkpoint,
+        confirmed_checkpoint: workspace.checkpoint, movement_choices: pendingChoices,
         attempted_checkpoint: null,
         failure: { kind: "process_failed", message: "verify-down exited with status 9", stage: { number: 200, name: "finish" }, role: "verify-down" },
         verification_choices: { retry: { direction: "down", target_stage: 10 }, reverse: { direction: "up", target_stage: 200 } },
@@ -374,7 +489,7 @@ describe("desktop workbench", () => {
     };
     activeWorkspace = {
       ...workspace,
-      checkpoint: pending,
+      checkpoint: pending, movement_choices: pendingChoices,
       selected_stage_number: 200,
       stages: workspace.stages.map((stage) => stage.number === 200
         ? { ...stage, state: "pending", is_accepted_checkpoint: role === "verify-down" }
@@ -384,7 +499,7 @@ describe("desktop workbench", () => {
         workspace_id: "fixture", operation_id: `failed-${role}`, server_instance_id: "server-one", revision: 8,
         direction: role === "verify-up" ? "up" : "down", target_stage: role === "verify-up" ? 200 : 10,
         state: "stopped", active_role: null, role_results: [roleResult(200, role, `output-${role}`, "failed")],
-        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, attempted_checkpoint: null,
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, movement_choices: pendingChoices, attempted_checkpoint: null,
         failure,
         verification_choices: {
           retry: { direction: role === "verify-up" ? "up" : "down", target_stage: role === "verify-up" ? 200 : 10 },
@@ -410,13 +525,13 @@ describe("desktop workbench", () => {
     };
     activeWorkspace = {
       ...workspace,
-      checkpoint: pendingUp,
+      checkpoint: pendingUp, movement_choices: pendingChoices,
       observation_revision: 5,
       observation: {
         workspace_id: "fixture", operation_id: "reverse-failed", server_instance_id: "server-one", revision: 5,
         direction: "down", target_stage: 10, state: "stopped", active_role: null, role_results: [],
         omitted_role_results: 0, outputs_evicted: 0,
-        confirmed_checkpoint: pendingUp,
+        confirmed_checkpoint: pendingUp, movement_choices: pendingChoices,
         attempted_checkpoint: null,
         failure: { kind: "process_failed", message: "down exited with status 9", stage: { number: 200, name: "finish" }, role: "down" },
         verification_choices: null,
@@ -459,7 +574,7 @@ describe("desktop workbench", () => {
     const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
     source.emit("resync", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 6, movement_busy: false,
-      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true }, movement_choices: finalChoices,
       observation: null,
     });
     expect(screen.getByRole("heading", { name: "seed" })).toBeInTheDocument();
@@ -482,7 +597,7 @@ describe("desktop workbench", () => {
     activeProject = staleProject;
     activeWorkspace = {
       ...workspace,
-      checkpoint: baseline,
+      checkpoint: baseline, movement_choices: baselineChoices,
       observation: null,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
@@ -507,12 +622,12 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "other-tab-completed", server_instance_id: "server-one", revision: 20,
       direction: "up", target_stage: 200, state: "complete", active_role: null,
       role_results: [roleResult(200, "up", "other-tab-output")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+      confirmed_checkpoint: checkpoint, movement_choices: finalChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
     source.emit("resync", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 20, movement_busy: false,
-      checkpoint, observation: completed,
+      checkpoint, movement_choices: finalChoices, observation: completed,
     });
 
     expect(await screen.findByRole("button", { name: /Applied · 200/ })).toBeInTheDocument();
@@ -528,7 +643,7 @@ describe("desktop workbench", () => {
     const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
     activeWorkspace = {
       ...workspace,
-      checkpoint: baseline,
+      checkpoint: baseline, movement_choices: baselineChoices,
       observation: null,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
@@ -538,13 +653,13 @@ describe("desktop workbench", () => {
     const checkpoint = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
     activeWorkspace = {
       ...activeWorkspace,
-      checkpoint,
+      checkpoint, movement_choices: middleChoices,
       observation_revision: 9,
       observation: {
         workspace_id: "fixture", operation_id: "second-tab-finished", server_instance_id: "server-one", revision: 9,
         direction: "up", target_stage: 10, state: "complete", active_role: null,
         role_results: [roleResult(10, "up", "second-tab-output")], omitted_role_results: 0, outputs_evicted: 0,
-        confirmed_checkpoint: checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+        confirmed_checkpoint: checkpoint, movement_choices: middleChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
       },
       stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
     };
@@ -562,7 +677,7 @@ describe("desktop workbench", () => {
     const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
     activeWorkspace = {
       ...workspace,
-      checkpoint: baseline,
+      checkpoint: baseline, movement_choices: baselineChoices,
       observation: null,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
@@ -573,13 +688,13 @@ describe("desktop workbench", () => {
       if (String(input) === "/api/workspaces/fixture/movements" && init?.method === "POST") {
         activeWorkspace = {
           ...activeWorkspace,
-          checkpoint: completedCheckpoint,
+          checkpoint: completedCheckpoint, movement_choices: middleChoices,
           observation_revision: 4,
           observation: {
             workspace_id: "fixture", operation_id: "post-response-lost", server_instance_id: "server-one", revision: 4,
             direction: "up", target_stage: 10, state: "complete", active_role: null,
             role_results: [roleResult(10, "up", "post-lost-output")], omitted_role_results: 0, outputs_evicted: 0,
-            confirmed_checkpoint: completedCheckpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+            confirmed_checkpoint: completedCheckpoint, movement_choices: middleChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
           },
           stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
         };
@@ -616,7 +731,7 @@ describe("desktop workbench", () => {
     const user = userEvent.setup();
     activeWorkspace = {
       ...workspace,
-      checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true },
+      checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true }, movement_choices: middleChoices,
       stages: workspace.stages.map((stage) => ({
         ...stage,
         state: stage.number === 10 ? "accepted" : "future",
@@ -630,7 +745,7 @@ describe("desktop workbench", () => {
         message: null, elapsed_ms: 4, output_id: "output-one", output_state: "available", stdout_bytes: 10,
         stderr_bytes: 0, stdout_truncated: false, stderr_truncated: false }],
       omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      confirmed_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true }, movement_choices: finalChoices,
       attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     render(<App />);
@@ -655,12 +770,12 @@ describe("desktop workbench", () => {
     const user = userEvent.setup();
     activeWorkspace = {
       ...workspace,
-      checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true },
+      checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true }, movement_choices: pendingChoices,
       observation: {
         workspace_id: "fixture", operation_id: "old-operation", server_instance_id: "server-one", revision: 4,
         direction: "up", target_stage: 200, state: "stopped", active_role: null, role_results: [],
         omitted_role_results: 0, outputs_evicted: 0,
-        confirmed_checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true },
+        confirmed_checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true }, movement_choices: pendingChoices,
         attempted_checkpoint: null,
         failure: { kind: "process_failed", message: "verify-up exited with status 9", stage: { number: 200, name: "finish" }, role: "verify-up" },
         verification_choices: { retry: { direction: "up", target_stage: 200 }, reverse: { direction: "down", target_stage: 10 } },
@@ -672,7 +787,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "new-operation", server_instance_id: "server-one", revision: 7,
       direction: "up", target_stage: 200, state: "stopped", active_role: null, role_results: [],
       omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true },
+      confirmed_checkpoint: { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up", stage: { number: 200, name: "finish" } }, workflow_started: true }, movement_choices: pendingChoices,
       attempted_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
       failure: { kind: "checkpoint_save_failed", message: "could not save workbench state", stage: null, role: null },
       verification_choices: null,
@@ -696,7 +811,7 @@ describe("desktop workbench", () => {
     const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
     activeWorkspace = {
       ...workspace,
-      checkpoint: baseline,
+      checkpoint: baseline, movement_choices: baselineChoices,
       observation: null,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
@@ -705,7 +820,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "pending-save-failure", server_instance_id: "server-one", revision: 5,
       direction: "up", target_stage: 10, state: "stopped", active_role: null,
       role_results: [roleResult(10, "up", "pending-output")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: baseline,
+      confirmed_checkpoint: baseline, movement_choices: baselineChoices,
       attempted_checkpoint: {
         accepted_stage: null,
         pending_transition: { direction: "up", stage: { number: 10, name: "seed" } },
@@ -735,7 +850,7 @@ describe("desktop workbench", () => {
     const accepted = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
     activeWorkspace = {
       ...workspace,
-      checkpoint: accepted,
+      checkpoint: accepted, movement_choices: middleChoices,
       observation: null,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
@@ -765,7 +880,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: `delayed-${state}`, server_instance_id: "server-one", revision: 21,
       direction: "up", target_stage: 200, state, active_role: null,
       role_results: [roleResult(200, "up", `delayed-${state}-output`, state === "complete" ? "succeeded" : "failed")],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, movement_choices: state === "complete" ? finalChoices : middleChoices, attempted_checkpoint: null,
       failure: state === "stopped" ? { kind: "process_failed", message: "A only failure", stage: { number: 200, name: "finish" }, role: "up" } : null,
       verification_choices: null,
     };
@@ -790,7 +905,7 @@ describe("desktop workbench", () => {
       ...workspace,
       observation_revision: 0,
       observation: null,
-      checkpoint: { accepted_stage: null, pending_transition: null, workflow_started: false },
+      checkpoint: { accepted_stage: null, pending_transition: null, workflow_started: false }, movement_choices: baselineChoices,
       selected_stage_number: 10,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
     };
@@ -801,12 +916,12 @@ describe("desktop workbench", () => {
     const finished: MovementObservation = {
       workspace_id: "fixture", operation_id: "finished-before-get", server_instance_id: "server-one", revision: 11,
       direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, movement_choices: finalChoices, attempted_checkpoint: null,
       failure: null, verification_choices: null,
     };
     source.emit("resync", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 11, movement_busy: false,
-      checkpoint, observation: finished,
+      checkpoint, movement_choices: finalChoices, observation: finished,
     });
     delayedGet.resolve(jsonResponse(staleView));
 
@@ -825,12 +940,12 @@ describe("desktop workbench", () => {
     const finished: MovementObservation = {
       workspace_id: "fixture", operation_id: "missed-completion", server_instance_id: "server-one", revision: 12,
       direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, movement_choices: finalChoices, attempted_checkpoint: null,
       failure: null, verification_choices: null,
     };
     source.emit("resync", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 12, movement_busy: false,
-      checkpoint, observation: finished,
+      checkpoint, movement_choices: finalChoices, observation: finished,
     });
     expect(await screen.findByText("Movement completed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
@@ -844,14 +959,14 @@ describe("desktop workbench", () => {
     const finished: MovementObservation = {
       workspace_id: "fixture", operation_id: "event-newer-than-get", server_instance_id: "server-one", revision: 12,
       direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, movement_choices: finalChoices, attempted_checkpoint: null,
       failure: null, verification_choices: null,
     };
     const latestView: WorkspaceView = {
       ...workspace,
       observation_revision: 12,
       observation: finished,
-      checkpoint,
+      checkpoint, movement_choices: finalChoices,
       stages: workspace.stages.map((stage) => ({ ...stage, state: "accepted", is_accepted_checkpoint: stage.number === 200 })),
     };
     let workspaceReads = 0;
@@ -891,7 +1006,7 @@ describe("desktop workbench", () => {
         workspace_id: "fixture", operation_id: "two-stage-output", server_instance_id: "server-one", revision: 14,
         direction: "up", target_stage: 200, state: "complete", active_role: null,
         role_results: [roleResult(10, "up", "output-10"), roleResult(200, "up", "output-200")],
-        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: workspace.checkpoint,
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: workspace.checkpoint, movement_choices: pendingChoices,
         attempted_checkpoint: null, failure: null, verification_choices: null,
       },
     };
@@ -918,7 +1033,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "same-operation", server_instance_id: "server-one", revision: 15,
       direction: "up" as const, target_stage: 200, state: "complete" as const, active_role: null,
       role_results: [roleResult(200, "up", "same-output")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: workspace.checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+      confirmed_checkpoint: workspace.checkpoint, movement_choices: pendingChoices, attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     activeWorkspace = { ...workspace, observation_revision: 15, observation: observed };
     extraWorkspace = {
@@ -951,14 +1066,14 @@ describe("desktop workbench", () => {
     const pending = { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up" as const, stage: { number: 200, name: "finish" } }, workflow_started: true };
     activeWorkspace = {
       ...workspace,
-      checkpoint: pending,
+      checkpoint: pending, movement_choices: pendingChoices,
       observation_revision: 16,
       stages: workspace.stages.map((stage) => stage.number === 200 ? { ...stage, state: "pending" } : stage),
       observation: {
         workspace_id: "fixture", operation_id: "first-verify", server_instance_id: "server-one", revision: 16,
         direction: "up", target_stage: 200, state: "stopped", active_role: null,
         role_results: [{ ...roleResult(200, "verify-up", "old-verify-output", "failed"), message: "failed" }],
-        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, attempted_checkpoint: null,
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, movement_choices: pendingChoices, attempted_checkpoint: null,
         failure: { kind: "process_failed", message: "verification failed", stage: { number: 200, name: "finish" }, role: "verify-up" },
         verification_choices: { retry: { direction: "up", target_stage: 200 }, reverse: { direction: "down", target_stage: 10 } },
       },
@@ -967,7 +1082,7 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "second-verify", server_instance_id: "server-one", revision: 20,
       direction: "up", target_stage: 200, state: "complete", active_role: null,
       role_results: [roleResult(200, "verify-up", "new-verify-output")], omitted_role_results: 0, outputs_evicted: 0,
-      confirmed_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      confirmed_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true }, movement_choices: finalChoices,
       attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     outputResponse = (path) => Promise.resolve(new Response(path.includes("old-verify-output") ? "first attempt bytes" : "second attempt bytes", { status: 200 }));
@@ -989,22 +1104,22 @@ describe("desktop workbench", () => {
       workspace_id: "fixture", operation_id: "operation-live", server_instance_id: "server-one", revision: 9,
       direction: "up", target_stage: 200, state: "running",
       active_role: { stage: { number: 200, name: "finish" }, role: "verify-up" }, role_results: [],
-      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: null, attempted_checkpoint: null,
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: null, movement_choices: null, attempted_checkpoint: null,
       failure: null, verification_choices: null,
     };
     source?.emit("snapshot", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 9, movement_busy: true,
-      checkpoint: workspace.checkpoint, observation: running,
+      checkpoint: workspace.checkpoint, movement_choices: pendingChoices, observation: running,
     });
     expect(await screen.findByText("Movement is in progress")).toBeInTheDocument();
     source?.emit("snapshot", {
       workspace_id: "fixture", server_instance_id: "server-one", revision: 8, movement_busy: false,
-      checkpoint: workspace.checkpoint, observation: null,
+      checkpoint: workspace.checkpoint, movement_choices: pendingChoices, observation: null,
     });
     expect(screen.getByText("Movement is in progress")).toBeInTheDocument();
     source?.emit("snapshot", {
       workspace_id: "fixture", server_instance_id: "another-server", revision: 99, movement_busy: false,
-      checkpoint: workspace.checkpoint, observation: null,
+      checkpoint: workspace.checkpoint, movement_choices: pendingChoices, observation: null,
     });
     expect(screen.getByText("Movement is in progress")).toBeInTheDocument();
   });

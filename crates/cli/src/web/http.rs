@@ -207,13 +207,24 @@ pub(super) fn apply_runtime_snapshot(view: &mut WorkspaceView, snapshot: Runtime
     view.server_instance_id = snapshot.server_instance_id;
     view.observation_revision = snapshot.revision;
     view.movement_busy = snapshot.movement_busy;
-    let outcome_checkpoint = snapshot
+    let checkpoint_and_choices = snapshot
         .observation
         .as_ref()
-        .and_then(|observation| observation.confirmed_checkpoint.clone());
+        .and_then(|observation| {
+            observation
+                .confirmed_checkpoint
+                .clone()
+                .map(|checkpoint| (checkpoint, observation.movement_choices.clone()))
+        })
+        .or_else(|| {
+            snapshot
+                .checkpoint
+                .map(|checkpoint| (checkpoint, snapshot.movement_choices))
+        });
     view.observation = snapshot.observation;
-    if let Some(checkpoint) = outcome_checkpoint.or(snapshot.checkpoint) {
+    if let Some((checkpoint, choices)) = checkpoint_and_choices {
         apply_checkpoint(view, checkpoint);
+        view.movement_choices = choices.unwrap_or_default();
     }
 }
 
