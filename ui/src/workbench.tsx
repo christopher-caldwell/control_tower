@@ -4,6 +4,12 @@ import { api, type DefinitionView, type ProjectView, type StageView, type Worksp
 type Preferences = { leftCollapsed: boolean; rightCollapsed: boolean; rightWidth: number };
 const preferenceKey = "control-tower-workbench-layout-v1";
 const defaultPreferences: Preferences = { leftCollapsed: false, rightCollapsed: false, rightWidth: 382 };
+const minimumInspectorWidth = 316;
+const maximumInspectorWidth = 620;
+const minimumStageWidth = 520;
+const expandedWorkspaceRailWidth = 252;
+const resizeHandleWidth = 14;
+const minimumWindowWidth = 1180;
 
 function loadPreferences(): Preferences {
   try {
@@ -30,6 +36,7 @@ function bootstrapSession(): Promise<void> {
 
 export function App() {
   const [preferences, setPreferences] = useState(loadPreferences);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [project, setProject] = useState<ProjectView | null>(null);
   const [projectIssue, setProjectIssue] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
@@ -48,6 +55,24 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(preferenceKey, JSON.stringify(preferences));
   }, [preferences]);
+
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
+  const maxInspectorWidth = Math.max(
+    minimumInspectorWidth,
+    Math.min(
+      maximumInspectorWidth,
+      Math.max(viewportWidth, minimumWindowWidth)
+        - expandedWorkspaceRailWidth
+        - minimumStageWidth
+        - resizeHandleWidth,
+    ),
+  );
+  const inspectorWidth = Math.max(minimumInspectorWidth, Math.min(preferences.rightWidth, maxInspectorWidth));
 
   async function loadProject(showRefreshing = false) {
     if (showRefreshing) setRefreshing(true);
@@ -127,11 +152,11 @@ export function App() {
 
   function resizeInspector(event: React.PointerEvent<HTMLButtonElement>) {
     const startX = event.clientX;
-    const startWidth = preferences.rightWidth;
+    const startWidth = inspectorWidth;
     const pointerId = event.pointerId;
     event.currentTarget.setPointerCapture(pointerId);
     const move = (next: PointerEvent) => {
-      setPref({ rightWidth: Math.max(316, Math.min(620, startWidth + startX - next.clientX)) });
+      setPref({ rightWidth: Math.max(minimumInspectorWidth, Math.min(maxInspectorWidth, startWidth + startX - next.clientX)) });
     };
     const done = () => {
       window.removeEventListener("pointermove", move);
@@ -144,12 +169,12 @@ export function App() {
   }
 
   function resizeWithKeyboard(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === "ArrowLeft") setPref({ rightWidth: Math.min(620, preferences.rightWidth + 16) });
-    if (event.key === "ArrowRight") setPref({ rightWidth: Math.max(316, preferences.rightWidth - 16) });
+    if (event.key === "ArrowLeft") setPref({ rightWidth: Math.min(maxInspectorWidth, inspectorWidth + 16) });
+    if (event.key === "ArrowRight") setPref({ rightWidth: Math.max(minimumInspectorWidth, inspectorWidth - 16) });
   }
 
   return (
-    <div className="application-frame" style={{ "--inspector-width": `${preferences.rightWidth}px` } as React.CSSProperties}>
+    <div className="application-frame" style={{ "--inspector-width": `${inspectorWidth}px` } as React.CSSProperties}>
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true"><span />CT</div>
         <div className="brand-copy"><strong>Control Tower</strong><span>LOCAL WORKBENCH</span></div>
@@ -208,13 +233,13 @@ export function App() {
           </div>
 
           <div className="action-dock">
-            <div className="action-summary"><span className="action-orbit">↗</span><div><b>Stage movement is unavailable in this preview</b><small>This first slice is read-only. Your scripts have not been run.</small></div></div>
+            <div className="action-summary"><span className="action-orbit">↗</span><div><b>Stage movement is unavailable in this preview</b><small>This first slice is read-only. Select a stage to inspect its definitions.</small></div></div>
             <button className="primary-action" disabled>Advance to next stage <span aria-hidden="true">→</span></button>
           </div>
         </main>
 
         <div className={`inspector-resize ${preferences.rightCollapsed ? "hidden" : ""}`}>
-          <button className="resize-handle" role="separator" aria-label="Resize stage inspector" aria-orientation="vertical" aria-valuemin={316} aria-valuemax={620} aria-valuenow={preferences.rightWidth} tabIndex={0} onPointerDown={resizeInspector} onKeyDown={resizeWithKeyboard}><span /></button>
+          <button className="resize-handle" role="separator" aria-label="Resize stage inspector" aria-orientation="vertical" aria-valuemin={minimumInspectorWidth} aria-valuemax={maxInspectorWidth} aria-valuenow={inspectorWidth} tabIndex={0} onPointerDown={resizeInspector} onKeyDown={resizeWithKeyboard}><span /></button>
         </div>
 
         <aside className="inspector-rail" aria-label="Selected stage inspector">
@@ -293,7 +318,7 @@ function Inspector({ selectedStage, selectedStageNumber, definition, definitionI
 function RolePreview({ role, definitions, definition }: { role: string; definitions: StageView["definitions"]; definition: DefinitionView | null }) {
   const configured = definitions.find((item) => item.role === role);
   const result = definition?.definitions.find((item) => item.role === role);
-  return <div className={`role-row ${configured ? "configured" : "not-configured"}`}><span className="role-result-mark">{configured ? "·" : "—"}</span><span className="role-row-copy"><b>{role}</b><small>{configured ? result?.issue ? "Definition unavailable" : configured.path : role.startsWith("verify-") ? "Not configured" : "Missing · movement unavailable"}</small></span><span className={`role-status ${configured ? "configured" : ""}`}>{configured ? "Not run" : role.startsWith("verify-") ? "Optional" : "Missing"}</span></div>;
+  return <div className={`role-row ${configured ? "configured" : "not-configured"}`}><span className="role-result-mark">{configured ? "·" : "—"}</span><span className="role-row-copy"><b>{role}</b><small>{configured ? result?.issue ? "Definition unavailable" : "No retained result" : role.startsWith("verify-") ? "Not configured" : "Missing · movement unavailable"}</small></span><span className={`role-status ${configured ? "unknown" : ""}`}>{configured ? "Unknown" : role.startsWith("verify-") ? "Optional" : "Missing"}</span></div>;
 }
 
 function setupHint(issue: string): string {

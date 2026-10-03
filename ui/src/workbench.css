@@ -47,12 +47,14 @@ code, pre, .eyebrow, .stage-index-label, .stage-kicker, .role-chip, .definition-
 .icon-button:disabled { opacity: .55; cursor: default; }
 .refresh-button span { font-size: 18px; line-height: 1; }
 
-.workbench-grid { --left-width: 252px; --right-width: var(--inspector-width); flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: var(--left-width) minmax(520px, 1fr) 14px var(--right-width); grid-template-rows: minmax(0, 1fr); transition: grid-template-columns .16s ease; }
+.workbench-grid { --left-width: 252px; --right-width: var(--inspector-width); --splitter-width: 14px; flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: var(--left-width) minmax(520px, 1fr) var(--splitter-width) var(--right-width); grid-template-rows: minmax(0, 1fr); transition: grid-template-columns .16s ease; }
 .workbench-grid.left-collapsed { --left-width: 60px; }
-.workbench-grid.right-collapsed { --right-width: 54px; }
+.workbench-grid.right-collapsed { --right-width: 54px; --splitter-width: 0px; }
 .workspace-rail, .inspector-rail { min-width: 0; min-height: 0; background: #171b1d; display: flex; flex-direction: column; }
-.workspace-rail { border-right: 1px solid var(--border); }
-.inspector-rail { border-left: 1px solid var(--border); }
+.workspace-rail { grid-column: 1; grid-row: 1; border-right: 1px solid var(--border); }
+.stage-column { grid-column: 2; grid-row: 1; }
+.inspector-resize { grid-column: 3; grid-row: 1; }
+.inspector-rail { grid-column: 4; grid-row: 1; border-left: 1px solid var(--border); }
 .rail-heading, .inspector-header { height: 80px; flex: 0 0 80px; display: flex; justify-content: space-between; align-items: center; padding: 0 17px 0 19px; border-bottom: 1px solid var(--border-soft); }
 .eyebrow { color: #73807b; font-size: 8px; line-height: 1.4; font-weight: 500; letter-spacing: 1.15px; }
 .rail-heading h2, .inspector-header h2 { margin: 5px 0 0; font: 700 15px Manrope, sans-serif; letter-spacing: -.25px; }
@@ -191,7 +193,7 @@ code, pre, .eyebrow, .stage-index-label, .stage-kicker, .role-chip, .definition-
 .role-row-copy b { color: #c3ccc6; font: 9px var(--mono); }
 .role-row-copy small { overflow: hidden; color: #78837d; font: 8px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .role-status { color: #626d68; font: 8px var(--mono); }
-.role-status.configured { color: #92b59d; }
+.role-status.unknown { color: #a99168; }
 .definition-loading { color: #8d9891; font-size: 9px; }
 .definition-block { margin-top: 9px; border: 1px solid #313938; border-radius: 6px; overflow: hidden; background: #131819; }
 .definition-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px; border-bottom: 1px solid #2a3130; background: #1b2021; }

@@ -84,6 +84,8 @@ const definition: DefinitionView = {
 
 let requests: { path: string; method: string }[];
 let mockFetch: ReturnType<typeof vi.fn>;
+let activeProject: ProjectView;
+let activeWorkspace: WorkspaceView;
 
 function jsonResponse(value: unknown) {
   return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -91,6 +93,8 @@ function jsonResponse(value: unknown) {
 
 beforeEach(() => {
   requests = [];
+  activeProject = project;
+  activeWorkspace = workspace;
   localStorage.clear();
   history.replaceState(null, "", "/");
   mockFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -98,8 +102,8 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
     requests.push({ path, method });
     if (path === "/api/session") return new Response(null, { status: 204 });
-    if (path === "/api/project") return jsonResponse(project);
-    if (path === "/api/workspaces/fixture") return jsonResponse(workspace);
+    if (path === "/api/project") return jsonResponse(activeProject);
+    if (path === "/api/workspaces/fixture") return jsonResponse(activeWorkspace);
     if (path === "/api/workspaces/fixture/stages/200") return jsonResponse(definition);
     if (path === "/api/workspaces/fixture/stages/10") return jsonResponse({
       stage: { number: 10, name: "seed" },
@@ -128,6 +132,9 @@ describe("read-only desktop workbench", () => {
     expect(screen.getAllByText("Pending down").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("This is also the last confirmed checkpoint. The pending transition has not been accepted.")).toBeInTheDocument();
     expect(screen.getByText("Pending · outcome unknown")).toBeInTheDocument();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("No retained result").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("Not run")).not.toBeInTheDocument();
 
     const source = await screen.findByText(/<script>alert\(1\)<\/script>/);
     expect(source.tagName.toLowerCase()).toBe("pre");
@@ -149,8 +156,30 @@ describe("read-only desktop workbench", () => {
 
     await user.click(screen.getByRole("button", { name: "Expand stage inspector" }));
     expect(await screen.findByText("Accepted earlier · execution evidence not retained")).toBeInTheDocument();
+    expect(screen.getAllByText("No retained result")).toHaveLength(2);
+    expect(screen.getAllByText("Unknown")).toHaveLength(2);
     expect(screen.getByRole("button", { name: /Advance to next stage/ })).toBeDisabled();
     expect(requests.some((request) => request.method !== "GET")).toBe(false);
+  });
+
+  it("keeps a cold-start pending-up stage's role outcomes unknown", async () => {
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: {
+        accepted_stage: { number: 10, name: "seed" },
+        pending_transition: { direction: "up", stage: { number: 200, name: "finish" } },
+        workflow_started: true,
+      },
+      stages: workspace.stages.map((stage) => stage.number === 200
+        ? { ...stage, is_accepted_checkpoint: false }
+        : stage),
+    };
+    render(<App />);
+    expect((await screen.findAllByText("Pending up")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Prior execution result is not retained")).toBeInTheDocument();
+    expect(screen.getAllByText("No retained result")).toHaveLength(3);
+    expect(screen.getAllByText("Unknown")).toHaveLength(3);
+    expect(screen.queryByText("Not run")).not.toBeInTheDocument();
   });
 
   it("shows one unprepared workspace without hiding the prepared workspace", async () => {
@@ -165,15 +194,7 @@ describe("read-only desktop workbench", () => {
 
   it("selects the first usable workspace when startup discovery begins with an unavailable one", async () => {
     const reorderedProject: ProjectView = { ...project, workspaces: [...project.workspaces].reverse() };
-    mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      requests.push({ path, method: init?.method ?? "GET" });
-      if (path === "/api/session") return new Response(null, { status: 204 });
-      if (path === "/api/project") return jsonResponse(reorderedProject);
-      if (path === "/api/workspaces/fixture") return jsonResponse(workspace);
-      if (path === "/api/workspaces/fixture/stages/200") return jsonResponse(definition);
-      return new Response("not found", { status: 404 });
-    });
+    activeProject = reorderedProject;
     render(<App />);
     expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fixture/ })).toHaveAttribute("aria-current", "page");

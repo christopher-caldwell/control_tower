@@ -31,13 +31,17 @@ cd ui
 npm ci
 npm run build
 npm test
+npx playwright install chromium # once, for browser layout checks
+npm run test:browser
 cd ..
-cargo build --locked --release -p control-tower-cli
+cargo build --locked --release --workspace
 ```
 
 The committed `ui/dist/` is already packaged into ordinary Rust builds. Rebuild it
-after changing frontend source. Node is a build/test tool; the launched UI has no
-Node runtime dependency.
+after changing frontend source. The browser-layout suite checks inspector collapse,
+reopening, resizing, and viewport fit at the documented minimum width using
+Playwright Chromium. Node and Playwright are build/test tools; the launched UI has
+no Node runtime dependency.
 
 The directory where `control-tower ui` starts is the Project. For example, from
 the repository root, launch from `examples/simple`, not from inside a workspace.
@@ -82,8 +86,11 @@ not presented as a fresh verifier failure.
 The inspector orders checkpoint state, mutation definitions, verification
 definitions, captured output, and technical definition details. Definitions are
 plain escaped text, capped at 128 KiB per role preview, and never executed while
-being viewed. A configured role is labelled Not run; file presence does not
-represent execution success. Missing optional verification is Not configured.
+being viewed. A configured role shows its definition path and Unknown result with
+“No retained result”; this read-only phase has no execution evidence, including
+for previously accepted stages and cold-start pending transitions. File presence
+does not represent execution success. Missing optional verification is Not
+configured.
 This phase is read-only: output is unavailable and the primary progression control
 is disabled. Execution, recovery and live observation arrive in a later phase.
 
