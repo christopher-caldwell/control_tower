@@ -207,6 +207,70 @@ describe("desktop workbench", () => {
     expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10 · seed/ })).toBeEnabled();
   });
 
+  it("initial selection follows the accepted checkpoint over a retained down result", async () => {
+    const accepted = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+    const downResult: MovementObservation = {
+      workspace_id: "fixture", operation_id: "retained-down-result", server_instance_id: "server-one", revision: 7,
+      direction: "down", target_stage: 10, state: "complete", active_role: null,
+      role_results: [roleResult(200, "down", "retained-stage-200-down")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: accepted, attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: accepted,
+      observation_revision: 7,
+      observation: downResult,
+      selected_stage_number: 200,
+      stages: workspace.stages.map((stage) => ({
+        ...stage,
+        state: stage.number === 10 ? "accepted" : "future",
+        is_accepted_checkpoint: stage.number === 10,
+      })),
+    };
+    activeProject = {
+      ...project,
+      workspaces: project.workspaces.map((item) => item.id === "fixture"
+        ? { ...item, accepted_stage: accepted.accepted_stage, pending_transition: null }
+        : item),
+    };
+
+    render(<App />);
+
+    const acceptedStage = await screen.findByRole("button", { name: /STAGE 010/ });
+    expect(acceptedStage).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /STAGE 200/ })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("heading", { name: "seed" })).toBeInTheDocument();
+    expect(screen.getByText("10 · seed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 10 to baseline/ })).toBeEnabled();
+  });
+
+  it("keeps a locally initiated down movement focused on its result while fresh selection follows checkpoint", async () => {
+    const user = userEvent.setup();
+    const startCheckpoint = { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true };
+    const accepted = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: startCheckpoint,
+      observation: null,
+      selected_stage_number: 200,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "accepted", is_accepted_checkpoint: stage.number === 200 })),
+    };
+    movementResponse = {
+      workspace_id: "fixture", operation_id: "local-down-result", server_instance_id: "server-one", revision: 8,
+      direction: "down", target_stage: 10, state: "complete", active_role: null,
+      role_results: [roleResult(200, "down", "local-stage-200-down")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: accepted, attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Back out Stage 200 to Stage 10 · seed/ }));
+
+    expect(await screen.findAllByText("Process succeeded · 3 ms")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "finish" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /STAGE 200/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("10 · seed")).toBeInTheDocument();
+  });
+
   it("labels an empty project without implying that its stages are applied", async () => {
     activeProject = { ...project, workspaces: [] };
     render(<App />);

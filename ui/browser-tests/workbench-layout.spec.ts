@@ -159,6 +159,55 @@ test("clamps a saved inspector width from a wider window at the minimum viewport
   expect(current.documentWidth).toBe(current.viewportWidth);
 });
 
+test("reload and fresh tab select the accepted checkpoint after a retained downward result", async ({ context, page }) => {
+  const checkpoint = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+  const projectWithDownResult: ProjectView = {
+    ...project,
+    workspaces: project.workspaces.map((item) => item.id === "fixture"
+      ? { ...item, accepted_stage: checkpoint.accepted_stage, pending_transition: null }
+      : item),
+  };
+  const workspaceWithDownResult: WorkspaceView = {
+    ...workspace,
+    observation_revision: 8,
+    checkpoint,
+    selected_stage_number: 200,
+    observation: {
+      workspace_id: "fixture", operation_id: "retained-down-result", server_instance_id: "layout-server", revision: 8,
+      direction: "down", target_stage: 10, state: "complete", active_role: null,
+      role_results: [{
+        stage: { number: 200, name: "finish" }, role: "down", state: "succeeded", exit_code: 0,
+        message: null, elapsed_ms: 3, output_id: "down-output", output_state: "available",
+        stdout_bytes: 12, stderr_bytes: 0, stdout_truncated: false, stderr_truncated: false,
+      }],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      failure: null, verification_choices: null,
+    },
+    stages: workspace.stages.map((stage) => ({
+      ...stage,
+      state: stage.number === 10 ? "accepted" : "future",
+      is_accepted_checkpoint: stage.number === 10,
+    })),
+  };
+
+  await page.unroute("**/api/**");
+  await installApiFixtures(page, projectWithDownResult, workspaceWithDownResult);
+  await page.reload();
+  await expect(page.getByRole("button", { name: /STAGE 010/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /STAGE 200/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("heading", { name: "seed" })).toBeVisible();
+  await expect(page.getByText("10 · seed")).toBeVisible();
+
+  const freshTab = await context.newPage();
+  await installApiFixtures(freshTab, projectWithDownResult, workspaceWithDownResult);
+  await freshTab.goto("/");
+  await expect(freshTab.getByRole("button", { name: /STAGE 010/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(freshTab.getByRole("button", { name: /STAGE 200/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(freshTab.getByRole("heading", { name: "seed" })).toBeVisible();
+  await expect(freshTab.getByText("10 · seed")).toBeVisible();
+  await freshTab.close();
+});
+
 test("an observing browser tab reconciles another tab's completion into its rail and movement controls", async ({ context, page }) => {
   const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
   const baselineProject: ProjectView = {

@@ -71,9 +71,11 @@ export function App() {
   const selectedWorkspaceRef = useRef<string | null>(null);
   const selectedStageRef = useRef<number | null>(null);
   const deliberateStageSelection = useRef<{ workspaceId: string; stageNumber: number } | null>(null);
+  const stageSelectionVersions = useRef(new Map<string, number>());
   const movementSequence = useRef(0);
   const activeMovementRequests = useRef(new Map<string, number>());
-  const lostMovementResponses = useRef(new Map<string, { requestId: number; baselineRevision: number }>());
+  const lostMovementResponses = useRef(new Map<string, { baselineRevision: number; selectionVersion: number }>());
+  const localResultSelections = useRef(new Map<string, { serverInstanceId: string; operationId: string; stageNumber: number }>());
   const latestSnapshots = useRef(new Map<string, RuntimeSnapshot>());
   const latestWorkspaceViews = useRef(new Map<string, WorkspaceView>());
   const latestEventRevisions = useRef(new Map<string, { server_instance_id: string; revision: number }>());
@@ -313,8 +315,12 @@ export function App() {
   }
 
   function reconcileInspectionSelection(workspaceId: string, view: WorkspaceView) {
-    if (selectedWorkspaceRef.current !== workspaceId) return;
-    const stageNumber = preferredInspectionStage(view, deliberateStageSelection.current);
+    if (selectedWorkspaceRef.current !== workspaceId || activeMovementRequests.current.has(workspaceId)) return;
+    const stageNumber = preferredInspectionStage(
+      view,
+      deliberateStageSelection.current,
+      localResultSelections.current.get(workspaceId) ?? null,
+    );
     selectedStageRef.current = stageNumber;
     setSelectedStageNumber(stageNumber);
   }
@@ -324,6 +330,20 @@ export function App() {
     const observation = view.observation;
     if (!lost || !observation || view.movement_busy || observation.state === "running"
       || view.observation_revision <= lost.baselineRevision) return;
+    const resultStage = observation.failure?.stage?.number ?? observation.role_results.at(-1)?.stage.number;
+    if (resultStage !== undefined
+      && (stageSelectionVersions.current.get(workspaceId) ?? 0) === lost.selectionVersion
+      && view.stages.some((stage) => stage.number === resultStage)) {
+      localResultSelections.current.set(workspaceId, {
+        serverInstanceId: observation.server_instance_id,
+        operationId: observation.operation_id,
+        stageNumber: resultStage,
+      });
+      if (selectedWorkspaceRef.current === workspaceId) {
+        selectedStageRef.current = resultStage;
+        setSelectedStageNumber(resultStage);
+      }
+    }
     lostMovementResponses.current.delete(workspaceId);
     setMovementIssues((current) => {
       if (!current[workspaceId]?.startsWith("Movement response lost;")) return current;
@@ -416,19 +436,19 @@ export function App() {
     const requestId = ++movementSequence.current;
     activeMovementRequests.current.set(workspaceId, requestId);
     lostMovementResponses.current.delete(workspaceId);
+    localResultSelections.current.delete(workspaceId);
     const baselineRevision = workspace.observation_revision;
+    const submittedSelectionVersion = stageSelectionVersions.current.get(workspaceId) ?? 0;
+    deliberateStageSelection.current = null;
     setMovementSubmittingFor((current) => ({ ...current, [workspaceId]: requestId }));
     setMovementIssues((current) => {
       const { [workspaceId]: _previous, ...rest } = current;
       return rest;
     });
-    let submittedSelection = selectedStageRef.current;
     if (action.choice.target_stage > 0 && workspace.stages.some((stage) => stage.number === action.choice.target_stage)) {
-      submittedSelection = action.choice.target_stage;
       selectedStageRef.current = action.choice.target_stage;
       setSelectedStageNumber(action.choice.target_stage);
     } else if (workspace.checkpoint.pending_transition) {
-      submittedSelection = workspace.checkpoint.pending_transition.stage.number;
       selectedStageRef.current = workspace.checkpoint.pending_transition.stage.number;
       setSelectedStageNumber(workspace.checkpoint.pending_transition.stage.number);
     }
@@ -471,12 +491,18 @@ export function App() {
       });
       const relevantStage = observation.failure?.stage?.number
         ?? observation.role_results.at(-1)?.stage.number;
-      if (selectedWorkspaceRef.current === workspaceId
-        && activeMovementRequests.current.get(workspaceId) === requestId
-        && selectedStageRef.current === submittedSelection
-        && relevantStage !== undefined) {
-        selectedStageRef.current = relevantStage;
-        setSelectedStageNumber(relevantStage);
+      if (relevantStage !== undefined
+        && (stageSelectionVersions.current.get(workspaceId) ?? 0) === submittedSelectionVersion
+        && reconciled.stages.some((stage) => stage.number === relevantStage)) {
+        localResultSelections.current.set(workspaceId, {
+          serverInstanceId: observation.server_instance_id,
+          operationId: observation.operation_id,
+          stageNumber: relevantStage,
+        });
+        if (selectedWorkspaceRef.current === workspaceId) {
+          selectedStageRef.current = relevantStage;
+          setSelectedStageNumber(relevantStage);
+        }
       }
       if (observation.state === "stopped" || observation.state === "unavailable") {
         setMovementIssues((current) => ({
@@ -487,7 +513,10 @@ export function App() {
     } catch (error) {
       if (activeMovementRequests.current.get(workspaceId) === requestId) {
         if (error instanceof TypeError) {
-          lostMovementResponses.current.set(workspaceId, { requestId, baselineRevision });
+          lostMovementResponses.current.set(workspaceId, {
+            baselineRevision,
+            selectionVersion: submittedSelectionVersion,
+          });
           setMovementIssues((current) => ({
             ...current,
             [workspaceId]: "Movement response lost; waiting for the latest workspace observation.",
@@ -612,6 +641,10 @@ export function App() {
                 {workspace.stages.map((stage, index) => <StageCard key={stage.number} stage={stage} index={index} observation={workspace.observation} selected={stage.number === selectedStageNumber} onClick={() => {
                   selectedStageRef.current = stage.number;
                   deliberateStageSelection.current = { workspaceId: workspace.workspace.id, stageNumber: stage.number };
+                  stageSelectionVersions.current.set(
+                    workspace.workspace.id,
+                    (stageSelectionVersions.current.get(workspace.workspace.id) ?? 0) + 1,
+                  );
                   setSelectedStageNumber(stage.number);
                 }} />)}
               </div>
@@ -937,12 +970,13 @@ function applyRuntimeSnapshot(view: WorkspaceView, snapshot: RuntimeSnapshot): W
 function preferredInspectionStage(
   view: WorkspaceView,
   deliberate: { workspaceId: string; stageNumber: number } | null,
+  localResult: { serverInstanceId: string; operationId: string; stageNumber: number } | null,
 ): number | null {
   if (deliberate?.workspaceId === view.workspace.id
     && view.stages.some((stage) => stage.number === deliberate.stageNumber)) return deliberate.stageNumber;
-  const observedStage = view.observation?.failure?.stage?.number
-    ?? view.observation?.role_results.at(-1)?.stage.number;
-  if (observedStage !== undefined && view.stages.some((stage) => stage.number === observedStage)) return observedStage;
+  if (localResult?.serverInstanceId === view.server_instance_id
+    && localResult.operationId === view.observation?.operation_id
+    && view.stages.some((stage) => stage.number === localResult.stageNumber)) return localResult.stageNumber;
   const checkpointStages = [view.checkpoint.pending_transition?.stage.number, view.checkpoint.accepted_stage?.number];
   for (const checkpointStage of checkpointStages) {
     if (checkpointStage !== undefined && view.stages.some((stage) => stage.number === checkpointStage)) return checkpointStage;
