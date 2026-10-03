@@ -40,6 +40,67 @@ export type WorkspaceView = {
   };
   selected_stage_number: number | null;
   stages: StageView[];
+  server_instance_id: string;
+  observation_revision: number;
+  movement_busy: boolean;
+  observation: MovementObservation | null;
+};
+
+export type CheckpointView = {
+  accepted_stage: StageIdentity | null;
+  pending_transition: PendingTransition | null;
+  workflow_started: boolean;
+};
+
+export type MovementChoice = { direction: "up" | "down"; target_stage: number };
+
+export type RoleObservation = {
+  stage: StageIdentity;
+  role: string;
+  state: "in_progress" | "succeeded" | "failed" | "launch_failed";
+  exit_code: number | null;
+  message: string | null;
+  elapsed_ms: number | null;
+  output_id: string | null;
+  output_state: "not_returned" | "available" | "evicted" | "unavailable";
+  stdout_bytes: number;
+  stderr_bytes: number;
+  stdout_truncated: boolean;
+  stderr_truncated: boolean;
+};
+
+export type MovementObservation = {
+  workspace_id: string;
+  operation_id: string;
+  server_instance_id: string;
+  revision: number;
+  direction: "up" | "down";
+  target_stage: number;
+  state: "running" | "complete" | "stopped" | "unavailable";
+  active_role: { stage: StageIdentity; role: string } | null;
+  role_results: RoleObservation[];
+  omitted_role_results: number;
+  outputs_evicted: number;
+  confirmed_checkpoint: CheckpointView | null;
+  attempted_checkpoint: CheckpointView | null;
+  failure: {
+    kind: string;
+    message: string;
+    stage: StageIdentity | null;
+    role: string | null;
+  } | null;
+  verification_choices: {
+    retry: MovementChoice;
+    reverse: MovementChoice | null;
+  } | null;
+};
+
+export type RuntimeSnapshot = {
+  workspace_id: string;
+  server_instance_id: string;
+  revision: number;
+  movement_busy: boolean;
+  observation: MovementObservation | null;
 };
 
 export type DefinitionView = {
@@ -62,4 +123,23 @@ export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
     throw new Error(payload?.error?.message ?? `Request failed (${response.status})`);
   }
   return (await response.json()) as T;
+}
+
+export async function submitMovement(
+  path: string,
+  movement: MovementChoice,
+): Promise<MovementObservation> {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(movement),
+  });
+  const payload = await response.json().catch(() => null) as
+    | { observation?: MovementObservation; error?: { message?: string }; operation_id?: string }
+    | null;
+  if (!response.ok || !payload?.observation) {
+    throw new Error(payload?.error?.message ?? `Movement request failed (${response.status})`);
+  }
+  return payload.observation;
 }

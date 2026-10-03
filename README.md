@@ -6,7 +6,7 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 ## Browser workbench (macOS)
 
-The browser UI uses the same Rust executable and a prebuilt React interface. It is a read-only stage inspector in this first slice; it does not execute scripts. Build and launch it from a copied Project directory:
+The browser UI uses the same Rust executable and a prebuilt React interface. It supports single-stage advance/backout, pending-verification recovery, per-role results and output inspection. Build and launch it from a copied Project directory:
 
 ```sh
 cargo build --locked --release --workspace

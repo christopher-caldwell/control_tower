@@ -17,7 +17,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Open the read-only local browser workbench for the current project.
+    /// Open the local browser workbench for the current project.
     Ui,
     /// Apply stages through the requested stage number.
     Up {

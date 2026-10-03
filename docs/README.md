@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -15,7 +15,7 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI is the primary interface; the macOS loopback browser UI currently provides a read-only workspace and stage inspector. Start with the runnable example; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and macOS loopback browser UI drive the same workspace behavior; the browser adds project-local workspace discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
 

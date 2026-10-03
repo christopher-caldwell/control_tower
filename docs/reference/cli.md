@@ -4,7 +4,7 @@ title: CLI reference
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -54,7 +54,7 @@ control-tower status --workspace PATH
 | `down` | Reverse stages toward the target, in reverse numeric order. To go from stage 3 to stage 2, run stage 3's `down` and supplied `verify-down`; do not run stage 2's `down`. |
 | `status` | Read the saved completed position, UUID, pending verification when present, and number of discovered stages. It does not run a verifier or inspect external fixture correctness. |
 
-`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Project. The macOS system browser is opened when available. The host uses the committed static React build; Node is not a runtime dependency. The current screen is read-only. See [build, workspace discovery, session security, and interface details](browser-workbench.md).
+`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Project. The macOS system browser is opened when available. The host uses the committed static React build; Node is not a runtime dependency. The UI submits one adjacent transition at a time, with separate inspection selection and outcome-specific pending-verification recovery. See [build, workspace discovery, session security, and interface details](browser-workbench.md).
 
 Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no roles ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
 

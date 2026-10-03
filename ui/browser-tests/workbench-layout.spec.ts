@@ -19,6 +19,10 @@ const project: ProjectView = {
 const workspace: WorkspaceView = {
   project_name: "layout-project",
   workspace: { id: "fixture", name: "fixture" },
+  server_instance_id: "layout-server",
+  observation_revision: 0,
+  movement_busy: false,
+  observation: null,
   checkpoint: {
     accepted_stage: { number: 200, name: "finish" },
     pending_transition: { direction: "down", stage: { number: 200, name: "finish" } },

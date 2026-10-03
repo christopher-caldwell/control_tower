@@ -4,7 +4,7 @@ title: Browser workbench
 type: reference
 status: maintained
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -66,7 +66,7 @@ status reads. Workspaces with unprepared or inaccessible storage are not treated
 baseline. The Project list is frozen at startup. Refresh rereads checkpoint status
 for that list; restart Control Tower to add or remove workspaces.
 
-## Current read-only interface
+## Workspace shell and movement controls
 
 The shell shows the launch Project, a manually collapsible workspace rail, an
 ordered stage narrative, and a persistent, independently scrolling, manually
@@ -83,16 +83,44 @@ the first stage. The accepted checkpoint remains separate from the selected
 stage. A pending stage reports its direction and an unknown prior outcome; it is
 not presented as a fresh verifier failure.
 
-The inspector orders checkpoint state, mutation definitions, verification
-definitions, captured output, and technical definition details. Definitions are
-plain escaped text, capped at 128 KiB per role preview, and never executed while
-being viewed. A configured role shows its definition path and Unknown result with
-“No retained result”; this read-only phase has no execution evidence, including
-for previously accepted stages and cold-start pending transitions. File presence
-does not represent execution success. Missing optional verification is Not
-configured.
-This phase is read-only: output is unavailable and the primary progression control
-is disabled. Execution, recovery and live observation arrive in a later phase.
+The fixed action dock is derived from the durable checkpoint and ordered stage
+list, never from the selected inspection stage. At a settled position it names
+the actual next stage and the stage that would be reversed. The last accepted
+stage has a backout action and no forward action. During a pending transition,
+controls distinguish `Retry verify-up`, `Retry verify-down`, backing out a
+pending-up transition, and reapplying a pending-down transition. Only a verifier
+failure observed in this server process receives verifier-specific choices from
+`MoveOutcome::verification_choices()`. A cold pending checkpoint says its prior
+execution result is unavailable. After mutation or checkpoint-save failure, the
+UI warns the user to inspect author-owned effects; the pending marker is not
+treated as proof that retry or reversal is safe.
+
+Selecting earlier or future stages remains inspection only. It never changes the
+movement target. A stopped 2xx movement response is displayed as stopped, and the
+last confirmed checkpoint remains separate from a save's attempted update. A
+running role is an invocation observation; it does not confirm that the OS
+launched a child process. Captured output appears when that role returns, not as
+live byte streaming.
+
+The inspector orders checkpoint state and observed failure, mutation, verification,
+relevant role output, and technical definition details. Definitions are plain
+escaped text, capped at 128 KiB per role preview, and never executed while being
+viewed. A previously accepted stage without retained execution evidence is
+Applied, not freshly verified. A configured role with no current result is
+Not attempted, Applied with historical result unavailable, or pending with prior
+outcome unavailable, according to its checkpoint. A missing optional verifier is
+Not configured. File presence never represents execution success.
+
+Observed process results distinguish in progress, success, nonzero exit and
+launch failure. A verifier result is shown separately from its mutation. Output
+streams remain separate. UTF-8 previews replace invalid sequences and display
+control bytes visibly inside an inert `<pre>`; authenticated raw stream downloads
+preserve retained bytes exactly. Each stdout/stderr stream retains at most its
+first 1 MiB and reports the original byte count and truncation. Per workspace,
+captured output is capped at 8 MiB and role summaries at 128 per movement; evicted
+output and omitted older summaries are labelled. A new movement replaces that
+workspace's previous in-process movement record. This is bounded current/latest
+observation, not durable history.
 
 ## HTTP contract and session
 
@@ -102,13 +130,96 @@ The API serves JSON from the same IPv4 loopback origin as the bundled UI:
 | --- | --- |
 | POST /api/session | Exchange the startup token for a browser session cookie. |
 | GET /api/project | List startup-discovered workspaces and their independent status. |
-| GET /api/workspaces/{id} | Read checkpoint identity and ordered stage summaries. |
+| GET /api/workspaces/{id} | Read checkpoint identity, ordered stage summaries, busy state and current/latest process-local observation. |
 | GET /api/workspaces/{id}/stages/{number} | Read one stage role definitions. |
+| POST /api/workspaces/{id}/movements | Submit one `{direction, target_stage}` intent. The target is a real stage number; 0 is baseline. |
+| GET /api/workspaces/{id}/events | Receive workspace-scoped SSE notifications and an initial resynchronization snapshot. |
+| GET /api/workspaces/{id}/outputs/{output_id}/{stdout\|stderr} | Read one retained raw output stream for a completed role. |
 
-Errors use a JSON envelope with error.code and a human-readable error.message.
-Invalid stage-number text returns 400; unknown workspaces or stages return 404;
-unavailable workspaces return 503. Checkpoint and definition reads do not mutate
-a workspace, apply migrations, bootstrap a database, or run authored code.
+### Movement and observation shapes
+
+Movement JSON is `{ "direction": "up" | "down", "target_stage": number }`.
+The target is a stage-number identity, not an array index; `0` names baseline for
+downward movement. A delivered movement result is `{ "observation": ... }`:
+
+```json
+{
+  "observation": {
+    "workspace_id": "uuid-file",
+    "operation_id": "per-movement-id",
+    "server_instance_id": "per-launch-id",
+    "revision": 14,
+    "direction": "up",
+    "target_stage": 200,
+    "state": "stopped",
+    "active_role": null,
+    "role_results": [],
+    "omitted_role_results": 0,
+    "outputs_evicted": 0,
+    "confirmed_checkpoint": {
+      "accepted_stage": { "number": 10, "name": "seed" },
+      "pending_transition": { "direction": "up", "stage": { "number": 200, "name": "finish" } },
+      "workflow_started": true
+    },
+    "attempted_checkpoint": null,
+    "failure": {
+      "kind": "process_failed",
+      "message": "verify-up exited with status 9",
+      "stage": { "number": 200, "name": "finish" },
+      "role": "verify-up"
+    },
+    "verification_choices": {
+      "retry": { "direction": "up", "target_stage": 200 },
+      "reverse": { "direction": "down", "target_stage": 10 }
+    }
+  }
+}
+```
+
+`state` is `running`, `complete`, `stopped`, or `unavailable`; it is separate
+from HTTP delivery status. `active_role` is null or a stage identity plus role.
+Each `role_results` item contains its stage and role, process state
+(`in_progress`, `succeeded`, `failed`, or `launch_failed`), optional exit code,
+message and elapsed milliseconds, output ID/state, original stdout/stderr byte
+counts and per-stream truncation flags. Output state is `not_returned`,
+`available`, `unavailable`, or `evicted`. `confirmed_checkpoint` records the last
+checkpoint reported by Workbench; `attempted_checkpoint` is populated when a
+save failed. Neither a successful role event nor a successful HTTP response
+alone implies accepted movement.
+
+Movement errors use `{ "error": { "code": string, "message": string },
+"operation_id": string | null }`. Other API errors use
+`{ "error": { "code": string, "message": string } }`. Common movement codes are
+`malformed_request`, `invalid_direction`, `invalid_target`, `unknown_workspace`,
+`workspace_unavailable`, `workspace_busy`, and `movement_task_failed`.
+
+The workspace GET returns the project/workspace identity, checkpoint, selected
+stage number, ordered stages and definitions, plus `server_instance_id`,
+`observation_revision`, `movement_busy`, and the latest process-local observation.
+The SSE stream first sends `snapshot` with workspace/server IDs, revision, busy
+state and that observation. Subsequent `movement.started`, `role.started`,
+`role.finished`, and `movement.finished` events are compact invalidations; `resync`
+contains a fresh snapshot after subscriber lag. Role-finished events identify the
+completed role and its output reference but never carry child bytes. The browser
+uses the GET/output routes to read current state and retained bytes.
+
+Movement request direction must be `up` or `down`; unknown targets and malformed
+requests return 400. Unknown workspaces return 404, unavailable workspaces 503,
+and overlapping UI movements for one workspace 409 `workspace_busy`. A completed
+movement that stopped inside Workbench returns a structured 2xx observation with
+`state: stopped`; HTTP delivery success is not movement success. Core execution
+revalidates the direction and numeric target against current checkpoint state.
+Reads do not mutate a workspace, apply migrations, bootstrap a database, or run
+authored code. Output routes return raw `application/octet-stream`, separate
+stdout from stderr, set an original-byte-count header, and explicitly mark
+truncation. An evicted or expired output returns 410.
+
+SSE connects before sending its first snapshot, closing the subscribe/snapshot
+race. Events include workspace ID, server incarnation, monotonic workspace
+revision, operation ID, direction/target, and stage/role where applicable. Event
+payloads are small invalidations; the UI resynchronizes from the read API rather
+than treating SSE as durable replay. A lagged stream receives a fresh snapshot.
+Closing or reconnecting the stream never submits or repeats a movement.
 
 Each launch binds 127.0.0.1 on an ephemeral port and prints the usable URL before
 attempting to open it with macOS open. The startup credential is carried only in
@@ -120,22 +231,26 @@ advertised origin; POST requests require it. Host must exactly match the loopbac
 host and ephemeral port. CORS is not enabled.
 
 This protects against unrelated browser origins and unauthenticated local callers
-accessing checkpoint details or definitions. It does not sandbox trusted stage
-scripts or protect against malware already running as the same macOS user. Inspect
-example scripts before use.
+accessing checkpoint details, role output or submitting a movement. It does not
+sandbox trusted stage scripts or protect against malware already running as the
+same macOS user. Inspect example scripts before use.
 
 ## Process and observation limits
 
-The terminal owns the UI host process. Closing a browser tab or refreshing the page
-does not stop the host. Press Ctrl-C in the launching terminal to close the idle
-listener. This read-only phase launches no child roles, so it has no active stage
-process to interrupt. Later execution support must keep operation lifetime separate
-from browser lifetime and document active-shutdown limits; termination is not rollback.
+The terminal owns the UI host process. Closing a browser tab, refreshing, changing
+workspace, or losing the initiating POST response does not itself cancel, replay,
+reverse or reset a movement. Within the server process, a per-workspace admission
+lock remains held until the actual blocking Workbench operation and final
+observation publication finish. Reads and SSE continue while a role runs. A second
+tab or reconnect receives the current busy state and latest observation.
 
-This phase has no SSE stream, live child-byte streaming, durable attempt history,
-or retained output. Refresh reads the current checkpoint again; it does not replay
-a movement. The checkpoint database remains the source of accepted state. Cross-
-restart preferences across ephemeral-port origins and project switching remain deferred.
+Press Ctrl-C in the launching terminal to close the listener when idle. Shutdown
+does not request rollback or promise a new child-cancellation guarantee. Forced
+termination and interruption of an active role do not prove what external effects
+occurred; inspect the workspace and durable checkpoint yourself. Concurrent direct
+CLI mutation of a UI-active workspace is unsupported. There is no interprocess
+lock, multi-instance coordination, live byte stream, durable attempt history,
+project switching, or preference migration across ephemeral-port origins.
 
 ## Design references
 

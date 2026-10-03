@@ -4,7 +4,7 @@ title: Current design and decision audit
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -61,15 +61,15 @@ down -> optional verify-down -> accept lower position
 
 The author is responsible for correctness and reversibility. A role name is not a sandbox or proof of side-effect freedom. Exact execution mechanics are in the [executable reference](../reference/stage-executables.md).
 
-## Entry architecture: CLI and read-only loopback UI
+## Entry architecture: CLI and loopback browser UI
 
 CLI is the implemented Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
-[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The macOS `control-tower ui` command currently serves the packaged read-only workspace/stage inspector and its HTTP read API. The read-only UI has not yet implemented movement, SSE execution observations, or process-output retention. Production does not require Vite or Node.
+[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The macOS `control-tower ui` command serves the packaged workspace workbench, movement/read APIs and SSE role observations. It composes the existing workspace-bound Workbench in a blocking Entry bridge and retains bounded role summaries/output in process. Production does not require Vite or Node.
 
 The UI Entry composes a workspace-bound Workbench inside the CLI package rather than shelling out to the CLI or changing Application ownership. Project scope comes from the launch directory, workspace discovery is startup-only under `workspaces/`, and each workspace retains its own existing storage. Reads do not bootstrap or repair databases, and a workspace failure does not hide its neighbors. The normal executable embeds prebuilt assets and attempts to open the system browser. The UI target is macOS-only and desktop-only; exact component styling remains an implementation detail.
 
-Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted. The UI may map those observations to SSE so a stage/role can visibly enter and leave a running state without introducing a second execution model. Infrastructure continues to buffer stdout/stderr for one role, and captured bytes remain in the Application outcome. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
+Application offers synchronous observations before/after each actual role attempt. CLI flushes its start identity and renders captured output/result before the next role is attempted. The UI maps those observations to SSE and retains bounded role summaries/output in process so a role can visibly enter and leave a running state and completed output is available before the next role returns. Infrastructure continues to buffer stdout/stderr for one role, and captured bytes remain in the Application outcome. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
 
 The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.
 
@@ -177,6 +177,6 @@ A workspace-wide reset executable remains a future idea, not a current command. 
 
 ## What still has not earned scope
 
-The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are partially implemented as a read-only first phase. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped role-definition previews. Movement, SSE observations, completed output access and recovery guidance are later implementation work. Tauri/macOS app packaging, project switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
+The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are implemented as a macOS-only browser workbench. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped role-definition previews. Declarative movement, SSE role observations, completed output access and outcome-specific recovery are implemented in the UI Entry. Tauri/macOS app packaging, project switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
 
 The first discovery and correction rounds have implementation evidence. The next useful input is actual use, not replaying the historical discovery queue as setup work. [Open questions](open-questions.md) keeps that future work separate; the [discovery brief](discovery-brief.md) and [earlier probe](three-step-workspace.md) remain historical inputs.
