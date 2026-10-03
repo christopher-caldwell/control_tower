@@ -19,7 +19,7 @@ sources:
 
 # CLI reference
 
-This page describes the implemented CLI, not proposed command spellings from discovery. The executable name is **`control-tower`** (hyphen), not `control_tower`. The optional browser UI is supported on macOS only; see the [browser workbench reference](browser-workbench.md). For first use, follow [setup](../guides/getting-started.md).
+This page describes the implemented CLI, not proposed command spellings from discovery. The executable name is **`control-tower`** (hyphen), not `control_tower`. The optional browser UI is served by the generic Rust loopback host; see the [browser workbench reference](browser-workbench.md). For first use, follow [setup](../guides/getting-started.md).
 
 ## Invocation forms
 

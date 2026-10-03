@@ -39,8 +39,6 @@ function observation(roleResults: RoleObservation[] = [result()], state: Movemen
     state,
     active_role: null,
     role_results: roleResults,
-    confirmed_checkpoint: null,
-    attempted_checkpoint: null,
     failure: null,
     verification_choices: null,
   };
@@ -55,11 +53,9 @@ function workspace(id: string, overrides: Partial<WorkspaceView> = {}): Workspac
     checkpoint: {
       accepted_stage: stage,
       pending_transition: null,
-      workflow_started: true,
       state: { completed_stage_count: 1, uuid: "fixture-run", pending: null },
     },
     movement_choices: [{ direction: "up", target_stage: 20 }, { direction: "down", target_stage: 0 }],
-    selected_stage_number: 10,
     stages: [
       { number: 10, name: "seed", state: "accepted", is_accepted_checkpoint: true, definitions: [{ role: "up", path: "stages/010-seed/up" }] },
       { number: 20, name: "finish", state: "future", is_accepted_checkpoint: false, definitions: [{ role: "up", path: "stages/020-finish/up" }] },

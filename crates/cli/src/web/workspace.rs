@@ -104,7 +104,6 @@ pub(super) fn unavailable_workspace_view(
         checkpoint: None,
         movement_choices: Vec::new(),
         stages: Vec::new(),
-        selected_stage_number: None,
         movement_busy,
         observation,
     }
@@ -119,11 +118,6 @@ fn available_workspace_view(
 ) -> WorkspaceView {
     let accepted = accepted_stage(&status);
     let pending = pending_view(&status);
-    let selected_stage_number = pending
-        .as_ref()
-        .map(|p| p.stage.number)
-        .or_else(|| accepted.as_ref().map(|s| s.number))
-        .or_else(|| status.stages.first().map(|s| s.number));
     let stages = status
         .stages
         .iter()
@@ -155,7 +149,6 @@ fn available_workspace_view(
         checkpoint: Some(CheckpointView {
             accepted_stage: accepted,
             pending_transition: pending,
-            workflow_started: status.state.uuid.is_some(),
             state: CheckpointState::from(&status.state),
         }),
         movement_choices: status
@@ -164,7 +157,6 @@ fn available_workspace_view(
             .map(movement_choice_view)
             .collect(),
         stages,
-        selected_stage_number,
         movement_busy,
         observation,
     }

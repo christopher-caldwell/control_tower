@@ -1,21 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { api, submitMovement, ApiFailure, type CheckpointView, type DefinitionView, type MovementChoice, type MovementObservation, type ProjectView, type RoleObservation, type StageView, type WorkspaceIdentity, type WorkspaceView } from "./types";
 
-type Preferences = { leftCollapsed: boolean; rightCollapsed: boolean; rightWidth: number };
 type Action = { choice: MovementChoice; label: string; detail: string };
-const preferenceKey = "control-tower-workbench-layout-v1";
-const defaults: Preferences = { leftCollapsed: false, rightCollapsed: false, rightWidth: 382 };
-const minInspector = 316, minStage = 520, rail = 252, splitter = 14, minWindow = 1180;
-function preferences(): Preferences {
-  try { const value = localStorage.getItem(preferenceKey); return value ? { ...defaults, ...JSON.parse(value) as Partial<Preferences> } : defaults; } catch { return defaults; }
-}
 function autoStage(view: WorkspaceView): number | null {
   const candidates = [view.observation?.active_role?.stage.number, view.observation?.failure?.stage?.number, view.checkpoint?.pending_transition?.stage.number, view.checkpoint?.accepted_stage?.number, view.stages[0]?.number];
   return candidates.find((number) => number !== undefined && view.stages.some((stage) => stage.number === number)) ?? null;
 }
 export function App() {
-  const [pref, setPrefState] = useState(preferences);
-  const [width, setWidth] = useState(window.innerWidth);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [project, setProject] = useState<ProjectView | null>(null);
   const [projectIssue, setProjectIssue] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -32,9 +25,6 @@ export function App() {
   const selectedStageRef = useRef<number | null>(null);
   const movementRequest = useRef(0);
 
-  function setPref(patch: Partial<Preferences>) { setPrefState((current) => ({ ...current, ...patch })); }
-  useEffect(() => { localStorage.setItem(preferenceKey, JSON.stringify(pref)); }, [pref]);
-  useEffect(() => { const resize = () => setWidth(window.innerWidth); window.addEventListener("resize", resize); return () => window.removeEventListener("resize", resize); }, []);
   async function loadProject() {
     try {
       const result = await api<ProjectView>("/api/project");
@@ -87,21 +77,6 @@ export function App() {
     return () => controller.abort();
   }, [workspaceId, stageNumber]);
 
-  const maxInspector = Math.max(minInspector, Math.min(maxInspectorWidth(), Math.max(width, minWindow) - rail - minStage - splitter));
-  const inspectorWidth = Math.max(minInspector, Math.min(pref.rightWidth, maxInspector));
-  function maxInspectorWidth() { return 620; }
-  function resizeInspector(event: React.PointerEvent<HTMLButtonElement>) {
-    const x = event.clientX, start = inspectorWidth;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const move = (next: PointerEvent) => setPref({ rightWidth: Math.max(minInspector, Math.min(maxInspector, start + x - next.clientX)) });
-    const done = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", done); window.removeEventListener("pointercancel", done); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", done, { once: true }); window.addEventListener("pointercancel", done, { once: true });
-  }
-  function resizeKeyboard(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === "ArrowLeft") setPref({ rightWidth: Math.min(maxInspector, inspectorWidth + 16) });
-    if (event.key === "ArrowRight") setPref({ rightWidth: Math.max(minInspector, inspectorWidth - 16) });
-  }
-
   const selectedSummary = workspace?.workspace.id === workspaceId
     ? workspace.workspace
     : project?.workspaces.find((item) => item.id === workspaceId) ?? null;
@@ -112,7 +87,6 @@ export function App() {
   const finalAccepted = Boolean(workspace?.checkpoint?.accepted_stage && workspace.checkpoint.accepted_stage.number === workspace.stages.at(-1)?.number && !workspace.checkpoint.pending_transition);
   const finalLabel = workspace?.movement_choices.length ? "All stages applied; backout remains available" : "All stages applied";
   const inactive = !workspaceId ? "Select a workspace" : projectIssue ? "Project unavailable" : !workspace ? "Connecting to workspace" : workspace.current_status === "unavailable" ? "Workspace unavailable" : finalAccepted ? "All stages applied" : "No immediate movement available";
-  const ambiguous = ambiguousEffects(workspace?.observation);
 
   async function run(action: Action) {
     if (!workspaceId || !workspace?.checkpoint || busy || workspace.current_status !== "available") return;
@@ -132,51 +106,46 @@ export function App() {
   }
   function chooseStage(number: number) { manualSelection.current = true; selectedStageRef.current = number; setStageNumber(number); }
 
-  return <div className="application-frame" style={{ "--inspector-width": inspectorWidth + "px" } as React.CSSProperties}>
+  return <div className="application-frame">
     <header className="topbar"><div className="brand-mark" aria-hidden="true"><span />CT</div><div className="brand-copy"><strong>Control Tower</strong><span>LOCAL WORKBENCH</span></div><div className="topbar-divider" />
       <div className="project-crumb"><span className="crumb-label">PROJECT</span><strong>{project?.name ?? "Connecting"}</strong></div>
       <div className="connection-state"><i className={projectIssue || live === "Reconnecting" ? "state-dot state-dot-error" : "state-dot"} />{projectIssue ? "Disconnected" : live}</div>
     </header>
-    <div className={"workbench-grid " + (pref.leftCollapsed ? "left-collapsed " : "") + (pref.rightCollapsed ? "right-collapsed" : "")}>
+    <div className={"workbench-grid " + (leftCollapsed ? "left-collapsed " : "") + (rightCollapsed ? "right-collapsed" : "")}>
       <aside className="workspace-rail" aria-label="Project workspaces">
-        <div className="rail-heading">{!pref.leftCollapsed && <><div><span className="eyebrow">PROJECT WORKSPACES</span><h2>Workspaces</h2></div><span className="count-pill">{project?.workspaces.length ?? "—"}</span></>}
-          <button className="rail-toggle" onClick={() => setPref({ leftCollapsed: !pref.leftCollapsed })} aria-label={pref.leftCollapsed ? "Expand workspace rail" : "Collapse workspace rail"}>{pref.leftCollapsed ? "›" : "‹"}</button></div>
-        {!pref.leftCollapsed && <><div className="project-path"><span className="folder-icon">▰</span><span><b>{project?.name ?? "Current project"}</b><small>Launch directory</small></span></div>
+        <div className="rail-heading">{!leftCollapsed && <><div><span className="eyebrow">PROJECT WORKSPACES</span><h2>Workspaces</h2></div><span className="count-pill">{project?.workspaces.length ?? "—"}</span></>}
+          <button className="rail-toggle" onClick={() => setLeftCollapsed(!leftCollapsed)} aria-label={leftCollapsed ? "Expand workspace rail" : "Collapse workspace rail"}>{leftCollapsed ? "›" : "‹"}</button></div>
+        {!leftCollapsed && <><div className="project-path"><span className="folder-icon">▰</span><span><b>{project?.name ?? "Current project"}</b><small>Launch directory</small></span></div>
           <div className="workspace-list">{loading && <div className="rail-message">Discovering workspaces…</div>}
             {project?.workspaces.map((item) => <WorkspaceButton key={item.id} item={item} selected={item.id === workspaceId} onClick={() => selectWorkspace(item.id)} />)}
             {project?.workspaces.length === 0 && !loading && <div className="rail-message">No workspace directories were found. Add one under workspaces/ and restart the UI.</div>}
             {projectIssue && <div className="inline-warning">{projectIssue}</div>}</div>
           <div className="rail-footer"><span className="footer-glyph">⌘</span><span><b>Startup discovery</b><small>Restart to add or remove</small></span></div></>}
-        {pref.leftCollapsed && <div className="collapsed-workspaces">{project?.workspaces.map((item) => <button key={item.id} className={"workspace-glyph " + (item.id === workspaceId ? "selected" : "")} onClick={() => selectWorkspace(item.id)} title={item.name} aria-label={"Select workspace " + item.name}>{item.name.slice(0, 1).toUpperCase()}</button>)}</div>}
+        {leftCollapsed && <div className="collapsed-workspaces">{project?.workspaces.map((item) => <button key={item.id} className={"workspace-glyph " + (item.id === workspaceId ? "selected" : "")} onClick={() => selectWorkspace(item.id)} title={item.name} aria-label={"Select workspace " + item.name}>{item.name.slice(0, 1).toUpperCase()}</button>)}</div>}
       </aside>
       <main className="stage-column" aria-label="Ordered stages">
         <div className="stage-column-scroll">
-          <div className="page-heading"><div><div className="eyebrow">WORKSPACE / {selectedSummary?.id ?? "—"}</div><h1>{selectedSummary?.name ?? "Select a workspace"}</h1><p className="page-subtitle">An ordered view of this workspace’s stage definitions and current position.</p></div>
-            {workspace?.checkpoint?.workflow_started && <div className="uuid-badge"><span className="uuid-dot" />WORKFLOW UUID CREATED</div>}</div>
+          <div className="page-heading"><div><div className="eyebrow">WORKSPACE / {selectedSummary?.id ?? "—"}</div><h1>{selectedSummary?.name ?? "Select a workspace"}</h1><p className="page-subtitle">An ordered view of this workspace’s stage definitions and current position.</p></div></div>
           {workspace?.status_issue && <div className="notice notice-error" role="alert"><span className="notice-symbol">!</span><div><b>Current checkpoint unavailable</b><p>{workspace.status_issue}</p><small>Movement is disabled until current status is readable.</small></div></div>}
           {projectIssue && <div className="notice notice-error" role="alert"><span className="notice-symbol">!</span><div><b>Project unavailable</b><p>{projectIssue}</p></div></div>}
-          {workspace?.observation && workspace.current_status === "unavailable" && <div className="inspector-section"><b>Latest attempt diagnostics</b>{workspace.observation.failure && <p>{workspace.observation.failure.message}</p>}
-            {workspace.observation.confirmed_checkpoint && <p>Last confirmed checkpoint: {checkpointPosition(workspace.observation.confirmed_checkpoint)}</p>}
-            {workspace.observation.attempted_checkpoint && <p>Attempted checkpoint: {checkpointPosition(workspace.observation.attempted_checkpoint)}</p>}
-            {workspace.observation.role_results.map((result, index) => (result.stdout !== null || result.stderr !== null) && <RoleOutput key={index} result={result} />)}</div>}
+          {workspace?.observation?.state === "stopped" && workspace.observation.failure && <div className="notice notice-error" role="alert"><span className="notice-symbol">!</span><div><b>Movement stopped</b><p>{workspace.observation.failure.message}</p></div></div>}
           {workspace?.checkpoint && <><div className="checkpoint-strip"><div className="checkpoint-main"><span className="checkpoint-icon">✓</span><div><span className="eyebrow">CURRENT CHECKPOINT</span><strong>{checkpointPosition(workspace.checkpoint)}</strong></div></div>
-            {workspace.checkpoint.pending_transition && <div className="pending-banner"><span className="pending-indicator">◐</span><span><b>Pending {workspace.checkpoint.pending_transition.direction}</b><small>Stage {workspace.checkpoint.pending_transition.stage.number} · {pendingEvidence(workspace.checkpoint.pending_transition.stage.number, workspace.observation) ?? "prior outcome unavailable"}</small></span></div>}
+            {workspace.checkpoint.pending_transition && <div className="pending-banner"><span className="pending-indicator">◐</span><span><b>Pending {workspace.checkpoint.pending_transition.direction}</b><small>Stage {workspace.checkpoint.pending_transition.stage.number}</small></span></div>}
             {workspace.movement_busy && <div className="active-banner"><span className="active-pulse" /><span><b>Movement active</b><small>{workspace.observation?.active_role ? "Stage " + workspace.observation.active_role.stage.number + " · " + workspace.observation.active_role.role : "Preparing movement"}</small></span></div>}</div>
             <div className="stages-heading"><div><span className="eyebrow">STAGE SEQUENCE</span><h2>Ordered progression</h2></div><span className="stage-count">{workspace.stages.length} {workspace.stages.length === 1 ? "stage" : "stages"}</span></div>
             <div className="stage-list">{workspace.stages.map((stage, index) => <StageCard key={stage.number} stage={stage} index={index} observation={workspace.observation} selected={stage.number === stageNumber} onClick={() => chooseStage(stage.number)} />)}</div>
           </>}
           {!workspace && !loading && <div className="welcome-panel"><div className="welcome-icon">⌁</div><span className="eyebrow">READY WHEN YOU ARE</span><h2>{project?.workspaces.length === 0 ? "No workspaces found" : "Choose a workspace"}</h2><p>{project?.workspaces.length === 0 ? "Add a workspace directory under workspaces/ and restart the UI." : "Select a workspace in the left rail to inspect its checkpoint and ordered stages."}</p></div>}
         </div>
-        <div className="action-dock"><div className="action-summary"><span className="action-orbit">{workspace?.movement_busy ? "◌" : "↗"}</span><div><b>{workspace?.observation?.state === "stopped" ? "Movement stopped at the last confirmed checkpoint" : workspace?.observation?.state === "complete" ? "Movement completed" : workspace?.movement_busy ? "Movement is in progress" : finalAccepted ? finalLabel : primary?.label ?? inactive}</b><small>{workspace?.observation?.active_role ? "Attempt in progress · " + workspace.observation.active_role.role + ". Output appears when the role returns." : primary?.detail ?? workspace?.status_issue ?? "No movement is currently available."}</small></div></div>
-          {movementIssue && <span className="movement-issue" role="status">{movementIssue}</span>}{ambiguous && <span className="movement-warning" role="alert">Inspect author-owned effects before continuing.</span>}
+        <div className="action-dock"><div className="action-summary"><span className="action-orbit">{workspace?.movement_busy ? "◌" : "↗"}</span><div><b>{workspace?.observation?.state === "stopped" ? "Movement stopped" : workspace?.observation?.state === "complete" ? "Movement completed" : workspace?.movement_busy ? "Movement is in progress" : finalAccepted ? finalLabel : primary?.label ?? inactive}</b><small>{workspace?.observation?.active_role ? "Attempt in progress · " + workspace.observation.active_role.role + ". Output appears when the role returns." : primary?.detail ?? workspace?.status_issue ?? "No movement is currently available."}</small></div></div>
+          {movementIssue && <span className="movement-issue" role="status">{movementIssue}</span>}
           <div className="movement-buttons">{alternate && <button className="secondary-action" onClick={() => void run(alternate)} disabled={busy || !workspace?.checkpoint}>{alternate.label}<span>↶</span></button>}
             {primary && <button className="primary-action" onClick={() => void run(primary)} disabled={busy || !workspace?.checkpoint}>{busy ? "Movement in progress" : primary.label}<span>{primary.choice.direction === "up" ? "→" : "↶"}</span></button>}
             {!primary && <button className="primary-action" disabled>{inactive}<span>{workspace?.stages.length ? "✓" : "·"}</span></button>}</div>
         </div>
       </main>
-      <div className={"inspector-resize " + (pref.rightCollapsed ? "hidden" : "")}><button className="resize-handle" role="separator" aria-label="Resize stage inspector" aria-orientation="vertical" aria-valuemin={minInspector} aria-valuemax={maxInspector} aria-valuenow={inspectorWidth} onPointerDown={resizeInspector} onKeyDown={resizeKeyboard}><span /></button></div>
-      <aside className="inspector-rail" aria-label="Selected stage inspector">{pref.rightCollapsed ? <button className="inspector-reopen" onClick={() => setPref({ rightCollapsed: false })} aria-label="Expand stage inspector">‹<span>INSPECTOR</span></button> :
-        <Inspector selectedStage={selectedStage} definition={definition} definitionIssue={definitionIssue} checkpoint={workspace?.checkpoint ?? null} observation={workspace?.observation ?? null} loading={Boolean(stageNumber !== null && !definition && !definitionIssue)} onCollapse={() => setPref({ rightCollapsed: true })} />}</aside>
+      <aside className="inspector-rail" aria-label="Selected stage inspector">{rightCollapsed ? <button className="inspector-reopen" onClick={() => setRightCollapsed(false)} aria-label="Expand stage inspector">‹<span>INSPECTOR</span></button> :
+        <Inspector selectedStage={selectedStage} definition={definition} definitionIssue={definitionIssue} checkpoint={workspace?.checkpoint ?? null} observation={workspace?.observation ?? null} loading={Boolean(stageNumber !== null && !definition && !definitionIssue)} onCollapse={() => setRightCollapsed(true)} />}</aside>
     </div>
   </div>;
 }
@@ -199,7 +168,7 @@ function Inspector({ selectedStage, definition, definitionIssue, checkpoint, obs
   checkpoint: CheckpointView | null; observation: MovementObservation | null; loading: boolean; onCollapse: () => void;
 }) {
   const results = selectedStage ? observation?.role_results.filter((result) => result.stage.number === selectedStage.number) ?? [] : [];
-  const failure = observation?.failure && selectedStage && (observation.failure.stage?.number === selectedStage.number || results.length > 0 || observation.failure.stage === null && observation.attempted_checkpoint) ? observation.failure : null;
+  const failure = observation?.failure && selectedStage && (observation.failure.stage?.number === selectedStage.number || results.length > 0) ? observation.failure : null;
   return <>
     <div className="inspector-header"><div><span className="eyebrow">DETAILS</span><h2>Stage inspector</h2></div><button className="rail-toggle" onClick={onCollapse} aria-label="Collapse stage inspector">›</button></div>
     <div className="inspector-scroll">{!selectedStage && <div className="inspector-empty"><span className="empty-icon">⌕</span><b>Select a stage</b><p>Selection only inspects a definition; it never runs a script.</p></div>}
@@ -208,7 +177,6 @@ function Inspector({ selectedStage, definition, definitionIssue, checkpoint, obs
         <section className="inspector-section"><div className="section-title"><span className="section-number">01</span><h4>Checkpoint state</h4></div>
           {failure && <div className="inspector-error" role="status"><b>{failure.kind === "checkpoint_save_failed" ? "Checkpoint was not confirmed" : "Observed failure"}</b><p>{failure.message}</p></div>}
           <div className={"state-card " + (selectedStage.state === "accepted" ? "success" : selectedStage.state === "pending" ? "pending" : "neutral")}><span className="state-card-icon">{selectedStage.state === "accepted" ? "✓" : selectedStage.state === "pending" ? "◐" : "○"}</span><span><b>{selectedStage.state === "accepted" ? "Applied" : selectedStage.state === "pending" ? "Pending " + (checkpoint?.pending_transition?.direction ?? "") : "Not applied"}</b><small>{selectedStage.is_accepted_checkpoint ? "Last confirmed accepted position" : "Current workspace state"}</small></span></div>
-          {observation?.attempted_checkpoint && <div className="attempted-checkpoint" role="note"><b>Attempted checkpoint · unconfirmed</b><p>Accepted position: {checkpointPosition(observation.attempted_checkpoint)}</p><small>Last confirmed: {checkpointPosition(observation.confirmed_checkpoint)}. Actual database contents may be uncertain after a save failure.</small></div>}
         </section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} results={results} failure={failure} /><RolePreview role="down" stage={selectedStage} results={results} failure={failure} /></section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} results={results} failure={failure} /><RolePreview role="verify-down" stage={selectedStage} results={results} failure={failure} /></section>
@@ -241,8 +209,7 @@ function CapturedStream({ streamName, value }: { streamName: "stdout" | "stderr"
 function movementActions(view: WorkspaceView): Action[] {
   const checkpoint = view.checkpoint; if (!checkpoint) return [];
   const pending = checkpoint.pending_transition, observation = view.observation;
-  const confirmedMatch = observation?.confirmed_checkpoint && JSON.stringify(observation.confirmed_checkpoint.state) === JSON.stringify(checkpoint.state);
-  const recovery = pending && confirmedMatch && observation?.state === "stopped" ? observation.verification_choices : null;
+  const recovery = pending && observation?.state === "stopped" ? observation.verification_choices : null;
   const label = (number: number) => number === 0 ? "baseline" : "Stage " + number + " · " + (view.stages.find((item) => item.number === number)?.name ?? "unknown");
   if (recovery && pending) return [
     { choice: recovery.retry, label: "Retry verify-" + recovery.retry.direction + " for Stage " + pending.stage.number, detail: "The mutation is not repeated by this verifier retry." },
@@ -253,12 +220,5 @@ function movementActions(view: WorkspaceView): Action[] {
     const stage = choice.direction === "up" ? view.stages.find((item) => item.number === choice.target_stage) : checkpoint.accepted_stage;
     return { choice, label: choice.direction === "up" ? "Advance to " + label(choice.target_stage) : "Back out Stage " + (stage?.number ?? "unknown") + " to " + label(choice.target_stage), detail: "Application supplied this immediate movement." };
   });
-}
-function ambiguousEffects(observation: MovementObservation | null | undefined): boolean {
-  return Boolean(observation?.failure && (observation.failure.kind === "checkpoint_save_failed" || observation.failure.kind === "process_failed" && (observation.failure.role === "up" || observation.failure.role === "down")));
-}
-function pendingEvidence(number: number, observation: MovementObservation | null): string | null {
-  const failure = observation?.failure; if (failure?.stage?.number === number && failure.role) return failure.role + " failed";
-  return observation?.role_results.some((result) => result.stage.number === number) ? "current attempt results retained" : null;
 }
 function checkpointPosition(checkpoint: CheckpointView | null): string { return checkpoint?.accepted_stage ? "Stage " + checkpoint.accepted_stage.number + " · " + checkpoint.accepted_stage.name : "Baseline · no accepted stages"; }

@@ -8,8 +8,6 @@ pub(super) struct MovementObservation {
     pub(super) state: &'static str,
     pub(super) active_role: Option<RoleIdentity>,
     pub(super) role_results: Vec<RoleObservation>,
-    pub(super) confirmed_checkpoint: Option<CheckpointView>,
-    pub(super) attempted_checkpoint: Option<CheckpointView>,
     pub(super) failure: Option<FailureView>,
     pub(super) verification_choices: Option<RecoveryChoicesView>,
 }
@@ -124,7 +122,6 @@ pub(super) struct PendingView {
 pub(super) struct CheckpointView {
     pub(super) accepted_stage: Option<StageIdentity>,
     pub(super) pending_transition: Option<PendingView>,
-    pub(super) workflow_started: bool,
     pub(super) state: CheckpointState,
 }
 #[derive(Clone, Serialize)]
@@ -135,7 +132,6 @@ pub(super) struct WorkspaceView {
     pub(super) status_issue: Option<String>,
     pub(super) checkpoint: Option<CheckpointView>,
     pub(super) movement_choices: Vec<MovementChoiceView>,
-    pub(super) selected_stage_number: Option<u32>,
     pub(super) stages: Vec<StageView>,
     pub(super) movement_busy: bool,
     pub(super) observation: Option<MovementObservation>,

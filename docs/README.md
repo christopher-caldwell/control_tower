@@ -47,13 +47,9 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 | [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Application-owned storage contracts with SQLite as the v0 runtime adapter. |
 | [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |
 | [ADR-0006](decisions/0006-loopback-web-ui.md) | Accepted | First graphical Entry uses embedded React over loopback HTTP/SSE; Tauri and live byte streaming remain unselected. |
-| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with persistent collapsible rails, declarative progression and a stage inspector. |
+| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with fixed-width collapsible rails, declarative progression and a stage inspector. |
 
 [The UI reference review](research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright screenshots/patterns behind ADR-0007. It is reference evidence, not a second UI specification.
-
-[The macOS delivery validation](research/2026-10-03-macos-ui-delivery.md) records the
-production binary owner walkthrough, browser screenshots, Rust/frontend checks,
-isolated installation, and graceful idle shutdown.
 
 [Playbook compliance](research/playbook-compliance.md) records the architecture correction. [Run-semantics validation](research/run-semantics-validation.md) records the later behavior correction and executed evidence. Neither is a replacement for the accepted decisions or a universal certification of future changes.
 

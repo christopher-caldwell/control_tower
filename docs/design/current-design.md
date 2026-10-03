@@ -73,9 +73,10 @@ Application exposes pure immediate movement choices on `WorkbenchStatus` and
 `MoveOutcome`, using the same pending-transition derivation as verifier-failure
 guidance. These choices identify mechanically available directions and actual
 stage-number targets; they do not establish safe recovery after ambiguous
-authored effects or failed persistence. HTTP mechanically maps and carries them
-with the corresponding confirmed checkpoint through reads, movement results,
-and SSE snapshots. React consumes supplied choices and owns wording and emphasis.
+authored effects or failed persistence. HTTP maps the choices and current
+checkpoint into its browser DTOs. React consumes supplied choices and owns
+wording and emphasis; it does not add a separate attempted/confirmed checkpoint
+presentation model.
 
 The web implementation remains inside CLI/Entry, with internal modules for DTOs,
 HTTP/static delivery, workspace inventory and selected-status mapping, in-process
@@ -100,7 +101,7 @@ right: selected-stage inspector
 bottom: declarative progression/recovery actions
 ```
 
-The left and right rails are visible by default and may be manually collapsed. The right inspector is also resizable and may remember local width/collapse preference. Stage selection is inspection only; it does not execute anything or alter the legal next transition.
+The left and right rails are visible by default and may be manually collapsed. Their widths are fixed in CSS, and collapse state lasts only while the page is open. Stage selection is inspection only; it does not execute anything or alter the legal next transition.
 
 Primary actions describe intent such as **Advance to 003 · Add suffix**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
 

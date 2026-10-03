@@ -3,7 +3,7 @@ use super::{
     workspace::{WorkspaceContext, unavailable_workspace_view, workspace_snapshot},
 };
 use axum::response::sse::Event as SseEvent;
-use control_tower_application::{Direction, ExecutionProgress, Stage, Workbench, WorkbenchState};
+use control_tower_application::{Direction, ExecutionProgress, Stage, Workbench};
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -238,8 +238,6 @@ pub(super) fn new_observation(direction: Direction, target_stage: u32) -> Moveme
         state: "running",
         active_role: None,
         role_results: Vec::new(),
-        confirmed_checkpoint: None,
-        attempted_checkpoint: None,
         failure: None,
         verification_choices: None,
     }
@@ -280,25 +278,5 @@ pub(super) fn stage_identity(stage: &Stage) -> StageIdentity {
     StageIdentity {
         number: stage.number,
         name: stage.name.clone(),
-    }
-}
-
-pub(super) fn checkpoint_for_state(state: &WorkbenchState, stages: &[Stage]) -> CheckpointView {
-    let accepted_stage = state
-        .completed_stage_count
-        .checked_sub(1)
-        .and_then(|index| stages.get(index))
-        .map(stage_identity);
-    let pending_transition = state.pending.and_then(|pending| {
-        stages.get(pending.stage_index).map(|stage| PendingView {
-            direction: pending.direction.as_str(),
-            stage: stage_identity(stage),
-        })
-    });
-    CheckpointView {
-        accepted_stage,
-        pending_transition,
-        workflow_started: state.uuid.is_some(),
-        state: CheckpointState::from(state),
     }
 }

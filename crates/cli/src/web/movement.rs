@@ -1,8 +1,7 @@
 use super::{
     dto::*,
     runtime::{
-        MovementPermit, RoleObservationInput, WorkspaceRuntime, checkpoint_for_state,
-        new_observation, stage_identity,
+        MovementPermit, RoleObservationInput, WorkspaceRuntime, new_observation, stage_identity,
     },
     workspace::WorkspaceContext,
 };
@@ -103,19 +102,12 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
     };
     observation.verification_choices = choices;
     match &outcome.status {
-        MoveStatus::Complete(state) => {
+        MoveStatus::Complete(_) => {
             observation.state = "complete";
-            observation.confirmed_checkpoint = Some(checkpoint_for_state(state, &outcome.stages));
-            observation.attempted_checkpoint = None;
             observation.failure = None;
         }
-        MoveStatus::Stopped { state, failure } => {
+        MoveStatus::Stopped { failure, .. } => {
             observation.state = "stopped";
-            observation.confirmed_checkpoint = Some(checkpoint_for_state(state, &outcome.stages));
-            if let TransitionFailure::StateCouldNotBeSaved { attempted, .. } = failure {
-                observation.attempted_checkpoint =
-                    Some(checkpoint_for_state(attempted, &outcome.stages));
-            }
             let (kind, stage_number, role) = match failure {
                 TransitionFailure::MissingExecutable { stage_number, role } => (
                     "missing_executable",

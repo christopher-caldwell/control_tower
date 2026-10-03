@@ -80,9 +80,9 @@ runtimes to list workspace names.
 
 The desktop shell shows the launch Project, a manually collapsible workspace rail,
 an ordered stage narrative, a persistent selected-stage inspector, and a progression
-action region. It has no mobile or tablet layout. The current inspector includes a
-local width control; rail collapse and inspector width are browser-local display
-preferences.
+action region. It has no mobile or tablet layout. The inspector has a fixed CSS
+width. Both rails can be collapsed and reopened while the UI is running;
+collapse state resets when the page reloads.
 
 Selecting a workspace opens its live view. Selecting any stage changes inspection
 only: it does not execute a script, write a checkpoint, or change the movement target.
@@ -136,8 +136,8 @@ Each workspace has one in-process admission guard. It covers the blocking Workbe
 operation and final snapshot publication, including when the browser request ends.
 This is local single-instance coordination; there is no interprocess lock, queue,
 durable execution history, or cancellation framework. A stopped or failed movement
-is reported with its confirmed checkpoint and ordinary error details. Process results
-do not imply checkpoint acceptance when Application could not complete or save the
+is reported with the current checkpoint and ordinary error text. Process results do
+not imply checkpoint acceptance when Application could not complete or save the
 movement.
 
 Project inventory is separate from per-workspace status. The browser loads names
@@ -158,7 +158,3 @@ The [UI reference review](../research/2026-10-02-ui-reference-review.md) retains
 publisher-attributed source screenshots and patterns borrowed from Dagu, Inngest,
 Decagon, and Playwright. The links are design context rather than runtime assets or
 newly captured implementation screenshots.
-
-The [macOS delivery validation](../research/2026-10-03-macos-ui-delivery.md) is a
-record of its original platform-specific run. Its platform and screenshot checks are
-historical evidence, not completion requirements for the current loopback host.

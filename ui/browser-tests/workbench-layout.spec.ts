@@ -4,7 +4,6 @@ import type { DefinitionView, ProjectView, WorkspaceView } from "../src/types";
 const checkpoint = {
   accepted_stage: { number: 10, name: "seed" },
   pending_transition: null,
-  workflow_started: true,
   state: { completed_stage_count: 1, uuid: "fixture-run", pending: null },
 };
 const workspace: WorkspaceView = {
@@ -16,7 +15,6 @@ const workspace: WorkspaceView = {
   observation: null,
   checkpoint,
   movement_choices: [{ direction: "up", target_stage: 200 }, { direction: "down", target_stage: 0 }],
-  selected_stage_number: 10,
   stages: [
     { number: 10, name: "seed", state: "accepted", is_accepted_checkpoint: true, definitions: [{ role: "up", path: "stages/010-seed/up" }] },
     { number: 200, name: "finish", state: "future", is_accepted_checkpoint: false, definitions: [{ role: "up", path: "stages/200-finish/up" }] },
@@ -63,13 +61,17 @@ async function installFixtures(page: Page, failMovement = false, onMovement?: (b
   return { movementRequests: () => movementCount };
 }
 
-test("the desktop inspector stays in the right rail and can be collapsed and reopened", async ({ page }) => {
+test("both desktop rails can be collapsed and reopened", async ({ page }) => {
   await installFixtures(page);
+  await page.getByRole("button", { name: "Collapse workspace rail" }).click();
+  await page.getByRole("button", { name: "Expand workspace rail" }).click();
   await expect(page.getByRole("complementary", { name: "Selected stage inspector" })).toBeVisible();
   await page.getByRole("button", { name: "Collapse stage inspector" }).click();
   await page.getByRole("button", { name: "Expand stage inspector" }).click();
   await expect(page.getByRole("complementary", { name: "Selected stage inspector" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "seed" })).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Resize stage inspector" })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("control-tower-workbench-layout-v1"))).toBeNull();
 });
 
 test("stage selection inspects a future definition without submitting movement", async ({ page }) => {
