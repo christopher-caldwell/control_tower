@@ -221,7 +221,7 @@ describe("desktop workbench", () => {
     expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
     expect(screen.getAllByText("Pending down").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("This is also the last confirmed checkpoint. The pending transition has not been accepted.")).toBeInTheDocument();
-    expect(screen.getByText("Pending · outcome unknown")).toBeInTheDocument();
+    expect(screen.getByText("Pending · prior outcome unavailable")).toBeInTheDocument();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText("Prior outcome unavailable").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("Not run")).not.toBeInTheDocument();
@@ -291,6 +291,51 @@ describe("desktop workbench", () => {
     expect(await screen.findByRole("button", { name: /Retry verify-down for Stage 200/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Reapply Stage 200 upward/ })).toBeEnabled();
     expect(screen.queryByRole("button", { name: /Retry verify-up/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Pending · verify-down failed")).toBeInTheDocument();
+    expect(screen.getByText("Observed verify-down failed")).toBeInTheDocument();
+    expect(screen.queryByText("Prior execution result is not retained")).not.toBeInTheDocument();
+  });
+
+  it.each(["verify-up", "verify-down"] as const)("shows retained %s failure evidence for a pending checkpoint", async (role) => {
+    const pending = {
+      accepted_stage: role === "verify-up" ? { number: 10, name: "seed" } : { number: 200, name: "finish" },
+      pending_transition: { direction: role === "verify-up" ? "up" as const : "down" as const, stage: { number: 200, name: "finish" } },
+      workflow_started: true,
+    };
+    const failure: NonNullable<MovementObservation["failure"]> = {
+      kind: "process_failed",
+      message: `${role} exited with status 9`,
+      stage: { number: 200, name: "finish" },
+      role,
+    };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: pending,
+      selected_stage_number: 200,
+      stages: workspace.stages.map((stage) => stage.number === 200
+        ? { ...stage, state: "pending", is_accepted_checkpoint: role === "verify-down" }
+        : { ...stage, state: role === "verify-up" ? "accepted" : "future", is_accepted_checkpoint: role === "verify-up" }),
+      observation_revision: 8,
+      observation: {
+        workspace_id: "fixture", operation_id: `failed-${role}`, server_instance_id: "server-one", revision: 8,
+        direction: role === "verify-up" ? "up" : "down", target_stage: role === "verify-up" ? 200 : 10,
+        state: "stopped", active_role: null, role_results: [roleResult(200, role, `output-${role}`, "failed")],
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, attempted_checkpoint: null,
+        failure,
+        verification_choices: {
+          retry: { direction: role === "verify-up" ? "up" : "down", target_stage: role === "verify-up" ? 200 : 10 },
+          reverse: { direction: role === "verify-up" ? "down" : "up", target_stage: role === "verify-up" ? 10 : 200 },
+        },
+      },
+    };
+
+    render(<App />);
+
+    expect(await screen.findByText(`Pending · ${role} failed`)).toBeInTheDocument();
+    expect(screen.getByText(`Observed ${role} failed`)).toBeInTheDocument();
+    expect(screen.getAllByText("Process failed · exit 9 · 3 ms").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("Prior execution result is not retained")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prior outcome unavailable")).not.toBeInTheDocument();
   });
 
   it("warns after a failed reverse mutation while keeping existing movement choices available", async () => {
@@ -347,11 +392,146 @@ describe("desktop workbench", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "finish" });
     await user.click(screen.getByRole("button", { name: /STAGE 010/ }));
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 6, movement_busy: false,
+      checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      observation: null,
+    });
+    expect(screen.getByRole("heading", { name: "seed" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Refresh workspace status" }));
     await waitFor(() => {
       expect(requests.filter((request) => request.path === "/api/workspaces/fixture")).toHaveLength(2);
     });
     expect(screen.getByRole("heading", { name: "seed" })).toBeInTheDocument();
+  });
+
+  it("updates the observing tab's rail from a terminal resync and protects it from a delayed project read", async () => {
+    const user = userEvent.setup();
+    const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
+    const staleProject: ProjectView = {
+      ...project,
+      workspaces: project.workspaces.map((item) => item.id === "fixture"
+        ? { ...item, accepted_stage: null, pending_transition: null }
+        : item),
+    };
+    activeProject = staleProject;
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: baseline,
+      observation: null,
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    const delayedProjectRead = deferred<Response>();
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    let projectReads = 0;
+    mockFetch.mockImplementation((input, init) => {
+      if (String(input) === "/api/project") {
+        projectReads += 1;
+        if (projectReads === 2) return delayedProjectRead.promise;
+      }
+      return originalFetch(input, init);
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: /Advance to Stage 10/ });
+    await user.click(screen.getByRole("button", { name: "Refresh workspace status" }));
+    await waitFor(() => expect(projectReads).toBe(2));
+
+    const checkpoint = { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true };
+    const completed: MovementObservation = {
+      workspace_id: "fixture", operation_id: "other-tab-completed", server_instance_id: "server-one", revision: 20,
+      direction: "up", target_stage: 200, state: "complete", active_role: null,
+      role_results: [roleResult(200, "up", "other-tab-output")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 20, movement_busy: false,
+      checkpoint, observation: completed,
+    });
+
+    expect(await screen.findByRole("button", { name: /Applied · 200/ })).toBeInTheDocument();
+    expect(screen.getByText("200 · finish")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+    delayedProjectRead.resolve(jsonResponse(staleProject));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh workspace status" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: /Applied · 200/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+  });
+
+  it("updates the rail and central controls after reconnecting to a newer checkpoint", async () => {
+    const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: baseline,
+      observation: null,
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    render(<App />);
+    await screen.findByRole("button", { name: /Advance to Stage 10/ });
+    const checkpoint = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+    activeWorkspace = {
+      ...activeWorkspace,
+      checkpoint,
+      observation_revision: 9,
+      observation: {
+        workspace_id: "fixture", operation_id: "second-tab-finished", server_instance_id: "server-one", revision: 9,
+        direction: "up", target_stage: 10, state: "complete", active_role: null,
+        role_results: [roleResult(10, "up", "second-tab-output")], omitted_role_results: 0, outputs_evicted: 0,
+        confirmed_checkpoint: checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+      },
+      stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
+    };
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    act(() => source.onerror?.(new Event("error")));
+
+    expect(await screen.findByRole("button", { name: /Applied · 10/ })).toBeInTheDocument();
+    expect(screen.getByText("10 · seed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 10 to baseline/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Advance to Stage 10/ })).not.toBeInTheDocument();
+  });
+
+  it("recovers workspace rail and central controls when a completed movement POST response is lost", async () => {
+    const user = userEvent.setup();
+    const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: baseline,
+      observation: null,
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    const completedCheckpoint = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    mockFetch.mockImplementation((input, init) => {
+      if (String(input) === "/api/workspaces/fixture/movements" && init?.method === "POST") {
+        activeWorkspace = {
+          ...activeWorkspace,
+          checkpoint: completedCheckpoint,
+          observation_revision: 4,
+          observation: {
+            workspace_id: "fixture", operation_id: "post-response-lost", server_instance_id: "server-one", revision: 4,
+            direction: "up", target_stage: 10, state: "complete", active_role: null,
+            role_results: [roleResult(10, "up", "post-lost-output")], omitted_role_results: 0, outputs_evicted: 0,
+            confirmed_checkpoint: completedCheckpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+          },
+          stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
+        };
+        requests.push({ path: String(input), method: "POST" });
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return originalFetch(input, init);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Advance to Stage 10/ }));
+
+    expect(await screen.findByText("Movement completed")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Applied · 10/ })).toBeInTheDocument();
+    expect(screen.getByText("10 · seed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 10 to baseline/ })).toBeEnabled();
+    expect(screen.queryByText(/Movement response lost;/)).not.toBeInTheDocument();
   });
 
   it("clears the fragment token before exchanging it for a same-origin session cookie", async () => {
@@ -390,8 +570,8 @@ describe("desktop workbench", () => {
       attempted_checkpoint: null, failure: null, verification_choices: null,
     };
     render(<App />);
-    await screen.findByRole("heading", { name: "finish" });
-    await user.click(screen.getByRole("button", { name: /STAGE 010/ }));
+    await screen.findByRole("heading", { name: "seed" });
+    await user.click(screen.getByRole("button", { name: /STAGE 200/ }));
     const advance = screen.getByRole("button", { name: /Advance to Stage 200/ });
     expect(advance).toBeEnabled();
     await user.click(advance);
@@ -569,6 +749,7 @@ describe("desktop workbench", () => {
     expect(await screen.findByText("Movement completed")).toBeInTheDocument();
     expect(screen.getByText("200 · finish")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+    expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Advance to Stage 10/ })).not.toBeInTheDocument();
   });
 

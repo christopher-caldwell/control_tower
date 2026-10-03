@@ -64,14 +64,18 @@ export function App() {
   const [movementSubmittingFor, setMovementSubmittingFor] = useState<Record<string, number>>({});
   const [movementIssues, setMovementIssues] = useState<Record<string, string>>({});
   const detailRevision = useRef(0);
+  const projectReadRevision = useRef(0);
   const definitionRevision = useRef(0);
   const previousWorkspaceId = useRef<string | null>(null);
   const serverInstance = useRef<string | null>(null);
   const selectedWorkspaceRef = useRef<string | null>(null);
   const selectedStageRef = useRef<number | null>(null);
+  const deliberateStageSelection = useRef<{ workspaceId: string; stageNumber: number } | null>(null);
   const movementSequence = useRef(0);
   const activeMovementRequests = useRef(new Map<string, number>());
+  const lostMovementResponses = useRef(new Map<string, { requestId: number; baselineRevision: number }>());
   const latestSnapshots = useRef(new Map<string, RuntimeSnapshot>());
+  const latestWorkspaceViews = useRef(new Map<string, WorkspaceView>());
   const latestEventRevisions = useRef(new Map<string, { server_instance_id: string; revision: number }>());
 
   useEffect(() => {
@@ -102,26 +106,34 @@ export function App() {
   const inspectorWidth = Math.max(minimumInspectorWidth, Math.min(preferences.rightWidth, maxInspectorWidth));
 
   async function loadProject(showRefreshing = false) {
+    const requestRevision = ++projectReadRevision.current;
     if (showRefreshing) setRefreshing(true);
     setProjectIssue(null);
     try {
       await bootstrapSession();
       const view = await api<ProjectView>("/api/project");
-      setProject(view);
+      if (requestRevision !== projectReadRevision.current) return;
+      setProject(reconcileProjectSummaries(view, latestSnapshots.current));
       if (showRefreshing) setWorkspaceRefreshVersion((version) => version + 1);
       setSelectedWorkspaceId((current) => {
         const selected = current && view.workspaces.some((item) => item.id === current)
           ? current
           : view.workspaces.find((item) => item.available)?.id ?? view.workspaces[0]?.id ?? null;
-        if (selected !== current) selectedStageRef.current = null;
+        if (selected !== current) {
+          selectedStageRef.current = null;
+          deliberateStageSelection.current = null;
+        }
         selectedWorkspaceRef.current = selected;
         return selected;
       });
     } catch (error) {
+      if (requestRevision !== projectReadRevision.current) return;
       setProjectIssue(error instanceof Error ? error.message : "Could not reach the local Control Tower host.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestRevision === projectReadRevision.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }
 
@@ -136,6 +148,7 @@ export function App() {
     if (workspaceChanged) {
       setWorkspace(null);
       selectedStageRef.current = null;
+      deliberateStageSelection.current = null;
       setSelectedStageNumber(null);
       setDefinition(null);
       setDefinitionIssue(null);
@@ -161,16 +174,17 @@ export function App() {
           return;
         }
         rememberWorkspaceView(latestSnapshots.current, reconciled);
+        latestWorkspaceViews.current.set(selectedWorkspaceId, reconciled);
         rememberEventRevision(latestEventRevisions.current, selectedWorkspaceId, reconciled.server_instance_id, reconciled.observation_revision);
+        updateProjectSummary(selectedWorkspaceId, reconciled.checkpoint);
+        resolveLostMovementResponse(selectedWorkspaceId, reconciled);
         setWorkspace((current) => {
           if (current?.workspace.id === selectedWorkspaceId
             && current.server_instance_id === reconciled.server_instance_id
             && current.observation_revision > reconciled.observation_revision) return current;
           return reconciled;
         });
-        setSelectedStageNumber((current) => current !== null && reconciled.stages.some((stage) => stage.number === current)
-          ? current
-          : reconciled.selected_stage_number);
+        reconcileInspectionSelection(selectedWorkspaceId, reconciled);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || revision !== detailRevision.current) return;
@@ -201,6 +215,19 @@ export function App() {
         if (fence?.server_instance_id === snapshot.server_instance_id && fence.revision > snapshot.revision) return;
         latestSnapshots.current.set(workspaceId, snapshot);
         rememberEventRevision(latestEventRevisions.current, workspaceId, snapshot.server_instance_id, snapshot.revision);
+        const cachedView = latestWorkspaceViews.current.get(workspaceId);
+        if (cachedView) {
+          const reconciled = applyRuntimeSnapshot(cachedView, snapshot);
+          if (reconciled.observation_revision === snapshot.revision) {
+            latestWorkspaceViews.current.set(workspaceId, reconciled);
+            updateProjectSummary(workspaceId, reconciled.checkpoint);
+            reconcileInspectionSelection(workspaceId, reconciled);
+            resolveLostMovementResponse(workspaceId, reconciled);
+          }
+        } else {
+          const checkpoint = snapshot.observation?.confirmed_checkpoint ?? snapshot.checkpoint;
+          if (checkpoint) updateProjectSummary(workspaceId, checkpoint);
+        }
         setWorkspace((current) => {
           if (!current || current.workspace.id !== workspaceId
             || current.server_instance_id !== snapshot.server_instance_id
@@ -228,7 +255,11 @@ export function App() {
           return;
         }
         rememberWorkspaceView(latestSnapshots.current, reconciled);
+        latestWorkspaceViews.current.set(workspaceId, reconciled);
         rememberEventRevision(latestEventRevisions.current, workspaceId, reconciled.server_instance_id, reconciled.observation_revision);
+        updateProjectSummary(workspaceId, reconciled.checkpoint);
+        reconcileInspectionSelection(workspaceId, reconciled);
+        resolveLostMovementResponse(workspaceId, reconciled);
         setWorkspace((current) => {
           if (!current || current.workspace.id !== workspaceId
             || current.server_instance_id !== reconciled.server_instance_id
@@ -276,6 +307,30 @@ export function App() {
       source.close();
     };
   }, [selectedWorkspaceId]);
+
+  function updateProjectSummary(workspaceId: string, checkpoint: WorkspaceView["checkpoint"]) {
+    setProject((current) => current ? updateWorkspaceSummary(current, workspaceId, checkpoint) : current);
+  }
+
+  function reconcileInspectionSelection(workspaceId: string, view: WorkspaceView) {
+    if (selectedWorkspaceRef.current !== workspaceId) return;
+    const stageNumber = preferredInspectionStage(view, deliberateStageSelection.current);
+    selectedStageRef.current = stageNumber;
+    setSelectedStageNumber(stageNumber);
+  }
+
+  function resolveLostMovementResponse(workspaceId: string, view: WorkspaceView) {
+    const lost = lostMovementResponses.current.get(workspaceId);
+    const observation = view.observation;
+    if (!lost || !observation || view.movement_busy || observation.state === "running"
+      || view.observation_revision <= lost.baselineRevision) return;
+    lostMovementResponses.current.delete(workspaceId);
+    setMovementIssues((current) => {
+      if (!current[workspaceId]?.startsWith("Movement response lost;")) return current;
+      const { [workspaceId]: _previous, ...rest } = current;
+      return rest;
+    });
+  }
 
   useEffect(() => {
     const revision = ++definitionRevision.current;
@@ -360,6 +415,8 @@ export function App() {
     const workspaceId = selectedWorkspaceId;
     const requestId = ++movementSequence.current;
     activeMovementRequests.current.set(workspaceId, requestId);
+    lostMovementResponses.current.delete(workspaceId);
+    const baselineRevision = workspace.observation_revision;
     setMovementSubmittingFor((current) => ({ ...current, [workspaceId]: requestId }));
     setMovementIssues((current) => {
       const { [workspaceId]: _previous, ...rest } = current;
@@ -381,6 +438,7 @@ export function App() {
         action.choice,
       );
       if (activeMovementRequests.current.get(workspaceId) !== requestId) return;
+      lostMovementResponses.current.delete(workspaceId);
       const previousSnapshot = latestSnapshots.current.get(workspaceId);
       if (previousSnapshot && previousSnapshot.server_instance_id === observation.server_instance_id
         && previousSnapshot.revision > observation.revision) return;
@@ -400,6 +458,10 @@ export function App() {
       };
       latestSnapshots.current.set(workspaceId, snapshot);
       rememberEventRevision(latestEventRevisions.current, workspaceId, observation.server_instance_id, observation.revision);
+      const cachedView = latestWorkspaceViews.current.get(workspaceId) ?? workspace;
+      const reconciled = applyRuntimeSnapshot(cachedView, snapshot);
+      latestWorkspaceViews.current.set(workspaceId, reconciled);
+      updateProjectSummary(workspaceId, reconciled.checkpoint);
       setWorkspace((current) => {
         if (selectedWorkspaceRef.current !== workspaceId
           || !current || current.workspace.id !== workspaceId
@@ -407,9 +469,6 @@ export function App() {
           || current.observation_revision > observation.revision) return current;
         return applyRuntimeSnapshot(current, snapshot);
       });
-      setProject((current) => current && observation.confirmed_checkpoint
-        ? updateWorkspaceSummary(current, workspaceId, observation.confirmed_checkpoint)
-        : current);
       const relevantStage = observation.failure?.stage?.number
         ?? observation.role_results.at(-1)?.stage.number;
       if (selectedWorkspaceRef.current === workspaceId
@@ -427,10 +486,18 @@ export function App() {
       }
     } catch (error) {
       if (activeMovementRequests.current.get(workspaceId) === requestId) {
-        setMovementIssues((current) => ({
-          ...current,
-          [workspaceId]: error instanceof Error ? error.message : "Movement could not be submitted.",
-        }));
+        if (error instanceof TypeError) {
+          lostMovementResponses.current.set(workspaceId, { requestId, baselineRevision });
+          setMovementIssues((current) => ({
+            ...current,
+            [workspaceId]: "Movement response lost; waiting for the latest workspace observation.",
+          }));
+        } else {
+          setMovementIssues((current) => ({
+            ...current,
+            [workspaceId]: error instanceof Error ? error.message : "Movement could not be submitted.",
+          }));
+        }
       }
       void refreshWorkspace(workspaceId);
     } finally {
@@ -462,7 +529,11 @@ export function App() {
         return;
       }
       rememberWorkspaceView(latestSnapshots.current, reconciled);
+      latestWorkspaceViews.current.set(workspaceId, reconciled);
       rememberEventRevision(latestEventRevisions.current, workspaceId, reconciled.server_instance_id, reconciled.observation_revision);
+      updateProjectSummary(workspaceId, reconciled.checkpoint);
+      reconcileInspectionSelection(workspaceId, reconciled);
+      resolveLostMovementResponse(workspaceId, reconciled);
       setWorkspace((current) => {
         if (selectedWorkspaceRef.current !== workspaceId
           || !current || current.workspace.id !== workspaceId
@@ -476,7 +547,10 @@ export function App() {
   }
 
   function selectWorkspace(workspaceId: string) {
-    if (selectedWorkspaceRef.current !== workspaceId) selectedStageRef.current = null;
+    if (selectedWorkspaceRef.current !== workspaceId) {
+      selectedStageRef.current = null;
+      deliberateStageSelection.current = null;
+    }
     selectedWorkspaceRef.current = workspaceId;
     setSelectedWorkspaceId(workspaceId);
   }
@@ -529,7 +603,7 @@ export function App() {
             {workspace && <>
               <div className="checkpoint-strip">
                 <div className="checkpoint-main"><span className="checkpoint-icon">✓</span><div><span className="eyebrow">LAST CONFIRMED CHECKPOINT</span><strong>{workspace.checkpoint.accepted_stage ? `${workspace.checkpoint.accepted_stage.number} · ${workspace.checkpoint.accepted_stage.name}` : "Baseline · no accepted stages"}</strong></div></div>
-                {workspace.checkpoint.pending_transition && <div className="pending-banner"><span className="pending-indicator">◐</span><span><b>Pending {workspace.checkpoint.pending_transition.direction}</b><small>Stage {workspace.checkpoint.pending_transition.stage.number} · prior outcome unavailable</small></span></div>}
+                {workspace.checkpoint.pending_transition && <div className="pending-banner"><span className="pending-indicator">◐</span><span><b>Pending {workspace.checkpoint.pending_transition.direction}</b><small>Stage {workspace.checkpoint.pending_transition.stage.number} · {pendingEvidenceSummary(workspace.checkpoint.pending_transition.stage.number, workspace.observation) ?? "prior outcome unavailable"}</small></span></div>}
                 {workspace.movement_busy && <div className="active-banner"><span className="active-pulse" /><span><b>Movement active</b><small>{workspace.observation?.active_role ? `Stage ${workspace.observation.active_role.stage.number} · ${workspace.observation.active_role.role} attempt` : "Preparing movement"}</small></span></div>}
               </div>
 
@@ -537,6 +611,7 @@ export function App() {
               <div className="stage-list">
                 {workspace.stages.map((stage, index) => <StageCard key={stage.number} stage={stage} index={index} observation={workspace.observation} selected={stage.number === selectedStageNumber} onClick={() => {
                   selectedStageRef.current = stage.number;
+                  deliberateStageSelection.current = { workspaceId: workspace.workspace.id, stageNumber: stage.number };
                   setSelectedStageNumber(stage.number);
                 }} />)}
               </div>
@@ -627,10 +702,10 @@ function Inspector({ selectedStage, selectedStageNumber, definition, definitionI
     <div className="inspector-scroll">
       {!selectedStage && <div className="inspector-empty"><span className="empty-icon">⌕</span><b>Select a stage</b><p>Choose any stage to inspect its definition. Selection never runs a script.</p></div>}
       {selectedStage && <>
-        <section className="inspector-stage-title"><span className="stage-index-label">STAGE {String(selectedStage.number).padStart(3, "0")}</span><h3>{selectedStage.name}</h3><span className={`status-pill pill-${selectedStage.state}`}>{selectedStage.state === "accepted" ? "Applied" : selectedStage.state === "pending" ? "Pending · outcome unknown" : "Future stage"}</span></section>
+        <section className="inspector-stage-title"><span className="stage-index-label">STAGE {String(selectedStage.number).padStart(3, "0")}</span><h3>{selectedStage.name}</h3><span className={`status-pill pill-${selectedStage.state}`}>{selectedStage.state === "accepted" ? "Applied" : selectedStage.state === "pending" ? `Pending · ${pendingEvidenceSummary(selectedStage.number, observation) ?? "prior outcome unavailable"}` : "Future stage"}</span></section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">01</span><h4>Checkpoint state</h4></div>
           {relevantFailure && <div className="inspector-error" role="status"><b>{relevantFailure.kind === "checkpoint_save_failed" ? "Checkpoint was not confirmed" : "Observed failure"}</b><p>{relevantFailure.message}</p>{observation?.attempted_checkpoint && <small>Last confirmed position remains separate from the attempted checkpoint shown by this movement.</small>}</div>}
-          {currentIsAccepted ? <div className="state-card success"><span className="state-card-icon">✓</span><span><b>Applied</b><small>{selectedStage.is_accepted_checkpoint ? "Last confirmed accepted position" : "Accepted earlier · execution evidence not retained"}</small></span></div> : currentIsPending ? <div className="state-card pending"><span className="state-card-icon">◐</span><span><b>{checkpoint?.pending_transition?.direction === "down" ? "Pending down" : "Pending up"}</b><small>Prior execution result is not retained</small></span></div> : <div className="state-card neutral"><span className="state-card-icon">○</span><span><b>Not applied</b><small>Future stage in the ordered sequence</small></span></div>}
+          {currentIsAccepted ? <div className="state-card success"><span className="state-card-icon">✓</span><span><b>Applied</b><small>{selectedStage.is_accepted_checkpoint ? "Last confirmed accepted position" : "Accepted earlier · execution evidence not retained"}</small></span></div> : currentIsPending ? <div className="state-card pending"><span className="state-card-icon">◐</span><span><b>{checkpoint?.pending_transition?.direction === "down" ? "Pending down" : "Pending up"}</b><small>{pendingEvidenceSummary(selectedStage.number, observation) ? `Observed ${pendingEvidenceSummary(selectedStage.number, observation)}` : "Prior execution result is not retained"}</small></span></div> : <div className="state-card neutral"><span className="state-card-icon">○</span><span><b>Not applied</b><small>Future stage in the ordered sequence</small></span></div>}
           {selectedStage.is_accepted_checkpoint && currentIsPending && <p className="subtle-note">This is also the last confirmed checkpoint. The pending transition has not been accepted.</p>}
           {observation?.attempted_checkpoint && <div className="attempted-checkpoint" role="note">
             <b>Attempted checkpoint · unconfirmed</b>
@@ -639,8 +714,8 @@ function Inspector({ selectedStage, selectedStageNumber, definition, definitionI
             <small>Workbench last confirmed: {checkpointPosition(observation.confirmed_checkpoint ?? checkpoint)}. After an ambiguous save failure, actual database contents may be uncertain.</small>
           </div>}
         </section>
-        <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /><RolePreview role="down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /></section>
-        <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /><RolePreview role="verify-down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} />{selectedStage.definitions.every((role) => !role.role.startsWith("verify-")) && <p className="subtle-note">No verifier configured. Missing verification is not a passing result.</p>}</section>
+        <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} failure={relevantFailure} /><RolePreview role="down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} failure={relevantFailure} /></section>
+        <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} failure={relevantFailure} /><RolePreview role="verify-down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} failure={relevantFailure} />{selectedStage.definitions.every((role) => !role.role.startsWith("verify-")) && <p className="subtle-note">No verifier configured. Missing verification is not a passing result.</p>}</section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">04</span><h4>Captured output</h4></div>
           {stageResults.length === 0 && <div className="output-empty"><span aria-hidden="true">⌁</span><div><b>{selectedStage.state === "accepted" ? "No retained output" : selectedStage.state === "pending" ? "Prior output unavailable" : "No output yet"}</b><small>Only this process session’s latest movement results are retained.</small></div></div>}
           {stageResults.map((result) => <RoleOutput key={outputIdentity(workspaceId, observation?.operation_id, result)} workspaceId={workspaceId} operationId={observation?.operation_id ?? null} result={result} />)}
@@ -660,22 +735,27 @@ function Inspector({ selectedStage, selectedStageNumber, definition, definitionI
   </>;
 }
 
-function RolePreview({ role, stage, definitions, results }: { role: string; stage: StageView; definitions: StageView["definitions"]; results: RoleObservation[] }) {
+function RolePreview({ role, stage, definitions, results, failure }: { role: string; stage: StageView; definitions: StageView["definitions"]; results: RoleObservation[]; failure: MovementObservation["failure"] }) {
   const configured = definitions.find((item) => item.role === role);
   const result = results.filter((item) => item.role === role).at(-1);
-  const outcome = result ? roleOutcomeLabel(result) : configured
-    ? stage.state === "accepted" ? "Applied · historical result unavailable" : stage.state === "pending" ? "Prior outcome unavailable" : "Not attempted"
+  const observedRoleFailure = failure?.stage?.number === stage.number && failure.role === role ? failure : null;
+  const stageHasEvidence = results.length > 0 || (failure?.stage?.number === stage.number);
+  const outcome = result ? roleOutcomeLabel(result) : observedRoleFailure
+    ? `Observed failure · ${observedRoleFailure.message}`
+    : configured
+      ? stage.state === "accepted" ? "Applied · historical result unavailable" : stage.state === "pending" ? stageHasEvidence ? "No retained result for this role" : "Prior outcome unavailable" : "Not attempted"
     : role.startsWith("verify-") ? "Not configured" : "Missing · movement unavailable";
   const status = result?.state === "succeeded" ? "Process OK"
     : result?.state === "failed" ? `Exit ${result.exit_code ?? "unknown"}`
       : result?.state === "launch_failed" ? "Launch failed"
         : result?.state === "in_progress" ? "In progress"
-          : configured ? stage.state === "accepted" ? "Applied" : stage.state === "future" ? "Not attempted" : "Unknown"
+          : observedRoleFailure ? "Failed"
+            : configured ? stage.state === "accepted" ? "Applied" : stage.state === "future" ? "Not attempted" : "Unknown"
             : role.startsWith("verify-") ? "Optional" : "Missing";
   return <div className={`role-row ${configured ? "configured" : "not-configured"}`}>
-    <span className="role-result-mark" aria-hidden="true">{result?.state === "succeeded" ? "✓" : result?.state === "failed" || result?.state === "launch_failed" ? "!" : result?.state === "in_progress" ? "◌" : configured ? "·" : "—"}</span>
+    <span className="role-result-mark" aria-hidden="true">{result?.state === "succeeded" ? "✓" : result?.state === "failed" || result?.state === "launch_failed" || observedRoleFailure ? "!" : result?.state === "in_progress" ? "◌" : configured ? "·" : "—"}</span>
     <span className="role-row-copy"><b>{role}</b><small>{outcome}</small></span>
-    <span className={`role-status ${result?.state === "failed" || result?.state === "launch_failed" ? "error" : configured && !result && stage.state === "pending" ? "unknown" : ""}`}>{status}</span>
+    <span className={`role-status ${result?.state === "failed" || result?.state === "launch_failed" || observedRoleFailure ? "error" : configured && !result && stage.state === "pending" ? "unknown" : ""}`}>{status}</span>
   </div>;
 }
 
@@ -854,6 +934,22 @@ function applyRuntimeSnapshot(view: WorkspaceView, snapshot: RuntimeSnapshot): W
   return checkpoint ? applyCheckpoint(updated, checkpoint) : updated;
 }
 
+function preferredInspectionStage(
+  view: WorkspaceView,
+  deliberate: { workspaceId: string; stageNumber: number } | null,
+): number | null {
+  if (deliberate?.workspaceId === view.workspace.id
+    && view.stages.some((stage) => stage.number === deliberate.stageNumber)) return deliberate.stageNumber;
+  const observedStage = view.observation?.failure?.stage?.number
+    ?? view.observation?.role_results.at(-1)?.stage.number;
+  if (observedStage !== undefined && view.stages.some((stage) => stage.number === observedStage)) return observedStage;
+  const checkpointStages = [view.checkpoint.pending_transition?.stage.number, view.checkpoint.accepted_stage?.number];
+  for (const checkpointStage of checkpointStages) {
+    if (checkpointStage !== undefined && view.stages.some((stage) => stage.number === checkpointStage)) return checkpointStage;
+  }
+  return view.stages[0]?.number ?? null;
+}
+
 function applyCheckpoint(view: WorkspaceView, checkpoint: WorkspaceView["checkpoint"]): WorkspaceView {
   const acceptedIndex = checkpoint.accepted_stage
     ? view.stages.findIndex((stage) => stage.number === checkpoint.accepted_stage?.number)
@@ -905,6 +1001,33 @@ function updateWorkspaceSummary(project: ProjectView, workspaceId: string, check
       pending_transition: checkpoint.pending_transition,
     } : item),
   };
+}
+
+function reconcileProjectSummaries(project: ProjectView, snapshots: Map<string, RuntimeSnapshot>): ProjectView {
+  return {
+    ...project,
+    workspaces: project.workspaces.map((workspace) => {
+      const snapshot = snapshots.get(workspace.id);
+      const checkpoint = snapshot?.observation?.confirmed_checkpoint ?? snapshot?.checkpoint;
+      return checkpoint ? {
+        ...workspace,
+        accepted_stage: checkpoint.accepted_stage,
+        pending_transition: checkpoint.pending_transition,
+      } : workspace;
+    }),
+  };
+}
+
+function pendingEvidenceSummary(stageNumber: number, observation: MovementObservation | null): string | null {
+  if (!observation) return null;
+  const failure = observation.failure;
+  if (failure?.kind === "checkpoint_save_failed"
+    && observation.attempted_checkpoint?.pending_transition?.stage.number === stageNumber) {
+    return "checkpoint publication failed";
+  }
+  if (failure?.stage?.number === stageNumber && failure.role) return `${failure.role} failed`;
+  if (observation.role_results.some((result) => result.stage.number === stageNumber)) return "current-session role results retained";
+  return null;
 }
 
 function checkpointPosition(checkpoint: WorkspaceView["checkpoint"] | null): string {
