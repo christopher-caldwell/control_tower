@@ -17,7 +17,7 @@ sources:
 
 # Browser workbench
 
-## Build and launch
+## Build the packaged UI
 
 The graphical workbench is a macOS-only, desktop-only browser UI served by the
 ordinary Rust `control-tower` executable. The production frontend is built ahead
@@ -43,30 +43,39 @@ reopening, resizing, and viewport fit at the documented minimum width using
 Playwright Chromium. Node and Playwright are build/test tools; the launched UI has
 no Node runtime dependency.
 
-The directory where `control-tower ui` starts is the Project. For example, from
-the repository root, launch from `examples/simple`, not from inside a workspace.
-Copy a complete example project before using it as scratch space. Each workspace
-has its own checkpoint database, and storage setup remains explicit:
+## Starting the UI
+
+Run `control-tower ui` from the Project directory: the directory that contains
+`workspaces/`. Before launch, every discovered `workspaces/<name>/` must have
+prepared storage and a valid stage layout and checkpoint. For each workspace,
+run all three explicit setup operations:
 
 ```sh
-repo="$(pwd)"
-project="$(mktemp -d)/simple"
-cp -R "$repo/examples/simple" "$project"
-workspace="$project/workspaces/uuid-file"
-"$repo/target/release/control-tower-db" bootstrap-local "$workspace"
-"$repo/target/release/control-tower-db" migrate-local "$workspace"
-"$repo/target/release/control-tower-db" verify-local "$workspace"
-(cd "$project" && "$repo/target/release/control-tower" ui)
+control-tower-db bootstrap-local workspaces/<name>
+control-tower-db migrate-local workspaces/<name>
+control-tower-db verify-local workspaces/<name>
+control-tower ui
 ```
 
-At launch, Control Tower discovers the fixed workspace inventory, canonicalizes and
-deduplicates workspace roots, composes each Workbench once, and validates its stages,
-prepared database, and checkpoint before binding HTTP or opening a browser. An empty
-inventory or any invalid workspace stops launch and names the workspace plus the
-required `control-tower-db bootstrap-local`, `migrate-local`, and `verify-local`
-actions. Startup does not repair storage or run stage scripts. Fix setup and relaunch.
-Canonical deduplication means symlink aliases share the same in-process movement gate.
-The inventory is frozen at startup; restart Control Tower to add or remove workspaces.
+Use the workspace directory as the argument to each database command. Stage layout
+must include numbered `stages/<number>-<name>/` directories, at least one `up` or
+`down` mutation in each stage, and the matching mutation for each configured
+verifier. The stored checkpoint must be consistent with the discovered stages.
+
+Any malformed or unprepared discovered workspace rejects the full UI launch before
+HTTP binding or browser opening, even when its neighbors are healthy. Startup
+diagnostics distinguish storage, stage-layout, checkpoint, and workspace-entry path
+failures. Storage diagnostics list the three setup operations; stage and checkpoint
+diagnostics describe their own corrections. Startup never creates, bootstraps, migrates,
+or repairs workspace storage, stages, or checkpoints; it does not run stage scripts or
+skip malformed workspaces. Correct the reported problem and launch again.
+
+The `workspaces/` inventory must exist and contain at least one workspace directory.
+Plain files in it are ignored. Canonical workspace roots are deduplicated, so symlink
+aliases share one in-process movement gate. Execute permission is checked when a role
+is launched; it is not a startup validation. After a successful launch, a later status
+read failure can make one workspace unavailable while its neighbors remain available.
+The inventory is fixed at startup; restart Control Tower to add or remove workspaces.
 The project endpoint separately fans out read-only status calls for presentation and
 refresh; it is not a cross-workspace operation.
 

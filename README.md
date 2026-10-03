@@ -6,21 +6,7 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 ## Browser workbench (macOS)
 
-The browser UI uses the same Rust executable and a prebuilt React interface. It supports single-stage advance/backout, pending-verification recovery, per-role results and output inspection. Build and launch it from a copied Project directory:
-
-```sh
-cargo build --locked --release --workspace
-repo="$(pwd)"
-project="$(mktemp -d)/simple"
-cp -R "$repo/examples/simple" "$project"
-workspace="$project/workspaces/uuid-file"
-"$repo/target/release/control-tower-db" bootstrap-local "$workspace"
-"$repo/target/release/control-tower-db" migrate-local "$workspace"
-"$repo/target/release/control-tower-db" verify-local "$workspace"
-(cd "$project" && "$repo/target/release/control-tower" ui)
-```
-
-The Project launch directory supplies workspace context. Workspaces switch inside the UI; project switching is not included. Node is only needed when rebuilding frontend source, not to run the packaged interface. See the [browser workbench reference](docs/reference/browser-workbench.md) for setup, security, scope, and lifecycle details.
+See [Starting the UI in the browser workbench reference](docs/reference/browser-workbench.md#starting-the-ui) for preparation prerequisites and launch behavior.
 
 ## Try the three-stage example
 

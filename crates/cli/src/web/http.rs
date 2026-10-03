@@ -25,7 +25,7 @@ use axum::{
     },
     routing::{get, post},
 };
-use control_tower_application::Direction;
+use control_tower_application::{Direction, StageDefinitionsInput};
 use futures_util::stream;
 use rust_embed::RustEmbed;
 use serde::Serialize;
@@ -381,7 +381,11 @@ pub(super) async fn stage_definition(
     match tokio::task::spawn_blocking(move || {
         workspace
             .workbench
-            .stage_definitions(&workspace.root, stage_number, MAX_DEFINITION_BYTES)
+            .stage_definitions(StageDefinitionsInput {
+                workspace_root: &workspace.root,
+                stage_number,
+                maximum_bytes: MAX_DEFINITION_BYTES,
+            })
     })
     .await
     {

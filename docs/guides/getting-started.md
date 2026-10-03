@@ -52,7 +52,7 @@ An existing checkout only needs the build command from its repository root. With
 | `target/debug/control-tower` | User commands: `up`, `down`, `status`. |
 | `target/debug/control-tower-db` | Explicit local database setup and verification. |
 
-`control-tower ui` starts the optional macOS browser workbench from the current directory. See the [browser workbench reference](../reference/browser-workbench.md) for a complete launch example. The packaged interface does not require Node; Node is needed only to rebuild its React assets.
+For browser UI preparation and launch requirements, see [Starting the UI](../reference/browser-workbench.md#starting-the-ui). The packaged interface does not require Node; Node is needed only to rebuild its React assets.
 
 `--locked` uses the committed dependency resolution. The initial build needs access to the Rust dependency registry unless those dependencies are already cached. The workbench itself needs no network service; your own scripts may use the network.
 

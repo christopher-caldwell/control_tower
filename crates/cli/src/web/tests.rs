@@ -5,8 +5,11 @@ use axum::{
     body::Body,
     http::{Request, Response, StatusCode},
 };
-use control_tower_application::{WorkbenchState, WorkbenchWrites};
-use control_tower_database::{operations, workbench::SqliteWorkbenchWrites};
+use control_tower_application::{WorkbenchQueries, WorkbenchState, WorkbenchWrites};
+use control_tower_database::{
+    operations,
+    workbench::{SqliteWorkbenchQueries, SqliteWorkbenchWrites},
+};
 use http_body_util::BodyExt;
 use std::{
     fs,
@@ -112,12 +115,10 @@ fn startup_requires_prepared_workspaces_and_never_repairs_storage() {
     let temp = TempDir::new();
     let project = temp.path().join("empty");
     fs::create_dir_all(&project).unwrap();
-    assert!(
-        discover_project(&project)
-            .err()
-            .unwrap()
-            .contains("No prepared workspaces")
-    );
+    let empty_error = discover_project(&project).err().unwrap();
+    assert!(empty_error.contains("No prepared workspaces"));
+    assert!(empty_error.contains("workspaces"));
+    assert!(!empty_error.contains("this workspace"));
     prepared_workspace(&project, "unprepared", "#!/bin/sh\nexit 0\n");
     let db = project.join("workspaces/unprepared/.control_tower/state.sqlite3");
     fs::remove_file(&db).unwrap();
@@ -126,17 +127,168 @@ fn startup_requires_prepared_workspaces_and_never_repairs_storage() {
     assert!(error.contains("control-tower-db bootstrap-local"));
     assert!(!db.exists());
 }
+
+#[test]
+fn startup_aggregates_workspace_failures_by_category_without_repair_or_execution() {
+    let temp = TempDir::new();
+    let project = temp.path().join("mixed");
+    fs::create_dir_all(&project).unwrap();
+
+    let healthy = prepared_workspace(&project, "healthy", "#!/bin/sh\nexit 0\n");
+    let missing_storage = prepared_workspace(&project, "missing-storage", "#!/bin/sh\nexit 0\n");
+    let missing_db = missing_storage.join(".control_tower/state.sqlite3");
+    fs::remove_file(&missing_db).unwrap();
+
+    let bootstrap_only = prepared_workspace(&project, "bootstrap-only", "#!/bin/sh\nexit 0\n");
+    let bootstrap_db = bootstrap_only.join(".control_tower/state.sqlite3");
+    fs::remove_file(&bootstrap_db).unwrap();
+    operations::bootstrap(&bootstrap_db).unwrap();
+
+    let invalid_stages = prepared_workspace(&project, "invalid-stages", "#!/bin/sh\nexit 0\n");
+    fs::rename(
+        invalid_stages.join("stages/010-seed"),
+        invalid_stages.join("stages/not-a-stage"),
+    )
+    .unwrap();
+
+    let invalid_checkpoint =
+        prepared_workspace(&project, "invalid-checkpoint", "#!/bin/sh\nexit 0\n");
+    let invalid_checkpoint_db = invalid_checkpoint.join(".control_tower/state.sqlite3");
+    SqliteWorkbenchWrites::open(&invalid_checkpoint_db)
+        .unwrap()
+        .record_checkpoint(&WorkbenchState {
+            completed_stage_count: 2,
+            uuid: None,
+            pending: None,
+        })
+        .unwrap();
+
+    for workspace in [
+        &healthy,
+        &missing_storage,
+        &bootstrap_only,
+        &invalid_stages,
+        &invalid_checkpoint,
+    ] {
+        let stage = fs::read_dir(workspace.join("stages"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        fs::write(
+            stage.join("up"),
+            format!("#!/bin/sh\ntouch {}/startup-ran\n", workspace.display()),
+        )
+        .unwrap();
+    }
+
+    let error = discover_project(&project).err().unwrap();
+    assert!(error.contains("UI startup rejected before binding or browser opening"));
+    let entry = |id: &str| {
+        error
+            .split("\n- ")
+            .find(|entry| entry.contains(&format!("Workspace `{id}`")))
+            .unwrap_or_else(|| panic!("missing diagnostic for {id}: {error}"))
+            .to_owned()
+    };
+
+    let missing = entry("missing-storage");
+    assert!(missing.contains("[storage]"));
+    assert!(missing.contains("control-tower-db bootstrap-local"));
+    assert!(missing.contains("control-tower-db migrate-local"));
+    assert!(missing.contains("control-tower-db verify-local"));
+
+    let bootstrap = entry("bootstrap-only");
+    assert!(bootstrap.contains("[storage]"));
+    assert!(bootstrap.contains("control-tower-db migrate-local"));
+
+    let stages = entry("invalid-stages");
+    assert!(stages.contains("[stages]"));
+    assert!(stages.contains("must begin with a number"));
+    assert!(stages.contains("numbered directories"));
+    assert!(stages.contains("matching mutation"));
+    assert!(!stages.contains("control-tower-db"));
+
+    let checkpoint = entry("invalid-checkpoint");
+    assert!(checkpoint.contains("[checkpoint]"));
+    assert!(checkpoint.contains("invalid stored workbench state"));
+    assert!(checkpoint.contains("does not repair checkpoint state"));
+    assert!(!checkpoint.contains("control-tower-db"));
+
+    assert!(!missing_db.exists());
+    assert!(operations::verify(&bootstrap_db).is_err());
+    assert_eq!(
+        SqliteWorkbenchQueries::open(&invalid_checkpoint_db)
+            .unwrap()
+            .read_checkpoint()
+            .unwrap()
+            .unwrap()
+            .completed_stage_count,
+        2
+    );
+    for workspace in [
+        &healthy,
+        &missing_storage,
+        &bootstrap_only,
+        &invalid_stages,
+        &invalid_checkpoint,
+    ] {
+        assert!(!workspace.join("startup-ran").exists());
+    }
+}
+
+#[test]
+fn startup_rejects_empty_stages_with_the_discovery_cause() {
+    let temp = TempDir::new();
+    let project = temp.path().join("empty-stages");
+    fs::create_dir_all(&project).unwrap();
+    let workspace = prepared_workspace(&project, "no-stages", "#!/bin/sh\nexit 0\n");
+    fs::remove_dir_all(workspace.join("stages")).unwrap();
+    fs::create_dir_all(workspace.join("stages")).unwrap();
+
+    let error = discover_project(&project).err().unwrap();
+    assert!(error.contains("Workspace `no-stages` [stages]"));
+    assert!(
+        error.contains("no numbered stage directories were found under `stages/`"),
+        "{error}"
+    );
+    assert!(!error.contains("control-tower-db"));
+}
+
+#[cfg(unix)]
+#[test]
+fn startup_aggregates_entry_boundary_failures_without_storage_guidance() {
+    let temp = TempDir::new();
+    let project = temp.path().join("project");
+    let outside_project = temp.path().join("outside-project");
+    fs::create_dir_all(&project).unwrap();
+    let outside = prepared_workspace(&outside_project, "outside", "#!/bin/sh\nexit 0\n");
+    prepared_workspace(&project, "healthy", "#!/bin/sh\nexit 0\n");
+    std::os::unix::fs::symlink(&outside, project.join("workspaces/outside-alias")).unwrap();
+
+    let error = discover_project(&project).err().unwrap();
+    assert!(error.contains("Workspace entry `outside-alias` [entry path]"));
+    assert!(error.contains("resolves outside workspaces/"));
+    assert!(!error.contains("control-tower-db"));
+}
 #[test]
 fn startup_rejects_empty_inventory_invalid_stages_and_invalid_checkpoints() {
     let temp = TempDir::new();
     let absent_inventory = temp.path().join("absent");
     fs::create_dir_all(&absent_inventory).unwrap();
-    assert!(
-        discover_project(&absent_inventory)
-            .err()
-            .unwrap()
-            .contains("No prepared workspaces")
-    );
+    let absent_error = discover_project(&absent_inventory).err().unwrap();
+    assert!(absent_error.contains("No prepared workspaces"));
+    assert!(absent_error.contains(absent_inventory.join("workspaces").to_str().unwrap()));
+    assert!(!absent_error.contains("this workspace"));
+
+    let empty_inventory = temp.path().join("empty-inventory");
+    fs::create_dir_all(empty_inventory.join("workspaces")).unwrap();
+    fs::write(empty_inventory.join("workspaces/notes.txt"), "ignored").unwrap();
+    let empty_error = discover_project(&empty_inventory).err().unwrap();
+    assert!(empty_error.contains("No prepared workspaces"));
+    assert!(empty_error.contains(empty_inventory.join("workspaces").to_str().unwrap()));
+    assert!(!empty_error.contains("this workspace"));
 
     let invalid_stages = temp.path().join("invalid-stages");
     fs::create_dir_all(&invalid_stages).unwrap();
@@ -178,6 +330,37 @@ fn startup_deduplicates_symlink_aliases_before_assigning_workspace_state() {
     let root = prepared_workspace(&project, "real", "#!/bin/sh\nexit 0\n");
     std::os::unix::fs::symlink(&root, project.join("workspaces/alias")).unwrap();
     assert_eq!(discover_project(&project).unwrap().workspaces.len(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn startup_ignores_plain_inventory_files_and_checks_role_execute_permission_at_launch() {
+    let temp = TempDir::new();
+    let project = temp.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    let workspace = prepared_workspace(&project, "fixture", "#!/bin/sh\nexit 0\n");
+    fs::write(project.join("workspaces/notes.txt"), "ignored").unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(
+        workspace.join("stages/010-seed/up"),
+        fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+
+    let discovered = discover_project(&project).unwrap();
+    assert_eq!(discovered.workspaces.len(), 1);
+    let app = router(context(discovered));
+    let initial = view(&app, "fixture").await;
+    assert_eq!(
+        move_to(&app, "fixture", "up", 10, &initial["checkpoint"]["state"])
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        view(&app, "fixture").await["observation"]["role_results"][0]["state"],
+        "launch_failed"
+    );
 }
 #[tokio::test]
 async fn stale_checkpoint_is_rejected_before_any_second_effect() {
@@ -426,12 +609,27 @@ async fn definition_reading_uses_workbench_and_keeps_plain_text_preview_limit() 
     );
     assert_eq!(result["definitions"][0]["truncated"], true);
     assert_eq!(
-        app.oneshot(request("GET", "/api/workspaces/fixture/stages/999", None))
+        app.clone()
+            .oneshot(request("GET", "/api/workspaces/fixture/stages/999", None))
             .await
             .unwrap()
             .status(),
         StatusCode::NOT_FOUND
     );
+
+    fs::rename(
+        root.join("stages/010-seed"),
+        root.join("stages/not-a-stage"),
+    )
+    .unwrap();
+    let (status, unavailable) = json(
+        app.oneshot(request("GET", "/api/workspaces/fixture/stages/10", None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(unavailable["error"]["code"], "stage_unavailable");
 }
 #[tokio::test]
 async fn snapshot_stream_sends_complete_current_state_after_reconnect() {

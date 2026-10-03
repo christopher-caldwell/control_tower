@@ -376,6 +376,12 @@ pub struct MoveToInput<'a> {
     pub expected_checkpoint: Option<&'a WorkbenchState>,
 }
 
+pub struct StageDefinitionsInput<'a> {
+    pub workspace_root: &'a Path,
+    pub stage_number: u32,
+    pub maximum_bytes: usize,
+}
+
 pub trait ExecutableRunner: Send + Sync {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError>;
 }
@@ -584,17 +590,14 @@ impl Workbench {
 
     pub fn stage_definitions(
         &self,
-        workspace_root: &Path,
-        stage_number: u32,
-        maximum_bytes: usize,
+        input: StageDefinitionsInput<'_>,
     ) -> Result<StageDefinitions, StageDefinitionsError> {
-        let stages = self
-            .load_stages(workspace_root)
-            .map_err(|error| match error {
-                StatusError::StageDiscovery(error) => StageDefinitionsError::StageDiscovery(error),
-                StatusError::Persistence(error) => StageDefinitionsError::Persistence(error),
-                StatusError::InvalidState(message) => StageDefinitionsError::InvalidState(message),
-            })?;
+        let StageDefinitionsInput {
+            workspace_root,
+            stage_number,
+            maximum_bytes,
+        } = input;
+        let stages = self.load_stages(workspace_root)?;
         let stage = stages
             .into_iter()
             .find(|stage| stage.number == stage_number)
@@ -617,15 +620,12 @@ impl Workbench {
         Ok(StageDefinitions { stage, definitions })
     }
 
-    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StatusError> {
-        let stages = self
-            .stage_discovery
-            .discover(workspace_root)
-            .map_err(StatusError::StageDiscovery)?;
+    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+        let stages = self.stage_discovery.discover(workspace_root)?;
         if stages.is_empty() {
-            return Err(StatusError::StageDiscovery(StageDiscoveryError::message(
+            return Err(StageDiscoveryError::message(
                 "no numbered stage directories were found under `stages/`",
-            )));
+            ));
         }
         Ok(stages)
     }
@@ -795,5 +795,150 @@ fn failure_for_last_execution(executions: &[ExecutionEvent]) -> TransitionFailur
             role: event.role,
             exit_code: output.exit_code,
         },
+    }
+}
+
+#[cfg(test)]
+mod stage_definition_contract_tests {
+    use super::*;
+    use std::{error::Error, io};
+
+    struct Discovery(Vec<Stage>);
+
+    impl StageDiscovery for Discovery {
+        fn discover(&self, _: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct FailingDiscovery;
+
+    impl StageDiscovery for FailingDiscovery {
+        fn discover(&self, _: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+            Err(StageDiscoveryError::new(io::Error::other(
+                "discovery source retained",
+            )))
+        }
+    }
+
+    struct UnusedQueries;
+
+    impl WorkbenchQueries for UnusedQueries {
+        fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError> {
+            panic!("stage definition lookup must not query checkpoint storage")
+        }
+    }
+
+    struct UnusedWrites;
+
+    impl WorkbenchWrites for UnusedWrites {
+        fn record_checkpoint(&self, _: &WorkbenchState) -> Result<(), PersistenceError> {
+            panic!("stage definition lookup must not write checkpoint storage")
+        }
+    }
+
+    struct UnusedRunner;
+
+    impl ExecutableRunner for UnusedRunner {
+        fn run(&self, _: &Invocation) -> Result<ProcessOutput, ExecutableRunError> {
+            panic!("stage definition lookup must not run a role")
+        }
+    }
+
+    struct FailingReader;
+
+    impl StageDefinitionReader for FailingReader {
+        fn read(
+            &self,
+            _: &Path,
+            maximum_bytes: usize,
+        ) -> Result<StageDefinitionContents, StageDefinitionReadError> {
+            assert_eq!(maximum_bytes, 64);
+            Err(StageDefinitionReadError::new(io::Error::other(
+                "definition read denied",
+            )))
+        }
+    }
+
+    fn build_workbench(discovery: Box<dyn StageDiscovery>) -> Workbench {
+        Workbench::new(
+            discovery,
+            Box::new(UnusedQueries),
+            Box::new(UnusedWrites),
+            Box::new(UnusedRunner),
+            Box::new(FailingReader),
+        )
+    }
+
+    fn stage() -> Stage {
+        let directory = PathBuf::from("stages/007-sample");
+        Stage {
+            number: 7,
+            name: "sample".to_owned(),
+            up: Some(directory.join("up")),
+            down: None,
+            verify_up: None,
+            verify_down: None,
+            directory,
+        }
+    }
+
+    #[test]
+    fn definition_input_has_narrow_errors_and_keeps_checkpoint_storage_out_of_lookup() {
+        let workspace_root = Path::new("workspace");
+        let workbench = build_workbench(Box::new(Discovery(vec![stage()])));
+        let definitions = workbench
+            .stage_definitions(StageDefinitionsInput {
+                workspace_root,
+                stage_number: 7,
+                maximum_bytes: 64,
+            })
+            .unwrap();
+        assert_eq!(definitions.stage.number, 7);
+        assert_eq!(definitions.definitions.len(), 1);
+        let read_error = definitions.definitions[0].contents.as_ref().err().unwrap();
+        assert!(read_error.to_string().contains("definition read denied"));
+
+        let unknown = match workbench.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 99,
+            maximum_bytes: 64,
+        }) {
+            Ok(_) => panic!("unknown stage unexpectedly resolved"),
+            Err(error) => error,
+        };
+        assert!(matches!(unknown, StageDefinitionsError::UnknownStage(99)));
+
+        let empty = build_workbench(Box::new(Discovery(Vec::new())));
+        let empty_error = match empty.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 7,
+            maximum_bytes: 64,
+        }) {
+            Ok(_) => panic!("empty stage discovery unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            &empty_error,
+            StageDefinitionsError::StageDiscovery(_)
+        ));
+        assert!(
+            empty_error
+                .to_string()
+                .contains("no numbered stage directories")
+        );
+
+        let failed = build_workbench(Box::new(FailingDiscovery));
+        let failure = match failed.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 7,
+            maximum_bytes: 64,
+        }) {
+            Ok(_) => panic!("failing stage discovery unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        let capability = failure.source().unwrap();
+        assert!(capability.is::<StageDiscoveryError>());
+        assert!(capability.source().unwrap().is::<io::Error>());
     }
 }

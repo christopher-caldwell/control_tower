@@ -1,5 +1,5 @@
 use super::dto::*;
-use control_tower_application::{Stage, Workbench, WorkbenchStatus};
+use control_tower_application::{Stage, StatusError, Workbench, WorkbenchStatus};
 use std::{
     collections::BTreeSet,
     fs,
@@ -42,21 +42,18 @@ pub(super) fn discover_project(project_root: &Path) -> Result<ProjectContext, St
         .and_then(|name| name.to_str())
         .unwrap_or("Project")
         .to_owned();
-    let inventory = root.join("workspaces");
-    let mut candidates = match fs::read_dir(&inventory) {
+    let inventory_path = root.join("workspaces");
+    let mut candidates = match fs::read_dir(&inventory_path) {
         Ok(entries) => entries
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("Cannot list workspaces/: {error}"))?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(format!(
-                "No prepared workspaces were found under {}. {SETUP_GUIDANCE}",
-                inventory.display()
-            ));
+            return Err(no_prepared_workspaces(&inventory_path));
         }
         Err(error) => return Err(format!("Cannot inspect workspaces/: {error}")),
     };
     candidates.sort_by_key(|entry| entry.file_name());
-    let inventory = inventory
+    let inventory = inventory_path
         .canonicalize()
         .map_err(|error| format!("Cannot resolve workspaces/: {error}"))?;
     if !inventory.starts_with(&root) || !inventory.is_dir() {
@@ -64,37 +61,51 @@ pub(super) fn discover_project(project_root: &Path) -> Result<ProjectContext, St
     }
     let mut seen = BTreeSet::new();
     let mut workspaces = Vec::new();
+    let mut failures = Vec::new();
     for entry in candidates {
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
-        let id = entry.file_name().into_string().map_err(|_| {
-            format!(
-                "Workspace name in {} is not valid UTF-8.",
-                inventory.display()
-            )
-        })?;
-        let workspace_root = path
-            .canonicalize()
-            .map_err(|error| format!("Workspace `{id}` cannot be resolved: {error}"))?;
+        let entry_name = entry.file_name();
+        let display_name = entry_name.to_string_lossy().into_owned();
+        let id = match entry_name.into_string() {
+            Ok(id) => id,
+            Err(_) => {
+                failures.push(format!(
+                    "Workspace entry `{display_name}` [entry path]: its name is not valid UTF-8."
+                ));
+                continue;
+            }
+        };
+        let workspace_root = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                failures.push(format!(
+                    "Workspace entry `{id}` [entry path] cannot be resolved: {error}."
+                ));
+                continue;
+            }
+        };
         if !workspace_root.starts_with(&inventory) {
-            return Err(format!("Workspace `{id}` resolves outside workspaces/."));
+            failures.push(format!(
+                "Workspace entry `{id}` [entry path] resolves outside workspaces/."
+            ));
+            continue;
         }
         if !seen.insert(workspace_root.clone()) {
             continue;
         }
-        let workbench = Arc::new(
-            crate::deps::workbench(&workspace_root)
-                .map_err(|error| format!("Workspace `{id}`: {error}. {SETUP_GUIDANCE}"))?,
-        );
-        let status = workbench
-            .status(&workspace_root)
-            .map_err(|error| format!("Workspace `{id}` is not ready: {error}. {SETUP_GUIDANCE}"))?;
-        if status.stages.is_empty() {
-            return Err(format!(
-                "Workspace `{id}` has no stages. Add at least one valid `stages/<number>-<name>/` directory with an executable `up` or `down` role, then prepare its database with {SETUP_GUIDANCE}"
-            ));
+        let workbench = match crate::deps::workbench(&workspace_root) {
+            Ok(workbench) => Arc::new(workbench),
+            Err(error) => {
+                failures.push(storage_failure(&id, &workspace_root, error));
+                continue;
+            }
+        };
+        if let Err(error) = workbench.status(&workspace_root) {
+            failures.push(status_failure(&id, &workspace_root, error));
+            continue;
         }
         workspaces.push(WorkspaceContext {
             id,
@@ -103,13 +114,46 @@ pub(super) fn discover_project(project_root: &Path) -> Result<ProjectContext, St
             workbench,
         });
     }
-    if workspaces.is_empty() {
+    if !failures.is_empty() {
         return Err(format!(
-            "No prepared workspaces were found under {}. {SETUP_GUIDANCE}",
-            inventory.display()
+            "UI startup rejected before binding or browser opening:\n{}",
+            failures
+                .iter()
+                .map(|failure| format!("- {failure}"))
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
+    if workspaces.is_empty() {
+        return Err(no_prepared_workspaces(&inventory));
+    }
     Ok(ProjectContext { name, workspaces })
+}
+
+fn no_prepared_workspaces(inventory: &Path) -> String {
+    format!(
+        "No prepared workspaces were found under {}.",
+        inventory.display()
+    )
+}
+
+fn storage_failure(id: &str, workspace: &Path, cause: impl std::fmt::Display) -> String {
+    format!(
+        "Workspace `{id}` [storage]: {cause}. Guidance: run `control-tower-db bootstrap-local`, `control-tower-db migrate-local`, and `control-tower-db verify-local` for this workspace at `{}`.",
+        workspace.display()
+    )
+}
+
+fn status_failure(id: &str, workspace: &Path, error: StatusError) -> String {
+    match error {
+        StatusError::StageDiscovery(cause) => format!(
+            "Workspace `{id}` [stages]: {cause}. Guidance: correct the numbered directories under `stages/`, provide at least one `up` or `down` mutation, and provide the matching mutation for each verifier."
+        ),
+        StatusError::Persistence(cause) => storage_failure(id, workspace, cause),
+        StatusError::InvalidState(cause) => format!(
+            "Workspace `{id}` [checkpoint]: invalid stored workbench state: {cause}. Guidance: the stored checkpoint does not match the discovered stages; inspect and resolve the mismatch explicitly. Startup does not repair checkpoint state."
+        ),
+    }
 }
 
 pub(super) fn project_snapshot(project: &ProjectContext) -> ProjectView {

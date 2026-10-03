@@ -70,10 +70,6 @@ pub enum StageDefinitionsError {
     StageDiscovery(#[from] StageDiscoveryError),
     #[error("stage {0} was not found in this Workspace")]
     UnknownStage(u32),
-    #[error("workspace state failed: {0}")]
-    Persistence(#[from] PersistenceError),
-    #[error("invalid stored workbench state: {0}")]
-    InvalidState(String),
 }
 
 #[cfg(test)]
