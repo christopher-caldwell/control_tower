@@ -1,8 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./workbench";
-import type { DefinitionView, MovementObservation, ProjectView, RuntimeSnapshot, WorkspaceView } from "./types";
+import type { DefinitionView, MovementObservation, ProjectView, RoleObservation, RuntimeSnapshot, WorkspaceView } from "./types";
 
 const project: ProjectView = {
   name: "example-project",
@@ -37,6 +37,7 @@ const workspace: WorkspaceView = {
   observation_revision: 0,
   movement_busy: false,
   observation: null,
+  storage_issue: null,
   checkpoint: {
     accepted_stage: { number: 200, name: "finish" },
     pending_transition: { direction: "down", stage: { number: 200, name: "finish" } },
@@ -90,7 +91,10 @@ let requests: { path: string; method: string }[];
 let mockFetch: ReturnType<typeof vi.fn>;
 let activeProject: ProjectView;
 let activeWorkspace: WorkspaceView;
+let extraWorkspace: WorkspaceView | null;
 let movementResponse: MovementObservation | null;
+let outputResponse: ((path: string) => Promise<Response>) | null;
+type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 class FakeEventSource extends EventTarget {
   static instances: FakeEventSource[] = [];
@@ -116,11 +120,36 @@ function jsonResponse(value: unknown) {
   return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function roleResult(stage: number, role: string, outputId: string, state: RoleObservation["state"] = "succeeded"): RoleObservation {
+  return {
+    stage: { number: stage, name: stage === 10 ? "seed" : "finish" },
+    role,
+    state,
+    exit_code: state === "succeeded" ? 0 : 9,
+    message: null,
+    elapsed_ms: 3,
+    output_id: outputId,
+    output_state: "available",
+    stdout_bytes: 12,
+    stderr_bytes: 0,
+    stdout_truncated: false,
+    stderr_truncated: false,
+  };
+}
+
 beforeEach(() => {
   requests = [];
   activeProject = project;
   activeWorkspace = workspace;
+  extraWorkspace = null;
   movementResponse = null;
+  outputResponse = null;
   FakeEventSource.instances = [];
   localStorage.clear();
   history.replaceState(null, "", "/");
@@ -131,6 +160,7 @@ beforeEach(() => {
     if (path === "/api/session") return new Response(null, { status: 204 });
     if (path === "/api/project") return jsonResponse(activeProject);
     if (path === "/api/workspaces/fixture") return jsonResponse(activeWorkspace);
+    if (path === "/api/workspaces/sibling" && extraWorkspace) return jsonResponse(extraWorkspace);
     if (path === "/api/workspaces/fixture/stages/200") return jsonResponse(definition);
     if (path === "/api/workspaces/fixture/stages/10") return jsonResponse({
       stage: { number: 10, name: "seed" },
@@ -145,6 +175,7 @@ beforeEach(() => {
     if (path === "/api/workspaces/fixture/movements" && method === "POST") {
       return jsonResponse({ observation: movementResponse });
     }
+    if (outputResponse && path.includes("/outputs/")) return outputResponse(path);
     if (path.includes("/outputs/") && path.endsWith("/stdout")) {
       return new Response(new Uint8Array([255, 0, 60, 115, 99, 114, 105, 112, 116, 62]), { status: 200 });
     }
@@ -411,6 +442,297 @@ describe("desktop workbench", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Inspect author-owned effects before continuing");
     expect(screen.getByText("Movement stopped at the last confirmed checkpoint")).toBeInTheDocument();
     expect(screen.getByText("Checkpoint was not confirmed")).toBeInTheDocument();
+    expect(screen.getByRole("note").querySelectorAll("p")[0]).toHaveTextContent("Accepted position: Stage 200 · finish");
+    expect(screen.getByRole("note").querySelectorAll("p")[1]).toHaveTextContent("Pending transition: None");
+    expect(screen.getByRole("note").querySelector("small")).toHaveTextContent("Workbench last confirmed: Stage 10 · seed. After an ambiguous save failure, actual database contents may be uncertain.");
+  });
+
+  it("shows attempted pending publication values separately from the confirmed baseline", async () => {
+    const user = userEvent.setup();
+    const baseline = { accepted_stage: null, pending_transition: null, workflow_started: false };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: baseline,
+      observation: null,
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    movementResponse = {
+      workspace_id: "fixture", operation_id: "pending-save-failure", server_instance_id: "server-one", revision: 5,
+      direction: "up", target_stage: 10, state: "stopped", active_role: null,
+      role_results: [roleResult(10, "up", "pending-output")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: baseline,
+      attempted_checkpoint: {
+        accepted_stage: null,
+        pending_transition: { direction: "up", stage: { number: 10, name: "seed" } },
+        workflow_started: true,
+      },
+      failure: { kind: "checkpoint_save_failed", message: "pending checkpoint write failed", stage: null, role: null },
+      verification_choices: null,
+    };
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Advance to Stage 10/ }));
+    expect((await screen.findByRole("note")).querySelectorAll("p")[0]).toHaveTextContent("Accepted position: Baseline · no accepted stages");
+    expect(screen.getByRole("note").querySelectorAll("p")[1]).toHaveTextContent("Pending transition: up · Stage 10 · seed");
+    expect(screen.getByText("Workbench last confirmed: Baseline · no accepted stages. After an ambiguous save failure, actual database contents may be uncertain.")).toBeInTheDocument();
+  });
+
+  it.each(["complete", "stopped"] as const)("keeps delayed %s movement effects scoped while the user switches workspaces and stages", async (state) => {
+    const user = userEvent.setup();
+    const delayedResponse = deferred<Response>();
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    mockFetch.mockImplementation((input, init) => {
+      if (String(input) === "/api/workspaces/fixture/movements" && init?.method === "POST") {
+        requests.push({ path: String(input), method: "POST" });
+        return delayedResponse.promise;
+      }
+      return originalFetch(input, init);
+    });
+    const accepted = { accepted_stage: { number: 10, name: "seed" }, pending_transition: null, workflow_started: true };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: accepted,
+      observation: null,
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: stage.number === 10 ? "accepted" : "future", is_accepted_checkpoint: stage.number === 10 })),
+    };
+    extraWorkspace = {
+      ...activeWorkspace,
+      workspace: { id: "sibling", name: "sibling" },
+      selected_stage_number: 10,
+    };
+    activeProject = {
+      ...project,
+      workspaces: [...project.workspaces, {
+        id: "sibling", name: "sibling", available: true, issue: null, stage_count: 2,
+        accepted_stage: accepted.accepted_stage, pending_transition: null,
+      }],
+    };
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Advance to Stage 200/ }));
+    await waitFor(() => expect(requests.some((request) => request.path === "/api/workspaces/fixture/movements" && request.method === "POST")).toBe(true));
+    await user.click(screen.getByRole("button", { name: /sibling/ }));
+    expect(await screen.findByRole("heading", { name: "seed" })).toBeInTheDocument();
+
+    const checkpoint = state === "complete"
+      ? { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true }
+      : accepted;
+    const observation: MovementObservation = {
+      workspace_id: "fixture", operation_id: `delayed-${state}`, server_instance_id: "server-one", revision: 21,
+      direction: "up", target_stage: 200, state, active_role: null,
+      role_results: [roleResult(200, "up", `delayed-${state}-output`, state === "complete" ? "succeeded" : "failed")],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      failure: state === "stopped" ? { kind: "process_failed", message: "A only failure", stage: { number: 200, name: "finish" }, role: "up" } : null,
+      verification_choices: null,
+    };
+    await act(async () => {
+      delayedResponse.resolve(jsonResponse({ observation }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByRole("heading", { name: "seed" })).toBeInTheDocument();
+    expect(screen.queryByText("A only failure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Movement completed")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sibling/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: /Advance to Stage 200/ })).toBeEnabled();
+  });
+
+  it("keeps an early terminal SSE snapshot ahead of a delayed stale initial GET", async () => {
+    const delayedGet = deferred<Response>();
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    mockFetch.mockImplementation(async (input, init) => String(input) === "/api/workspaces/fixture"
+      ? delayedGet.promise
+      : originalFetch(input, init));
+    const staleView: WorkspaceView = {
+      ...workspace,
+      observation_revision: 0,
+      observation: null,
+      checkpoint: { accepted_stage: null, pending_transition: null, workflow_started: false },
+      selected_stage_number: 10,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "future", is_accepted_checkpoint: false })),
+    };
+    render(<App />);
+    await waitFor(() => expect(FakeEventSource.instances.some((item) => item.url.endsWith("/fixture/events"))).toBe(true));
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    const checkpoint = { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true };
+    const finished: MovementObservation = {
+      workspace_id: "fixture", operation_id: "finished-before-get", server_instance_id: "server-one", revision: 11,
+      direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      failure: null, verification_choices: null,
+    };
+    source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 11, movement_busy: false,
+      checkpoint, observation: finished,
+    });
+    delayedGet.resolve(jsonResponse(staleView));
+
+    expect(await screen.findByText("Movement completed")).toBeInTheDocument();
+    expect(screen.getByText("200 · finish")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Advance to Stage 10/ })).not.toBeInTheDocument();
+  });
+
+  it("reconciles missed completion from an SSE resync snapshot", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "finish" });
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    const checkpoint = { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true };
+    const finished: MovementObservation = {
+      workspace_id: "fixture", operation_id: "missed-completion", server_instance_id: "server-one", revision: 12,
+      direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      failure: null, verification_choices: null,
+    };
+    source.emit("resync", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 12, movement_busy: false,
+      checkpoint, observation: finished,
+    });
+    expect(await screen.findByText("Movement completed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Continue pending down/ })).not.toBeInTheDocument();
+  });
+
+  it("rejects a delayed GET older than a newer SSE invalidation revision", async () => {
+    const delayedRead = deferred<Response>();
+    const originalFetch = mockFetch.getMockImplementation() as FetchImplementation;
+    const checkpoint = { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true };
+    const finished: MovementObservation = {
+      workspace_id: "fixture", operation_id: "event-newer-than-get", server_instance_id: "server-one", revision: 12,
+      direction: "up", target_stage: 200, state: "complete", active_role: null, role_results: [],
+      omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: checkpoint, attempted_checkpoint: null,
+      failure: null, verification_choices: null,
+    };
+    const latestView: WorkspaceView = {
+      ...workspace,
+      observation_revision: 12,
+      observation: finished,
+      checkpoint,
+      stages: workspace.stages.map((stage) => ({ ...stage, state: "accepted", is_accepted_checkpoint: stage.number === 200 })),
+    };
+    let workspaceReads = 0;
+    mockFetch.mockImplementation((input, init) => {
+      if (String(input) === "/api/workspaces/fixture" && init?.method !== "POST") {
+        workspaceReads += 1;
+        if (workspaceReads === 2) {
+          requests.push({ path: String(input), method: "GET" });
+          return delayedRead.promise;
+        }
+        if (workspaceReads > 2) return Promise.resolve(jsonResponse(latestView));
+      }
+      return originalFetch(input, init);
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "finish" });
+    const source = FakeEventSource.instances.find((item) => item.url.endsWith("/fixture/events"))!;
+    source.emit("movement.finished", {
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 12,
+      operation_id: "event-newer-than-get", kind: "movement.finished",
+    });
+    await waitFor(() => expect(workspaceReads).toBe(2));
+    delayedRead.resolve(jsonResponse({ ...workspace, observation_revision: 0, observation: null }));
+
+    expect(await screen.findByText("Movement completed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back out Stage 200 to Stage 10/ })).toBeEnabled();
+    expect(workspaceReads).toBeGreaterThanOrEqual(3);
+  });
+
+  it("scopes output preview state to stage and discards a late fetch after inspection changes", async () => {
+    const user = userEvent.setup();
+    const delayedOldOutput = deferred<Response>();
+    activeWorkspace = {
+      ...workspace,
+      observation_revision: 14,
+      observation: {
+        workspace_id: "fixture", operation_id: "two-stage-output", server_instance_id: "server-one", revision: 14,
+        direction: "up", target_stage: 200, state: "complete", active_role: null,
+        role_results: [roleResult(10, "up", "output-10"), roleResult(200, "up", "output-200")],
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: workspace.checkpoint,
+        attempted_checkpoint: null, failure: null, verification_choices: null,
+      },
+    };
+    outputResponse = (path) => path.includes("output-10")
+      ? delayedOldOutput.promise
+      : Promise.resolve(new Response("stage 200 bytes", { status: 200 }));
+    render(<App />);
+    const userStage10 = await screen.findByRole("button", { name: /STAGE 010/ });
+    await user.click(userStage10);
+    await user.click(await screen.findByRole("button", { name: "Preview stdout" }));
+    await waitFor(() => expect(requests.some((request) => request.path.includes("output-10") && request.path.endsWith("/stdout"))).toBe(true));
+    await user.click(screen.getByRole("button", { name: /STAGE 200/ }));
+    expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
+    delayedOldOutput.resolve(new Response("stale Stage 10 bytes", { status: 200 }));
+    expect(await screen.findByRole("button", { name: "Preview stdout" })).toBeInTheDocument();
+    expect(screen.queryByText("stale Stage 10 bytes")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Preview stdout" }));
+    expect(await screen.findByLabelText("stdout text preview")).toHaveTextContent("stage 200 bytes");
+  });
+
+  it("does not reuse a preview when switching workspaces with matching output identities", async () => {
+    const user = userEvent.setup();
+    const observed = {
+      workspace_id: "fixture", operation_id: "same-operation", server_instance_id: "server-one", revision: 15,
+      direction: "up" as const, target_stage: 200, state: "complete" as const, active_role: null,
+      role_results: [roleResult(200, "up", "same-output")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: workspace.checkpoint, attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    activeWorkspace = { ...workspace, observation_revision: 15, observation: observed };
+    extraWorkspace = {
+      ...workspace,
+      workspace: { id: "sibling", name: "sibling" },
+      observation_revision: 15,
+      observation: { ...observed, workspace_id: "sibling" },
+    };
+    activeProject = {
+      ...project,
+      workspaces: [...project.workspaces, {
+        id: "sibling", name: "sibling", available: true, issue: null, stage_count: 2,
+        accepted_stage: { number: 200, name: "finish" }, pending_transition: null,
+      }],
+    };
+    outputResponse = (path) => Promise.resolve(new Response(path.includes("/sibling/") ? "sibling bytes" : "fixture bytes", { status: 200 }));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Preview stdout" }));
+    expect(await screen.findByLabelText("stdout text preview")).toHaveTextContent("fixture bytes");
+    await user.click(screen.getByRole("button", { name: /sibling/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /sibling/ })).toHaveAttribute("aria-current", "page"));
+    expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
+    expect(screen.queryByText("fixture bytes")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Preview stdout" }));
+    expect(await screen.findByLabelText("stdout text preview")).toHaveTextContent("sibling bytes");
+  });
+
+  it("resets captured output previews after a successive movement of the same role", async () => {
+    const user = userEvent.setup();
+    const pending = { accepted_stage: { number: 10, name: "seed" }, pending_transition: { direction: "up" as const, stage: { number: 200, name: "finish" } }, workflow_started: true };
+    activeWorkspace = {
+      ...workspace,
+      checkpoint: pending,
+      observation_revision: 16,
+      stages: workspace.stages.map((stage) => stage.number === 200 ? { ...stage, state: "pending" } : stage),
+      observation: {
+        workspace_id: "fixture", operation_id: "first-verify", server_instance_id: "server-one", revision: 16,
+        direction: "up", target_stage: 200, state: "stopped", active_role: null,
+        role_results: [{ ...roleResult(200, "verify-up", "old-verify-output", "failed"), message: "failed" }],
+        omitted_role_results: 0, outputs_evicted: 0, confirmed_checkpoint: pending, attempted_checkpoint: null,
+        failure: { kind: "process_failed", message: "verification failed", stage: { number: 200, name: "finish" }, role: "verify-up" },
+        verification_choices: { retry: { direction: "up", target_stage: 200 }, reverse: { direction: "down", target_stage: 10 } },
+      },
+    };
+    movementResponse = {
+      workspace_id: "fixture", operation_id: "second-verify", server_instance_id: "server-one", revision: 20,
+      direction: "up", target_stage: 200, state: "complete", active_role: null,
+      role_results: [roleResult(200, "verify-up", "new-verify-output")], omitted_role_results: 0, outputs_evicted: 0,
+      confirmed_checkpoint: { accepted_stage: { number: 200, name: "finish" }, pending_transition: null, workflow_started: true },
+      attempted_checkpoint: null, failure: null, verification_choices: null,
+    };
+    outputResponse = (path) => Promise.resolve(new Response(path.includes("old-verify-output") ? "first attempt bytes" : "second attempt bytes", { status: 200 }));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Preview stdout" }));
+    expect(await screen.findByLabelText("stdout text preview")).toHaveTextContent("first attempt bytes");
+    await user.click(screen.getByRole("button", { name: /Retry verify-up for Stage 200/ }));
+    await waitFor(() => expect(screen.queryByText("first attempt bytes")).not.toBeInTheDocument());
+    await user.click(await screen.findByRole("button", { name: "Preview stdout" }));
+    expect(await screen.findByLabelText("stdout text preview")).toHaveTextContent("second attempt bytes");
   });
 
   it("reconciles SSE snapshots by server incarnation and revision", async () => {
@@ -426,15 +748,18 @@ describe("desktop workbench", () => {
       failure: null, verification_choices: null,
     };
     source?.emit("snapshot", {
-      workspace_id: "fixture", server_instance_id: "server-one", revision: 9, movement_busy: true, observation: running,
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 9, movement_busy: true,
+      checkpoint: workspace.checkpoint, observation: running,
     });
     expect(await screen.findByText("Movement is in progress")).toBeInTheDocument();
     source?.emit("snapshot", {
-      workspace_id: "fixture", server_instance_id: "server-one", revision: 8, movement_busy: false, observation: null,
+      workspace_id: "fixture", server_instance_id: "server-one", revision: 8, movement_busy: false,
+      checkpoint: workspace.checkpoint, observation: null,
     });
     expect(screen.getByText("Movement is in progress")).toBeInTheDocument();
     source?.emit("snapshot", {
-      workspace_id: "fixture", server_instance_id: "another-server", revision: 99, movement_busy: false, observation: null,
+      workspace_id: "fixture", server_instance_id: "another-server", revision: 99, movement_busy: false,
+      checkpoint: workspace.checkpoint, observation: null,
     });
     expect(screen.getByText("Movement is in progress")).toBeInTheDocument();
   });

@@ -27,3 +27,4 @@ control-tower-database.workspace = true
 rusqlite.workspace = true
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+tokio = { workspace = true, features = ["io-util"] }

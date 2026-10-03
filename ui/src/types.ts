@@ -44,6 +44,7 @@ export type WorkspaceView = {
   observation_revision: number;
   movement_busy: boolean;
   observation: MovementObservation | null;
+  storage_issue: string | null;
 };
 
 export type CheckpointView = {
@@ -100,6 +101,7 @@ export type RuntimeSnapshot = {
   server_instance_id: string;
   revision: number;
   movement_busy: boolean;
+  checkpoint: CheckpointView | null;
   observation: MovementObservation | null;
 };
 

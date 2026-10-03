@@ -213,6 +213,11 @@ code, pre, .eyebrow, .stage-index-label, .stage-kicker, .role-chip, .definition-
 .inspector-error b { color: #e7ad9d; font-size: 9px; }
 .inspector-error p { margin: 5px 0 0; color: #cba79d; font-size: 8px; line-height: 1.5; overflow-wrap: anywhere; }
 .inspector-error small { display: block; margin-top: 5px; color: #d5b875; font-size: 8px; line-height: 1.45; }
+.attempted-checkpoint { margin-top: 9px; padding: 9px; border: 1px solid #6b5737; border-radius: 6px; background: #29241d; color: #d9c398; }
+.attempted-checkpoint b { font-size: 9px; }
+.attempted-checkpoint p { margin: 6px 0 0; color: #c3b38e; font-size: 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.attempted-checkpoint p span { color: #8f978c; }
+.attempted-checkpoint small { display: block; margin-top: 7px; color: #d5b875; font-size: 8px; line-height: 1.45; }
 .captured-role { margin-top: 8px; padding: 8px; border: 1px solid #303a35; border-radius: 6px; background: #171d1b; }
 .captured-role-heading { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
 .captured-role-heading b { color: #c0d1c5; font: 9px var(--mono); }

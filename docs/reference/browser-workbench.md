@@ -196,8 +196,18 @@ Movement errors use `{ "error": { "code": string, "message": string },
 The workspace GET returns the project/workspace identity, checkpoint, selected
 stage number, ordered stages and definitions, plus `server_instance_id`,
 `observation_revision`, `movement_busy`, and the latest process-local observation.
+`storage_issue` is null after a successful read. If a previously readable
+workspace becomes unavailable, the host may return its last readable view with
+`storage_issue` set; the view is labeled as cached and must not be treated as a
+new database read. A first read failure remains a typed API error.
+
 The SSE stream first sends `snapshot` with workspace/server IDs, revision, busy
-state and that observation. Subsequent `movement.started`, `role.started`,
+state, the checkpoint paired with that revision, and the latest observation.
+Clients reconcile that checkpoint with the observation before presenting a
+movement result. On a save failure, the observation's `confirmed_checkpoint` is
+the last position Workbench confirmed and `attempted_checkpoint` shows the
+unconfirmed values; the host retains both even if a later storage read fails.
+Subsequent `movement.started`, `role.started`,
 `role.finished`, and `movement.finished` events are compact invalidations; `resync`
 contains a fresh snapshot after subscriber lag. Role-finished events identify the
 completed role and its output reference but never carry child bytes. The browser

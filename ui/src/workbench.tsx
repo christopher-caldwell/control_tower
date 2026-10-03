@@ -61,16 +61,27 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [workspaceRefreshVersion, setWorkspaceRefreshVersion] = useState(0);
   const [liveStatus, setLiveStatus] = useState("Connecting");
-  const [movementSubmittingFor, setMovementSubmittingFor] = useState<string | null>(null);
-  const [movementIssue, setMovementIssue] = useState<string | null>(null);
+  const [movementSubmittingFor, setMovementSubmittingFor] = useState<Record<string, number>>({});
+  const [movementIssues, setMovementIssues] = useState<Record<string, string>>({});
   const detailRevision = useRef(0);
   const definitionRevision = useRef(0);
   const previousWorkspaceId = useRef<string | null>(null);
   const serverInstance = useRef<string | null>(null);
+  const selectedWorkspaceRef = useRef<string | null>(null);
+  const selectedStageRef = useRef<number | null>(null);
+  const movementSequence = useRef(0);
+  const activeMovementRequests = useRef(new Map<string, number>());
+  const latestSnapshots = useRef(new Map<string, RuntimeSnapshot>());
+  const latestEventRevisions = useRef(new Map<string, { server_instance_id: string; revision: number }>());
 
   useEffect(() => {
     localStorage.setItem(preferenceKey, JSON.stringify(preferences));
   }, [preferences]);
+
+  useEffect(() => {
+    selectedWorkspaceRef.current = selectedWorkspaceId;
+    selectedStageRef.current = selectedStageNumber;
+  }, [selectedWorkspaceId, selectedStageNumber]);
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth);
@@ -99,8 +110,12 @@ export function App() {
       setProject(view);
       if (showRefreshing) setWorkspaceRefreshVersion((version) => version + 1);
       setSelectedWorkspaceId((current) => {
-        if (current && view.workspaces.some((item) => item.id === current)) return current;
-        return view.workspaces.find((item) => item.available)?.id ?? view.workspaces[0]?.id ?? null;
+        const selected = current && view.workspaces.some((item) => item.id === current)
+          ? current
+          : view.workspaces.find((item) => item.available)?.id ?? view.workspaces[0]?.id ?? null;
+        if (selected !== current) selectedStageRef.current = null;
+        selectedWorkspaceRef.current = selected;
+        return selected;
       });
     } catch (error) {
       setProjectIssue(error instanceof Error ? error.message : "Could not reach the local Control Tower host.");
@@ -120,6 +135,7 @@ export function App() {
     previousWorkspaceId.current = selectedWorkspaceId;
     if (workspaceChanged) {
       setWorkspace(null);
+      selectedStageRef.current = null;
       setSelectedStageNumber(null);
       setDefinition(null);
       setDefinitionIssue(null);
@@ -132,15 +148,29 @@ export function App() {
         if (revision !== detailRevision.current) return;
         if (serverInstance.current && serverInstance.current !== view.server_instance_id) return;
         serverInstance.current ??= view.server_instance_id;
+        const latest = latestSnapshots.current.get(selectedWorkspaceId);
+        const reconciled = latest
+          && latest.server_instance_id === view.server_instance_id
+          && latest.revision >= view.observation_revision
+          ? applyRuntimeSnapshot(view, latest)
+          : view;
+        const revisionFence = latestEventRevisions.current.get(selectedWorkspaceId);
+        if (revisionFence?.server_instance_id === view.server_instance_id
+          && reconciled.observation_revision < revisionFence.revision) {
+          setWorkspaceRefreshVersion((version) => version + 1);
+          return;
+        }
+        rememberWorkspaceView(latestSnapshots.current, reconciled);
+        rememberEventRevision(latestEventRevisions.current, selectedWorkspaceId, reconciled.server_instance_id, reconciled.observation_revision);
         setWorkspace((current) => {
           if (current?.workspace.id === selectedWorkspaceId
-            && current.server_instance_id === view.server_instance_id
-            && current.observation_revision > view.observation_revision) return current;
-          return view;
+            && current.server_instance_id === reconciled.server_instance_id
+            && current.observation_revision > reconciled.observation_revision) return current;
+          return reconciled;
         });
-        setSelectedStageNumber((current) => current !== null && view.stages.some((stage) => stage.number === current)
+        setSelectedStageNumber((current) => current !== null && reconciled.stages.some((stage) => stage.number === current)
           ? current
-          : view.selected_stage_number);
+          : reconciled.selected_stage_number);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || revision !== detailRevision.current) return;
@@ -158,24 +188,27 @@ export function App() {
     const source = new EventSource(`/api/workspaces/${encodeURIComponent(workspaceId)}/events`, { withCredentials: true });
     let closed = false;
     const acceptSnapshot = (event: Event) => {
+      if (closed) return;
       try {
         const snapshot = JSON.parse((event as MessageEvent<string>).data) as RuntimeSnapshot;
         if (snapshot.workspace_id !== workspaceId
           || (serverInstance.current && serverInstance.current !== snapshot.server_instance_id)) return;
         serverInstance.current ??= snapshot.server_instance_id;
+        const latest = latestSnapshots.current.get(workspaceId);
+        if (latest && (latest.server_instance_id !== snapshot.server_instance_id
+          || latest.revision > snapshot.revision)) return;
+        const fence = latestEventRevisions.current.get(workspaceId);
+        if (fence?.server_instance_id === snapshot.server_instance_id && fence.revision > snapshot.revision) return;
+        latestSnapshots.current.set(workspaceId, snapshot);
+        rememberEventRevision(latestEventRevisions.current, workspaceId, snapshot.server_instance_id, snapshot.revision);
         setWorkspace((current) => {
           if (!current || current.workspace.id !== workspaceId
             || current.server_instance_id !== snapshot.server_instance_id
             || current.observation_revision > snapshot.revision) return current;
-          return {
-            ...current,
-            observation_revision: snapshot.revision,
-            movement_busy: snapshot.movement_busy,
-            observation: snapshot.observation,
-          };
+          return applyRuntimeSnapshot(current, snapshot);
         });
       } catch {
-        setLiveStatus("Resynchronizing");
+        if (!closed) setLiveStatus("Resynchronizing");
       }
     };
     const refreshObservation = async () => {
@@ -183,31 +216,52 @@ export function App() {
         const view = await api<WorkspaceView>(`/api/workspaces/${encodeURIComponent(workspaceId)}`);
         if (closed || (serverInstance.current && serverInstance.current !== view.server_instance_id)) return;
         serverInstance.current ??= view.server_instance_id;
+        const latest = latestSnapshots.current.get(workspaceId);
+        const reconciled = latest
+          && latest.server_instance_id === view.server_instance_id
+          && latest.revision >= view.observation_revision
+          ? applyRuntimeSnapshot(view, latest)
+          : view;
+        const fence = latestEventRevisions.current.get(workspaceId);
+        if (fence?.server_instance_id === view.server_instance_id && reconciled.observation_revision < fence.revision) {
+          void refreshObservation();
+          return;
+        }
+        rememberWorkspaceView(latestSnapshots.current, reconciled);
+        rememberEventRevision(latestEventRevisions.current, workspaceId, reconciled.server_instance_id, reconciled.observation_revision);
         setWorkspace((current) => {
           if (!current || current.workspace.id !== workspaceId
-            || current.server_instance_id !== view.server_instance_id
-            || current.observation_revision > view.observation_revision) return current;
-          return view;
+            || current.server_instance_id !== reconciled.server_instance_id
+            || current.observation_revision > reconciled.observation_revision) return current;
+          return reconciled;
         });
       } catch {
         if (!closed) setLiveStatus("Reconnecting");
       }
     };
     const refreshFromEvent = (event: Event) => {
+      if (closed) return;
       try {
         const data = JSON.parse((event as MessageEvent<string>).data) as {
           workspace_id?: string;
           server_instance_id?: string;
+          revision?: number;
         };
         if (data.workspace_id !== workspaceId
           || (serverInstance.current && data.server_instance_id !== serverInstance.current)) return;
+        if (data.server_instance_id && typeof data.revision === "number") {
+          rememberEventRevision(latestEventRevisions.current, workspaceId, data.server_instance_id, data.revision);
+        }
         void refreshObservation();
       } catch {
         void refreshObservation();
       }
     };
-    source.onopen = () => setLiveStatus("Live updates connected");
+    source.onopen = () => {
+      if (!closed) setLiveStatus("Live updates connected");
+    };
     source.onerror = () => {
+      if (closed) return;
       setLiveStatus("Reconnecting");
       void refreshObservation();
     };
@@ -273,7 +327,9 @@ export function App() {
   const actions = workspace ? movementActionsFor(workspace) : [];
   const activeAction = actions[0];
   const alternateAction = actions[1];
-  const controlsBusy = Boolean(workspace?.movement_busy || movementSubmittingFor === selectedWorkspaceId);
+  const controlsBusy = Boolean(workspace?.movement_busy
+    || (selectedWorkspaceId && movementSubmittingFor[selectedWorkspaceId] !== undefined));
+  const movementIssue = selectedWorkspaceId ? movementIssues[selectedWorkspaceId] ?? null : null;
   const finalAccepted = Boolean(workspace?.stages.length
     && !workspace.checkpoint.pending_transition
     && workspace.checkpoint.accepted_stage?.number === workspace.stages.at(-1)?.number);
@@ -299,13 +355,24 @@ export function App() {
         && ["process_failed", "launch_failed"].includes(workspace.observation.failure.kind))));
 
   async function runMovement(action: MovementAction) {
-    if (!selectedWorkspaceId || !workspace || controlsBusy || !selectedSummary?.available || action.disabledReason) return;
+    if (!selectedWorkspaceId || !workspace || controlsBusy || !selectedSummary?.available
+      || workspace.storage_issue || action.disabledReason) return;
     const workspaceId = selectedWorkspaceId;
-    setMovementSubmittingFor(workspaceId);
-    setMovementIssue(null);
+    const requestId = ++movementSequence.current;
+    activeMovementRequests.current.set(workspaceId, requestId);
+    setMovementSubmittingFor((current) => ({ ...current, [workspaceId]: requestId }));
+    setMovementIssues((current) => {
+      const { [workspaceId]: _previous, ...rest } = current;
+      return rest;
+    });
+    let submittedSelection = selectedStageRef.current;
     if (action.choice.target_stage > 0 && workspace.stages.some((stage) => stage.number === action.choice.target_stage)) {
+      submittedSelection = action.choice.target_stage;
+      selectedStageRef.current = action.choice.target_stage;
       setSelectedStageNumber(action.choice.target_stage);
     } else if (workspace.checkpoint.pending_transition) {
+      submittedSelection = workspace.checkpoint.pending_transition.stage.number;
+      selectedStageRef.current = workspace.checkpoint.pending_transition.stage.number;
       setSelectedStageNumber(workspace.checkpoint.pending_transition.stage.number);
     }
     try {
@@ -313,26 +380,68 @@ export function App() {
         `/api/workspaces/${encodeURIComponent(workspaceId)}/movements`,
         action.choice,
       );
+      if (activeMovementRequests.current.get(workspaceId) !== requestId) return;
+      const previousSnapshot = latestSnapshots.current.get(workspaceId);
+      if (previousSnapshot && previousSnapshot.server_instance_id === observation.server_instance_id
+        && previousSnapshot.revision > observation.revision) return;
+      const eventFence = latestEventRevisions.current.get(workspaceId);
+      if (eventFence?.server_instance_id === observation.server_instance_id
+        && eventFence.revision > observation.revision) {
+        void refreshWorkspace(workspaceId);
+        return;
+      }
+      const snapshot: RuntimeSnapshot = {
+        workspace_id: workspaceId,
+        server_instance_id: observation.server_instance_id,
+        revision: observation.revision,
+        movement_busy: false,
+        checkpoint: observation.confirmed_checkpoint ?? previousSnapshot?.checkpoint ?? workspace.checkpoint,
+        observation,
+      };
+      latestSnapshots.current.set(workspaceId, snapshot);
+      rememberEventRevision(latestEventRevisions.current, workspaceId, observation.server_instance_id, observation.revision);
       setWorkspace((current) => {
-        if (!current || current.workspace.id !== workspaceId
+        if (selectedWorkspaceRef.current !== workspaceId
+          || !current || current.workspace.id !== workspaceId
           || current.server_instance_id !== observation.server_instance_id
           || current.observation_revision > observation.revision) return current;
-        return applyObservation(current, observation, false);
+        return applyRuntimeSnapshot(current, snapshot);
       });
       setProject((current) => current && observation.confirmed_checkpoint
         ? updateWorkspaceSummary(current, workspaceId, observation.confirmed_checkpoint)
         : current);
       const relevantStage = observation.failure?.stage?.number
         ?? observation.role_results.at(-1)?.stage.number;
-      if (relevantStage !== undefined) setSelectedStageNumber(relevantStage);
+      if (selectedWorkspaceRef.current === workspaceId
+        && activeMovementRequests.current.get(workspaceId) === requestId
+        && selectedStageRef.current === submittedSelection
+        && relevantStage !== undefined) {
+        selectedStageRef.current = relevantStage;
+        setSelectedStageNumber(relevantStage);
+      }
       if (observation.state === "stopped" || observation.state === "unavailable") {
-        setMovementIssue(`${observation.state === "stopped" ? "Movement stopped" : "Movement unavailable"}: ${observation.failure?.message ?? "Inspect the current checkpoint and authored effects."}`);
+        setMovementIssues((current) => ({
+          ...current,
+          [workspaceId]: `${observation.state === "stopped" ? "Movement stopped" : "Movement unavailable"}: ${observation.failure?.message ?? "Inspect the current checkpoint and authored effects."}`,
+        }));
       }
     } catch (error) {
-      setMovementIssue(error instanceof Error ? error.message : "Movement could not be submitted.");
+      if (activeMovementRequests.current.get(workspaceId) === requestId) {
+        setMovementIssues((current) => ({
+          ...current,
+          [workspaceId]: error instanceof Error ? error.message : "Movement could not be submitted.",
+        }));
+      }
       void refreshWorkspace(workspaceId);
     } finally {
-      setMovementSubmittingFor((current) => current === workspaceId ? null : current);
+      if (activeMovementRequests.current.get(workspaceId) === requestId) {
+        activeMovementRequests.current.delete(workspaceId);
+        setMovementSubmittingFor((current) => {
+          if (current[workspaceId] !== requestId) return current;
+          const { [workspaceId]: _previous, ...rest } = current;
+          return rest;
+        });
+      }
     }
   }
 
@@ -341,15 +450,35 @@ export function App() {
       const view = await api<WorkspaceView>(`/api/workspaces/${encodeURIComponent(workspaceId)}`);
       if (serverInstance.current && serverInstance.current !== view.server_instance_id) return;
       serverInstance.current ??= view.server_instance_id;
+      const latest = latestSnapshots.current.get(workspaceId);
+      const reconciled = latest
+        && latest.server_instance_id === view.server_instance_id
+        && latest.revision >= view.observation_revision
+        ? applyRuntimeSnapshot(view, latest)
+        : view;
+      const fence = latestEventRevisions.current.get(workspaceId);
+      if (fence?.server_instance_id === view.server_instance_id && reconciled.observation_revision < fence.revision) {
+        void refreshWorkspace(workspaceId);
+        return;
+      }
+      rememberWorkspaceView(latestSnapshots.current, reconciled);
+      rememberEventRevision(latestEventRevisions.current, workspaceId, reconciled.server_instance_id, reconciled.observation_revision);
       setWorkspace((current) => {
-        if (!current || current.workspace.id !== workspaceId
-          || current.server_instance_id !== view.server_instance_id
-          || current.observation_revision > view.observation_revision) return current;
-        return view;
+        if (selectedWorkspaceRef.current !== workspaceId
+          || !current || current.workspace.id !== workspaceId
+          || current.server_instance_id !== reconciled.server_instance_id
+          || current.observation_revision > reconciled.observation_revision) return current;
+        return reconciled;
       });
     } catch {
       // SSE reconnect and the next explicit refresh remain available.
     }
+  }
+
+  function selectWorkspace(workspaceId: string) {
+    if (selectedWorkspaceRef.current !== workspaceId) selectedStageRef.current = null;
+    selectedWorkspaceRef.current = workspaceId;
+    setSelectedWorkspaceId(workspaceId);
   }
 
   return (
@@ -377,12 +506,12 @@ export function App() {
               {loading && <div className="rail-message">Discovering workspaces…</div>}
               {!loading && project?.workspaces.length === 0 && <div className="empty-note"><span className="empty-icon">⌘</span><b>No workspaces found</b><p>Add scratch workspaces under <code>workspaces/</code>, then restart Control Tower.</p></div>}
               {project?.discovery_error && <div className="inline-warning">{project.discovery_error}</div>}
-              {project?.workspaces.map((item) => <WorkspaceButton key={item.id} item={item} selected={item.id === selectedWorkspaceId} onClick={() => setSelectedWorkspaceId(item.id)} />)}
+              {project?.workspaces.map((item) => <WorkspaceButton key={item.id} item={item} selected={item.id === selectedWorkspaceId} onClick={() => selectWorkspace(item.id)} />)}
               {projectIssue && <div className="inline-warning">{projectIssue}</div>}
             </div>
             <div className="rail-footer"><span className="footer-glyph">⌘</span><span><b>Startup discovery</b><small>Restart to add or remove</small></span></div>
           </>}
-          {preferences.leftCollapsed && <div className="collapsed-workspaces">{project?.workspaces.map((item) => <button key={item.id} className={`workspace-glyph ${item.id === selectedWorkspaceId ? "selected" : ""}`} onClick={() => setSelectedWorkspaceId(item.id)} title={item.name} aria-label={`Select workspace ${item.name}`}>{item.name.slice(0, 1).toUpperCase()}</button>)}</div>}
+          {preferences.leftCollapsed && <div className="collapsed-workspaces">{project?.workspaces.map((item) => <button key={item.id} className={`workspace-glyph ${item.id === selectedWorkspaceId ? "selected" : ""}`} onClick={() => selectWorkspace(item.id)} title={item.name} aria-label={`Select workspace ${item.name}`}>{item.name.slice(0, 1).toUpperCase()}</button>)}</div>}
         </aside>
 
         <main className="stage-column" aria-label="Ordered stages">
@@ -393,6 +522,7 @@ export function App() {
             </div>
 
             {workspaceIssue && <div className="notice notice-error"><span className="notice-symbol">!</span><div><b>Workspace unavailable</b><p>{workspaceIssue}</p><small>{setupHint(workspaceIssue)}</small></div></div>}
+            {workspace?.storage_issue && <div className="notice notice-error" role="alert"><span className="notice-symbol">!</span><div><b>Checkpoint storage unavailable</b><p>{workspace.storage_issue}</p><small>Showing the last readable checkpoint with retained movement evidence. Resolve storage before submitting another movement.</small></div></div>}
             {selectedSummary && !selectedSummary.available && !workspaceIssue && <div className="notice notice-error"><span className="notice-symbol">!</span><div><b>Workspace unavailable</b><p>{selectedSummary.issue}</p><small>{setupHint(selectedSummary.issue ?? "")}</small></div></div>}
             {!loading && !workspaceIssue && workspace && workspace.stages.length === 0 && <div className="notice"><span className="notice-symbol">i</span><div><b>No numbered stages found</b><p>This workspace does not contain any numbered directories under <code>stages/</code>.</p></div></div>}
 
@@ -405,7 +535,10 @@ export function App() {
 
               <div className="stages-heading"><div><span className="eyebrow">STAGE SEQUENCE</span><h2>Ordered progression</h2></div><span className="stage-count">{workspace.stages.length} {workspace.stages.length === 1 ? "stage" : "stages"}</span></div>
               <div className="stage-list">
-                {workspace.stages.map((stage, index) => <StageCard key={stage.number} stage={stage} index={index} observation={workspace.observation} selected={stage.number === selectedStageNumber} onClick={() => setSelectedStageNumber(stage.number)} />)}
+                {workspace.stages.map((stage, index) => <StageCard key={stage.number} stage={stage} index={index} observation={workspace.observation} selected={stage.number === selectedStageNumber} onClick={() => {
+                  selectedStageRef.current = stage.number;
+                  setSelectedStageNumber(stage.number);
+                }} />)}
               </div>
             </>}
 
@@ -417,8 +550,8 @@ export function App() {
             {movementIssue && <span className="movement-issue" role="status">{movementIssue}</span>}
             {ambiguousEffects && <span className="movement-warning" role="alert">Inspect author-owned effects before continuing. The pending checkpoint alone does not make retry or reversal safe.</span>}
             <div className="movement-buttons">
-              {alternateAction && <button className="secondary-action" onClick={() => void runMovement(alternateAction)} disabled={controlsBusy || !selectedSummary?.available || Boolean(alternateAction.disabledReason)} title={alternateAction.disabledReason}>{alternateAction.label}<span aria-hidden="true">↶</span></button>}
-              {activeAction && <button className="primary-action" onClick={() => void runMovement(activeAction)} disabled={controlsBusy || !selectedSummary?.available || Boolean(activeAction.disabledReason)} title={activeAction.disabledReason}>{controlsBusy ? "Movement in progress" : activeAction.label}<span aria-hidden="true">{activeAction.choice.direction === "up" ? "→" : "↶"}</span></button>}
+              {alternateAction && <button className="secondary-action" onClick={() => void runMovement(alternateAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available || Boolean(alternateAction.disabledReason)} title={workspace?.storage_issue ?? alternateAction.disabledReason}>{alternateAction.label}<span aria-hidden="true">↶</span></button>}
+              {activeAction && <button className="primary-action" onClick={() => void runMovement(activeAction)} disabled={controlsBusy || Boolean(workspace?.storage_issue) || !selectedSummary?.available || Boolean(activeAction.disabledReason)} title={workspace?.storage_issue ?? activeAction.disabledReason}>{controlsBusy ? "Movement in progress" : activeAction.label}<span aria-hidden="true">{activeAction.choice.direction === "up" ? "→" : "↶"}</span></button>}
               {!activeAction && <button className="primary-action" disabled>{inactiveActionLabel}<span aria-hidden="true">{workspace?.stages.length ? "✓" : "·"}</span></button>}
             </div>
           </div>
@@ -499,12 +632,18 @@ function Inspector({ selectedStage, selectedStageNumber, definition, definitionI
           {relevantFailure && <div className="inspector-error" role="status"><b>{relevantFailure.kind === "checkpoint_save_failed" ? "Checkpoint was not confirmed" : "Observed failure"}</b><p>{relevantFailure.message}</p>{observation?.attempted_checkpoint && <small>Last confirmed position remains separate from the attempted checkpoint shown by this movement.</small>}</div>}
           {currentIsAccepted ? <div className="state-card success"><span className="state-card-icon">✓</span><span><b>Applied</b><small>{selectedStage.is_accepted_checkpoint ? "Last confirmed accepted position" : "Accepted earlier · execution evidence not retained"}</small></span></div> : currentIsPending ? <div className="state-card pending"><span className="state-card-icon">◐</span><span><b>{checkpoint?.pending_transition?.direction === "down" ? "Pending down" : "Pending up"}</b><small>Prior execution result is not retained</small></span></div> : <div className="state-card neutral"><span className="state-card-icon">○</span><span><b>Not applied</b><small>Future stage in the ordered sequence</small></span></div>}
           {selectedStage.is_accepted_checkpoint && currentIsPending && <p className="subtle-note">This is also the last confirmed checkpoint. The pending transition has not been accepted.</p>}
+          {observation?.attempted_checkpoint && <div className="attempted-checkpoint" role="note">
+            <b>Attempted checkpoint · unconfirmed</b>
+            <p><span>Accepted position:</span> {checkpointPosition(observation.attempted_checkpoint)}</p>
+            <p><span>Pending transition:</span> {pendingPosition(observation.attempted_checkpoint)}</p>
+            <small>Workbench last confirmed: {checkpointPosition(observation.confirmed_checkpoint ?? checkpoint)}. After an ambiguous save failure, actual database contents may be uncertain.</small>
+          </div>}
         </section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /><RolePreview role="down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /></section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} /><RolePreview role="verify-down" stage={selectedStage} definitions={selectedStage.definitions} results={stageResults} />{selectedStage.definitions.every((role) => !role.role.startsWith("verify-")) && <p className="subtle-note">No verifier configured. Missing verification is not a passing result.</p>}</section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">04</span><h4>Captured output</h4></div>
           {stageResults.length === 0 && <div className="output-empty"><span aria-hidden="true">⌁</span><div><b>{selectedStage.state === "accepted" ? "No retained output" : selectedStage.state === "pending" ? "Prior output unavailable" : "No output yet"}</b><small>Only this process session’s latest movement results are retained.</small></div></div>}
-          {stageResults.map((result, index) => <RoleOutput key={`${result.role}-${index}`} workspaceId={workspaceId} result={result} />)}
+          {stageResults.map((result) => <RoleOutput key={outputIdentity(workspaceId, observation?.operation_id, result)} workspaceId={workspaceId} operationId={observation?.operation_id ?? null} result={result} />)}
           {observation && observation.omitted_role_results > 0 && <p className="subtle-note">{observation.omitted_role_results} earlier role result(s) exceeded the in-memory summary limit.</p>}
         </section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">05</span><h4>Definition preview</h4></div>
@@ -549,40 +688,46 @@ function roleOutcomeLabel(result: RoleObservation): string {
   }
 }
 
-function RoleOutput({ workspaceId, result }: { workspaceId: string | null; result: RoleObservation }) {
+function RoleOutput({ workspaceId, operationId, result }: { workspaceId: string | null; operationId: string | null; result: RoleObservation }) {
   return <div className="captured-role">
     <div className="captured-role-heading"><b>Stage {result.stage.number} · {result.role}</b><span>{roleOutcomeLabel(result)}</span></div>
     {result.output_state === "not_returned" && <p className="subtle-note">Output is buffered until this role returns; bytes are not streamed.</p>}
     {result.output_state === "unavailable" && <p className="subtle-note">Output is unavailable because the executable could not be started.</p>}
     {result.output_state === "evicted" && <p className="subtle-note">Output was evicted to keep in-process retention bounded.</p>}
     {result.output_state === "available" && result.output_id && workspaceId && <>
-      <CapturedStream workspaceId={workspaceId} result={result} streamName="stdout" />
-      <CapturedStream workspaceId={workspaceId} result={result} streamName="stderr" />
+      <CapturedStream key={`${outputIdentity(workspaceId, operationId, result)}:stdout`} workspaceId={workspaceId} operationId={operationId} result={result} streamName="stdout" />
+      <CapturedStream key={`${outputIdentity(workspaceId, operationId, result)}:stderr`} workspaceId={workspaceId} operationId={operationId} result={result} streamName="stderr" />
       {(result.stdout_truncated || result.stderr_truncated) && <small className="truncated-note">A stream exceeds the 1 MiB capture limit. The retained prefix is marked truncated; the original byte count is shown.</small>}
     </>}
   </div>;
 }
 
-function CapturedStream({ workspaceId, result, streamName }: { workspaceId: string; result: RoleObservation; streamName: "stdout" | "stderr" }) {
+function CapturedStream({ workspaceId, operationId, result, streamName }: { workspaceId: string; operationId: string | null; result: RoleObservation; streamName: "stdout" | "stderr" }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [issue, setIssue] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const requestGeneration = useRef(0);
   const length = streamName === "stdout" ? result.stdout_bytes : result.stderr_bytes;
   const truncated = streamName === "stdout" ? result.stdout_truncated : result.stderr_truncated;
   const endpoint = `/api/workspaces/${encodeURIComponent(workspaceId)}/outputs/${encodeURIComponent(result.output_id!)}/${streamName}`;
 
+  useEffect(() => () => {
+    requestGeneration.current += 1;
+  }, [endpoint, operationId, result.stage.number, result.role, streamName]);
+
   async function showPreview() {
+    const requestId = ++requestGeneration.current;
     setLoading(true);
     setIssue(null);
     try {
       const response = await fetch(endpoint, { credentials: "same-origin" });
       if (!response.ok) throw new Error(response.status === 410 ? "Output is no longer retained." : `Output read failed (${response.status}).`);
       const bytes = new Uint8Array(await response.arrayBuffer());
-      setPreview(safeOutputPreview(bytes));
+      if (requestGeneration.current === requestId) setPreview(safeOutputPreview(bytes));
     } catch (error) {
-      setIssue(error instanceof Error ? error.message : "Output could not be read.");
+      if (requestGeneration.current === requestId) setIssue(error instanceof Error ? error.message : "Output could not be read.");
     } finally {
-      setLoading(false);
+      if (requestGeneration.current === requestId) setLoading(false);
     }
   }
 
@@ -595,6 +740,10 @@ function CapturedStream({ workspaceId, result, streamName }: { workspaceId: stri
     {issue && <small className="output-error" role="status">{issue}</small>}
     {preview !== null && <pre className="output-preview" aria-label={`${streamName} text preview`}>{preview || "(empty preview)"}</pre>}
   </div>;
+}
+
+function outputIdentity(workspaceId: string | null, operationId: string | null | undefined, result: RoleObservation): string {
+  return [workspaceId ?? "", operationId ?? "", result.output_id ?? "", result.stage.number, result.role].join(":");
 }
 
 function safeOutputPreview(bytes: Uint8Array): string {
@@ -690,8 +839,22 @@ function movementActionsFor(workspace: WorkspaceView): MovementAction[] {
   return actions;
 }
 
-function applyObservation(view: WorkspaceView, observation: MovementObservation, movementBusy: boolean): WorkspaceView {
-  const checkpoint = observation.confirmed_checkpoint ?? view.checkpoint;
+function applyRuntimeSnapshot(view: WorkspaceView, snapshot: RuntimeSnapshot): WorkspaceView {
+  if (snapshot.workspace_id !== view.workspace.id
+    || snapshot.server_instance_id !== view.server_instance_id
+    || snapshot.revision < view.observation_revision) return view;
+  const checkpoint = snapshot.observation?.confirmed_checkpoint ?? snapshot.checkpoint;
+  const updated = {
+    ...view,
+    server_instance_id: snapshot.server_instance_id,
+    observation_revision: snapshot.revision,
+    movement_busy: snapshot.movement_busy,
+    observation: snapshot.observation,
+  };
+  return checkpoint ? applyCheckpoint(updated, checkpoint) : updated;
+}
+
+function applyCheckpoint(view: WorkspaceView, checkpoint: WorkspaceView["checkpoint"]): WorkspaceView {
   const acceptedIndex = checkpoint.accepted_stage
     ? view.stages.findIndex((stage) => stage.number === checkpoint.accepted_stage?.number)
     : -1;
@@ -699,15 +862,38 @@ function applyObservation(view: WorkspaceView, observation: MovementObservation,
   return {
     ...view,
     checkpoint,
-    movement_busy: movementBusy,
-    observation_revision: observation.revision,
-    observation,
     stages: view.stages.map((stage, index) => ({
       ...stage,
       state: stage.number === pendingNumber ? "pending" : index <= acceptedIndex ? "accepted" : "future",
       is_accepted_checkpoint: index === acceptedIndex,
     })),
   };
+}
+
+function rememberWorkspaceView(snapshots: Map<string, RuntimeSnapshot>, view: WorkspaceView) {
+  const snapshot: RuntimeSnapshot = {
+    workspace_id: view.workspace.id,
+    server_instance_id: view.server_instance_id,
+    revision: view.observation_revision,
+    movement_busy: view.movement_busy,
+    checkpoint: view.checkpoint,
+    observation: view.observation,
+  };
+  const current = snapshots.get(view.workspace.id);
+  if (current && (current.server_instance_id !== snapshot.server_instance_id
+    || current.revision > snapshot.revision)) return;
+  snapshots.set(view.workspace.id, snapshot);
+}
+
+function rememberEventRevision(
+  revisions: Map<string, { server_instance_id: string; revision: number }>,
+  workspaceId: string,
+  serverInstanceId: string,
+  revision: number,
+) {
+  const current = revisions.get(workspaceId);
+  if (current?.server_instance_id === serverInstanceId && current.revision > revision) return;
+  revisions.set(workspaceId, { server_instance_id: serverInstanceId, revision });
 }
 
 function updateWorkspaceSummary(project: ProjectView, workspaceId: string, checkpoint: WorkspaceView["checkpoint"]): ProjectView {
@@ -719,6 +905,17 @@ function updateWorkspaceSummary(project: ProjectView, workspaceId: string, check
       pending_transition: checkpoint.pending_transition,
     } : item),
   };
+}
+
+function checkpointPosition(checkpoint: WorkspaceView["checkpoint"] | null): string {
+  return checkpoint?.accepted_stage
+    ? `Stage ${checkpoint.accepted_stage.number} · ${checkpoint.accepted_stage.name}`
+    : "Baseline · no accepted stages";
+}
+
+function pendingPosition(checkpoint: WorkspaceView["checkpoint"] | null): string {
+  const pending = checkpoint?.pending_transition;
+  return pending ? `${pending.direction} · Stage ${pending.stage.number} · ${pending.stage.name}` : "None";
 }
 
 function setupHint(issue: string): string {
