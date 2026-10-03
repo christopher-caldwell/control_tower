@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Direct composition of Control Tower stages and reusable PyCapsule tools"
 requires-python = ">=3.11"
 dependencies = [
+    "capsule-runner==0.0.1",
     "example-tool",
     "psycopg[binary]>=3.2,<4",
     "python-dateutil>=2.9,<3",
@@ -14,4 +15,3 @@ package = false
 
 [tool.uv.sources]
 example-tool = { path = "tools/example_tool", editable = true }
-py-capsule = { git = "ssh://git@github.com/christopher-caldwell/py_capsule.git", rev = "25edcfe51373cc2ebf0593ae5a033323f71b19e3" }

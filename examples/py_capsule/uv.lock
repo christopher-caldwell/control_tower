@@ -3,10 +3,20 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
+name = "capsule-runner"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/fa/8fd5a087c4c8f7e556ab55e1afa39503ee87edfc665aa9582f0d4146bca0/capsule_runner-0.0.1.tar.gz", hash = "sha256:2023b9a23c0a04461131d9d89529035405446f12edf25c4cd62eeb1f04f443e2", size = 27584, upload-time = "2026-10-03T03:22:54.741Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/e8/ccb27bfec604d27328b5ea2a7ce88e713f4f04c91be1ad0acf77b57db74c/capsule_runner-0.0.1-py3-none-any.whl", hash = "sha256:42723ff716ce9b9cc096686d70567bb326cd7cbf8b145a40673dcbc39d51fc6a", size = 17177, upload-time = "2026-10-03T03:22:53.501Z" },
+]
+
+[[package]]
 name = "control-tower-py-capsule-examples"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "capsule-runner" },
     { name = "example-tool" },
     { name = "psycopg", extra = ["binary"] },
     { name = "python-dateutil" },
@@ -14,6 +24,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "capsule-runner", specifier = "==0.0.1" },
     { name = "example-tool", editable = "tools/example_tool" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "python-dateutil", specifier = ">=2.9,<3" },
@@ -24,11 +35,11 @@ name = "example-tool"
 version = "0.1.0"
 source = { editable = "tools/example_tool" }
 dependencies = [
-    { name = "py-capsule" },
+    { name = "capsule-runner" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "py-capsule", git = "ssh://git@github.com/christopher-caldwell/py_capsule.git?rev=25edcfe51373cc2ebf0593ae5a033323f71b19e3" }]
+requires-dist = [{ name = "capsule-runner", specifier = "==0.0.1" }]
 
 [[package]]
 name = "psycopg"
@@ -109,11 +120,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5d/d5/cf0cbd1ea5a7d8167fe2c6953efde19101f7b193bd61a23e6d622ad6854c/psycopg_binary-3.3.6-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:303732e798fe6729f8e12021b9c96107df8e95ecec4dd487c67b98ec2a59435e", size = 4336388, upload-time = "2026-09-18T13:22:45.576Z" },
     { url = "https://files.pythonhosted.org/packages/98/33/e2a5b36edf8aa422f6fa4b894756eb33dc93b36df5f65121280bb8b929c4/psycopg_binary-3.3.6-cp315-cp315-win_amd64.whl", hash = "sha256:2f122603f36050937982abf9668d8bc4769a79f7c93a65013b1c49f1cab7b56b", size = 3756154, upload-time = "2026-09-18T13:22:51.283Z" },
 ]
-
-[[package]]
-name = "py-capsule"
-version = "0.1.0"
-source = { git = "ssh://git@github.com/christopher-caldwell/py_capsule.git?rev=25edcfe51373cc2ebf0593ae5a033323f71b19e3#25edcfe51373cc2ebf0593ae5a033323f71b19e3" }
 
 [[package]]
 name = "python-dateutil"

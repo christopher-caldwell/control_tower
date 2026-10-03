@@ -22,7 +22,7 @@ Put `initdb`, `pg_ctl`, `createdb`, and `psql` on PATH for the disposable-server
 walkthrough. Keep the server and connection setting available throughout forward,
 reverse, and recovery operations. Start from the copied PyCapsule example root.
 Also install Node/npm and follow [example dependency setup](../../README.md#setup-and-run),
-including access to the pinned PyCapsule repository. This workspace intentionally
+including the pinned `capsule-runner` release from PyPI. This workspace intentionally
 requires the example Python/Node projects and sibling `tools/example_tool`. Follow
 the example README to copy and set up the complete example.
 
