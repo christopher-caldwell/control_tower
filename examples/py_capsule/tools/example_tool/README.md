@@ -19,8 +19,8 @@ shared environment. Declare body/runtime requirements here, then update
 both the tool and example locks. Category `bootstrap` validates both with locked
 syncs; strict child validation is tested without flags in ordinary roles.
 
-Both projects resolve `py-capsule` from the same pinned private SSH Git source.
-This is development wiring until a released dependency is available; the intended
-change preserves stage imports. This facade stays local/editable: its capsule assets
-are outside `src/` and its manifest selects its source project. Publishing the tool
+Both projects install the published `capsule-runner==0.0.1` distribution from
+PyPI. It provides the `py_capsule` import used by this facade; stages continue
+to import `example_tool`. No private Git access is needed. This facade stays
+local/editable: its capsule assets are outside `src/` and its manifest selects its source project. Publishing the tool
 would require asset bundling and a child-project installation strategy.

@@ -52,7 +52,7 @@ paths containing spaces and quotes. Complete example copies live in pytest tempo
 directories outside the repository; JUnit reports live in ignored `test-results/`. Core `cargo test --locked --workspace` does not run these suites.
 
 Missing optional runtime/toolchain executables produce explicit skips. Available
-runtimes with failed setup or execution produce test failures. PyCapsule requires
-read access to its pinned private Git dependency. PostgreSQL tests are explicitly
-opt-in; `--postgres` requires `initdb`, `pg_ctl`, and `psql`, starts private disposable
+runtimes with failed setup or execution produce test failures. PyCapsule installs
+the pinned `capsule-runner==0.0.1` release from PyPI without private Git access.
+PostgreSQL tests are explicitly opt-in; `--postgres` requires `initdb`, `pg_ctl`, and `psql`, starts private disposable
 clusters without TCP listeners, and never uses your application DSN.
