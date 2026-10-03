@@ -3,7 +3,7 @@ name = "example-tool"
 version = "0.1.0"
 description = "Typed facade around the PyCapsule example used by Control Tower pattern workspaces"
 requires-python = ">=3.11"
-dependencies = ["py-capsule"]
+dependencies = ["capsule-runner==0.0.1"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -11,6 +11,3 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.uv.sources]
-py-capsule = { git = "ssh://git@github.com/christopher-caldwell/py_capsule.git", rev = "25edcfe51373cc2ebf0593ae5a033323f71b19e3" }

@@ -15,11 +15,11 @@ Python/Node projects and the reusable [example_tool](tools/example_tool/README.m
 ## Setup and run
 
 Install or build `control-tower` and `control-tower-db` and put both on PATH.
-Use Unix tools, Git, uv, and Python 3.12. Node/npm are needed for `node-and-tool`
+Use Unix tools, uv, and Python 3.12. Node/npm are needed for `node-and-tool`
 and `full-stack`; PostgreSQL is needed only for `full-stack`. See the repository's
 [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
-Your GitHub SSH identity must have read access to the private
-`christopher-caldwell/py_capsule` repository to resolve the pinned dependency.
+Both Python projects install the published `capsule-runner==0.0.1` release from
+PyPI; no GitHub SSH identity or private repository access is required.
 
 From the Control Tower checkout, copy the complete example and enter the copy:
 
@@ -76,11 +76,9 @@ through normal module resolution. Native shell/psql stages run independently of
 Python metadata. Ordinary dependency ownership and nearest-project isolation are
 shown in the [simple example](https://github.com/christopher-caldwell/control_tower/blob/main/examples/simple/README.md), without tool encapsulation.
 
-The PyCapsule Git revision remains pinned to
-`25edcfe51373cc2ebf0593ae5a033323f71b19e3` in both caller and tool projects because
-uv source overrides are not inherited from dependencies. Replacing those source
-overrides with a validated released `py-capsule` dependency and regenerating the
-two locks will not change stage imports. Publishing PyCapsule is separate work.
+Both caller and tool projects pin the published `capsule-runner==0.0.1`
+distribution, with separate registry-backed locks. The Python import remains
+`py_capsule`; stage imports continue to use the local `example_tool` facade.
 The editable example tool keeps its capsule assets in this source tree.
 
 ## Recovery and validation

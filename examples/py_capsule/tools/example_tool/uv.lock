@@ -3,17 +3,21 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
+name = "capsule-runner"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/fa/8fd5a087c4c8f7e556ab55e1afa39503ee87edfc665aa9582f0d4146bca0/capsule_runner-0.0.1.tar.gz", hash = "sha256:2023b9a23c0a04461131d9d89529035405446f12edf25c4cd62eeb1f04f443e2", size = 27584, upload-time = "2026-10-03T03:22:54.741Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/e8/ccb27bfec604d27328b5ea2a7ce88e713f4f04c91be1ad0acf77b57db74c/capsule_runner-0.0.1-py3-none-any.whl", hash = "sha256:42723ff716ce9b9cc096686d70567bb326cd7cbf8b145a40673dcbc39d51fc6a", size = 17177, upload-time = "2026-10-03T03:22:53.501Z" },
+]
+
+[[package]]
 name = "example-tool"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "py-capsule" },
+    { name = "capsule-runner" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "py-capsule", git = "ssh://git@github.com/christopher-caldwell/py_capsule.git?rev=25edcfe51373cc2ebf0593ae5a033323f71b19e3" }]
-
-[[package]]
-name = "py-capsule"
-version = "0.1.0"
-source = { git = "ssh://git@github.com/christopher-caldwell/py_capsule.git?rev=25edcfe51373cc2ebf0593ae5a033323f71b19e3#25edcfe51373cc2ebf0593ae5a033323f71b19e3" }
+requires-dist = [{ name = "capsule-runner", specifier = "==0.0.1" }]

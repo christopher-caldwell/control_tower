@@ -1,5 +1,6 @@
 """Shared typed tool, real capsule child, and runtime boundaries."""
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,22 @@ from common import (
 
 pytestmark = pytest.mark.family_py_capsule
 PATTERNS = [("tool-only", 3), ("node-and-tool", 3)]
+
+
+@pytest.mark.parametrize("project", [".", "tools/example_tool"])
+def test_published_capsule_dependency_is_pinned(tmp_path, project):
+    sandbox, _ = materialize_workspace(tmp_path, "py_capsule", "tool-only")
+    project_root = sandbox / project
+    manifest = tomllib.loads((project_root / "pyproject.toml").read_text())
+    assert "capsule-runner==0.0.1" in manifest["project"]["dependencies"]
+    sources = manifest.get("tool", {}).get("uv", {}).get("sources", {})
+    assert "py-capsule" not in sources
+    assert "capsule-runner" not in sources
+    lock = tomllib.loads((project_root / "uv.lock").read_text())
+    packages = {package["name"]: package for package in lock["package"]}
+    assert "py-capsule" not in packages
+    assert packages["capsule-runner"]["version"] == "0.0.1"
+    assert packages["capsule-runner"]["source"] == {"registry": "https://pypi.org/simple"}
 
 
 def assert_artifacts(workspace, name, completed):
@@ -41,6 +58,8 @@ def assert_environment_ownership(sandbox, workspace, env, name):
         info = python_environment(project, env)
         assert Path(info["prefix"]).resolve() == (sandbox / ".venv").resolve()
         assert "example-tool" in info["packages"]
+        assert "capsule-runner" in info["packages"]
+        assert "py-capsule" not in info["packages"]
         assert "python-dateutil" in info["packages"]
         assert "jsonschema" not in info["packages"]
         source = run(
@@ -246,8 +265,7 @@ def test_strict_validation_rejects_stale_dependency_lock(tmp_path, cli_environme
     name = "tool-only"
     sandbox, workspace = materialize_workspace(tmp_path, "py_capsule", name)
     prepare_workspace(sandbox, workspace, cli_environment)
-    # Bootstrap/preceding tests cache these dependencies. Offline resolution avoids
-    # registry refreshes while checking stale-lock rejection, including the child.
+    # Exercise offline stale-lock rejection in the caller and capsule child.
     env = dict(cli_environment, UV_LOCKED="1", UV_OFFLINE="1")
     initialize(sandbox, workspace, env)
     project = {
@@ -257,15 +275,21 @@ def test_strict_validation_rejects_stale_dependency_lock(tmp_path, cli_environme
     if owner != "family":
         move(sandbox, workspace, env, "up", 1)
     if owner == "tool":
-        # Refresh only the caller's lock after changing tool-only group metadata.
-        # The child lock stays stale, proving validation reaches PyCapsule's uv.
         project.write_text(project.read_text() + '\n[dependency-groups]\ndev = ["pytest>=8,<10"]\n')
-        run(["uv", "lock", "--project", str(sandbox)], cwd=sandbox, env=dict(cli_environment, UV_OFFLINE="1"))
-        run(["uv", "lock", "--check", "--project", str(sandbox)], cwd=sandbox, env=env)
     else:
         project.write_text(project.read_text().replace('requires-python = ">=3.11"', 'requires-python = ">=3.12"'))
     lock = project.with_name("uv.lock")
     before = lock.read_bytes()
+    # Locked setup can install artifacts without caching registry metadata. Resolve
+    # the changed project once, then restore its stale lock so offline rejection
+    # tests lock validation rather than whether another test warmed uv's cache.
+    run(["uv", "lock", "--project", str(project.parent)], cwd=sandbox, env=cli_environment)
+    lock.write_bytes(before)
+    if owner == "tool":
+        # Refresh only the caller's lock. The child stays stale, proving validation
+        # reaches PyCapsule's uv rather than failing in the calling environment.
+        run(["uv", "lock", "--project", str(sandbox)], cwd=sandbox, env=cli_environment)
+        run(["uv", "lock", "--check", "--project", str(sandbox)], cwd=sandbox, env=env)
     # The same locked sync used by setup must reject stale metadata too.
     rejected = run(["uv", "sync", "--locked", "--project", str(project.parent)], cwd=sandbox, env=env, expected=1)
     assert "lockfile" in rejected.stdout + rejected.stderr
