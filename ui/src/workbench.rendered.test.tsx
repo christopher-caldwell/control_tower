@@ -127,6 +127,38 @@ describe("workspace browser adapter", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/outputs/"))).toBe(false);
   });
 
+  it("keeps an accepted checkpoint separate from unrecorded role results", async () => {
+    const snapshot = workspace("workspace-a", {
+      stages: [
+        {
+          number: 10,
+          name: "seed",
+          state: "accepted",
+          is_accepted_checkpoint: true,
+          definitions: [
+            { role: "up", path: "stages/010-seed/up" },
+            { role: "down", path: "stages/010-seed/down" },
+            { role: "verify-up", path: "stages/010-seed/verify-up" },
+            { role: "verify-down", path: "stages/010-seed/verify-down" },
+          ],
+        },
+      ],
+      observation: observation([result({ role: "verify-up" })]),
+    });
+    installWorkbench({ "workspace-a": snapshot });
+    await emitSnapshot("workspace-a", snapshot);
+
+    expect(screen.getByText("Applied", { selector: ".status-pill" })).toBeInTheDocument();
+    const roleStatus = (role: string) => {
+      const label = screen.getByText(role, { selector: ".role-row-copy b" });
+      return label.closest(".role-row")?.querySelector(".role-status")?.textContent;
+    };
+    expect(roleStatus("up")).toBe("Applied · history unavailable");
+    expect(roleStatus("verify-up")).toBe("Process OK");
+    expect(roleStatus("down")).toBe("No recorded result");
+    expect(roleStatus("verify-down")).toBe("No recorded result");
+  });
+
   it("lets stage selection inspect a future definition without submitting movement", async () => {
     const user = userEvent.setup();
     const snapshot = workspace("workspace-a");

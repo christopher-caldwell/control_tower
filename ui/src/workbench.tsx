@@ -178,8 +178,8 @@ function Inspector({ selectedStage, definition, definitionIssue, checkpoint, obs
           {failure && <div className="inspector-error" role="status"><b>{failure.kind === "checkpoint_save_failed" ? "Checkpoint was not confirmed" : "Observed failure"}</b><p>{failure.message}</p></div>}
           <div className={"state-card " + (selectedStage.state === "accepted" ? "success" : selectedStage.state === "pending" ? "pending" : "neutral")}><span className="state-card-icon">{selectedStage.state === "accepted" ? "✓" : selectedStage.state === "pending" ? "◐" : "○"}</span><span><b>{selectedStage.state === "accepted" ? "Applied" : selectedStage.state === "pending" ? "Pending " + (checkpoint?.pending_transition?.direction ?? "") : "Not applied"}</b><small>{selectedStage.is_accepted_checkpoint ? "Last confirmed accepted position" : "Current workspace state"}</small></span></div>
         </section>
-        <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} results={results} failure={failure} /><RolePreview role="down" stage={selectedStage} results={results} failure={failure} /></section>
-        <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} results={results} failure={failure} /><RolePreview role="verify-down" stage={selectedStage} results={results} failure={failure} /></section>
+        <section className="inspector-section"><div className="section-title"><span className="section-number">02</span><h4>Mutation</h4></div><RolePreview role="up" stage={selectedStage} results={results} failure={failure} pendingDirection={checkpoint?.pending_transition?.direction} /><RolePreview role="down" stage={selectedStage} results={results} failure={failure} pendingDirection={checkpoint?.pending_transition?.direction} /></section>
+        <section className="inspector-section"><div className="section-title"><span className="section-number">03</span><h4>Verification</h4></div><RolePreview role="verify-up" stage={selectedStage} results={results} failure={failure} pendingDirection={checkpoint?.pending_transition?.direction} /><RolePreview role="verify-down" stage={selectedStage} results={results} failure={failure} pendingDirection={checkpoint?.pending_transition?.direction} /></section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">04</span><h4>Captured output</h4></div>{results.map((result) => <RoleOutput key={resultIndex(observation, result)} result={result} />)}</section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">05</span><h4>Executable definitions</h4></div>{loading && <div className="definition-loading">Reading stage files…</div>}{definitionIssue && <div className="inline-warning">{definitionIssue}</div>}
           {definition?.definitions.map((role) => <div className="definition-block" key={role.role}><div className="definition-meta"><span>{role.role}</span><code>{role.path}</code></div>{role.issue ? <p className="subtle-note">{role.issue}</p> : <pre>{role.contents}</pre>}</div>)}</section>
@@ -187,11 +187,17 @@ function Inspector({ selectedStage, definition, definitionIssue, checkpoint, obs
     </div><div className="inspector-footer"><span className="footer-lock">⌑</span><span>Output is buffered per role and rendered as inert text</span></div>
   </>;
 }
-function RolePreview({ role, stage, results, failure }: { role: string; stage: StageView; results: RoleObservation[]; failure: MovementObservation["failure"] }) {
+function RolePreview({ role, stage, results, failure, pendingDirection }: { role: string; stage: StageView; results: RoleObservation[]; failure: MovementObservation["failure"]; pendingDirection?: "up" | "down" }) {
   const configured = stage.definitions.some((item) => item.role === role);
   const result = results.filter((item) => item.role === role).at(-1);
   const failed = failure?.stage?.number === stage.number && failure.role === role;
-  const status = result ? result.state === "succeeded" ? "Process OK" : result.state === "in_progress" ? "In progress" : result.state === "failed" ? "Exit " + (result.exit_code ?? "unknown") : "Launch failed" : failed ? "Failed" : configured ? stage.state === "accepted" ? "Applied · history unavailable" : stage.state === "pending" ? "Prior outcome unavailable" : "Not attempted" : role.startsWith("verify-") ? "Not configured" : "Missing";
+  const direction = role === "up" || role === "verify-up" ? "up" : "down";
+  const unknownStatus = stage.state === "accepted"
+    ? role === "up" ? "Applied · history unavailable" : "No recorded result"
+    : stage.state === "pending"
+      ? pendingDirection === direction ? "Prior outcome unavailable" : "No recorded result"
+      : "Not attempted";
+  const status = result ? result.state === "succeeded" ? "Process OK" : result.state === "in_progress" ? "In progress" : result.state === "failed" ? "Exit " + (result.exit_code ?? "unknown") : "Launch failed" : failed ? "Failed" : configured ? unknownStatus : role.startsWith("verify-") ? "Not configured" : "Missing";
   return <div className={"role-row " + (configured ? "configured" : "not-configured")}><span className="role-result-mark">{result?.state === "succeeded" ? "✓" : result?.state === "failed" || result?.state === "launch_failed" || failed ? "!" : result?.state === "in_progress" ? "◌" : "·"}</span><span className="role-row-copy"><b>{role}</b><small>{result?.message ?? status}</small></span><span className={"role-status " + (failed || result?.state === "failed" || result?.state === "launch_failed" ? "error" : "")}>{status}</span></div>;
 }
 function resultIndex(observation: MovementObservation | null, result: RoleObservation): number { return observation?.role_results.indexOf(result) ?? -1; }
