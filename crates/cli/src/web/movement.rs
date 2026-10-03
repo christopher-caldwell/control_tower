@@ -1,14 +1,16 @@
 use super::{
     dto::*,
-    runtime::{MovementPermit, WorkspaceRuntime, checkpoint_for_state, stage_identity},
-    workspace::{SETUP_GUIDANCE, WorkspaceContext},
+    runtime::{
+        MovementPermit, RoleObservationInput, WorkspaceRuntime, checkpoint_for_state,
+        new_observation, stage_identity,
+    },
+    workspace::WorkspaceContext,
 };
 use axum::http::StatusCode;
 use control_tower_application::{
-    Direction, ExecutionProgress, MoveStatus, MoveToError, MoveToInput, TransitionFailure,
-    WorkbenchState,
+    Direction, MoveStatus, MoveToError, MoveToInput, TransitionFailure, WorkbenchState,
 };
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::sync::Arc;
 
 pub(super) struct WorkerResult {
     pub(super) error: Option<(StatusCode, &'static str, String)>,
@@ -20,7 +22,6 @@ pub(super) struct MovementTask {
     pub(super) target_stage: u32,
     pub(super) expected: WorkbenchState,
     pub(super) runtime: Arc<WorkspaceRuntime>,
-    pub(super) operation_id: String,
     pub(super) permit: MovementPermit,
 }
 
@@ -32,26 +33,40 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
         target_stage,
         expected,
         runtime,
-        operation_id,
         mut permit,
     } = task;
-    let mut role_started = HashMap::<(u32, &'static str), Instant>::new();
-    let outcome = workspace.workbench.move_to_observed(
+    let workbench = match crate::deps::workbench(&workspace.root) {
+        Ok(workbench) => workbench,
+        Err(error) => {
+            runtime.rejected(&project_name, &workspace, Err(error.to_string()));
+            permit.complete();
+            return WorkerResult {
+                error: Some((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "workspace_unavailable",
+                    error.to_string(),
+                )),
+            };
+        }
+    };
+    let mut attempt_started = false;
+    let outcome = workbench.move_to_observed(
         MoveToInput {
             workspace_root: &workspace.root,
             direction,
             target_stage,
             expected_checkpoint: Some(&expected),
         },
-        &mut |progress| match progress {
-            ExecutionProgress::Admitted { .. } => runtime.admitted(
-                &project_name,
-                &workspace,
-                &operation_id,
+        &mut |progress| {
+            runtime.observe(RoleObservationInput {
+                project_name: &project_name,
+                workspace: &workspace,
+                workbench: &workbench,
                 direction,
                 target_stage,
-            ),
-            progress => runtime.observe(&project_name, &workspace, progress, &mut role_started),
+                event: progress,
+                attempt_started: &mut attempt_started,
+            })
         },
     );
     let outcome = match outcome {
@@ -66,10 +81,10 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
                     (StatusCode::SERVICE_UNAVAILABLE, "workspace_unavailable")
                 }
             };
-            runtime.rejected(&project_name, &workspace);
+            runtime.rejected(&project_name, &workspace, Ok(&workbench));
             permit.complete();
             return WorkerResult {
-                error: Some((status, code, format!("{error}. {SETUP_GUIDANCE}"))),
+                error: Some((status, code, error.to_string())),
             };
         }
     };
@@ -79,9 +94,13 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
             retry: movement_choice_view(choices.retry),
             reverse: choices.reverse.map(movement_choice_view),
         });
-    let mut observation = runtime
-        .current_observation()
-        .expect("admission created the current movement");
+    let mut observation = if attempt_started {
+        runtime
+            .current_observation()
+            .unwrap_or_else(|| new_observation(direction, target_stage))
+    } else {
+        new_observation(direction, target_stage)
+    };
     observation.verification_choices = choices;
     match &outcome.status {
         MoveStatus::Complete(state) => {
@@ -126,7 +145,7 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
             });
         }
     }
-    runtime.finish(&project_name, &workspace, observation);
+    runtime.finish(&project_name, &workspace, &workbench, observation);
     permit.complete();
     WorkerResult { error: None }
 }

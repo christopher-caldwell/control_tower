@@ -19,7 +19,7 @@ sources:
 
 ## Decision
 
-The first graphical Control Tower interface is a **desktop-only macOS developer workbench**.
+The first graphical Control Tower interface is a **desktop-only developer workbench**.
 
 Its primary workspace screen uses three simultaneously visible regions:
 

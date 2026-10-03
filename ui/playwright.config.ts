@@ -7,7 +7,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4178",
     browserName: "chromium",
-    viewport: { width: 1180, height: 820 },
+    viewport: { width: 1280, height: 820 },
   },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4178 --strictPort",

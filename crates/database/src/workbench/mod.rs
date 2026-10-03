@@ -2,17 +2,13 @@ use control_tower_application::{
     Direction, PersistenceError, WorkbenchQueries, WorkbenchState, WorkbenchWrites,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
-use std::{
-    path::Path,
-    process,
-    sync::{Mutex, MutexGuard},
-};
+use std::path::Path;
 
 pub struct SqliteWorkbenchQueries {
-    connection: Mutex<Connection>,
+    connection: Connection,
 }
 pub struct SqliteWorkbenchWrites {
-    connection: Mutex<Connection>,
+    connection: Connection,
 }
 
 impl SqliteWorkbenchQueries {
@@ -21,9 +17,7 @@ impl SqliteWorkbenchQueries {
             Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(PersistenceError::new)?;
         super::operations::verify_schema(&connection)?;
-        Ok(Self {
-            connection: Mutex::new(connection),
-        })
+        Ok(Self { connection })
     }
 }
 impl SqliteWorkbenchWrites {
@@ -32,27 +26,23 @@ impl SqliteWorkbenchWrites {
             Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_WRITE)
                 .map_err(PersistenceError::new)?;
         super::operations::verify_schema(&connection)?;
-        Ok(Self {
-            connection: Mutex::new(connection),
-        })
+        Ok(Self { connection })
     }
 }
 impl WorkbenchQueries for SqliteWorkbenchQueries {
     fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError> {
-        let row = {
-            let connection = lock_connection(&self.connection, "query");
-            connection
-                .query_row(include_str!("sql/read_checkpoint.sql"), [], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, Option<String>>(1)?,
-                        row.get::<_, Option<i64>>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                    ))
-                })
-                .optional()
-                .map_err(PersistenceError::new)?
-        };
+        let row = self
+            .connection
+            .query_row(include_str!("sql/read_checkpoint.sql"), [], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .optional()
+            .map_err(PersistenceError::new)?;
         let Some((completed_count, uuid, pending_index, pending_direction)) = row else {
             return Ok(None);
         };
@@ -103,8 +93,7 @@ impl WorkbenchWrites for SqliteWorkbenchWrites {
             ),
             None => (None, None),
         };
-        let connection = lock_connection(&self.connection, "write");
-        connection
+        self.connection
             .execute(
                 include_str!("sql/record_checkpoint.sql"),
                 params![
@@ -116,20 +105,5 @@ impl WorkbenchWrites for SqliteWorkbenchWrites {
             )
             .map_err(PersistenceError::new)?;
         Ok(())
-    }
-}
-
-fn lock_connection<'a>(
-    connection: &'a Mutex<Connection>,
-    lane: &str,
-) -> MutexGuard<'a, Connection> {
-    match connection.lock() {
-        Ok(guard) => guard,
-        Err(_) => {
-            eprintln!(
-                "Control Tower SQLite {lane} connection is poisoned; exiting because checkpoint state may be inconsistent."
-            );
-            process::exit(1);
-        }
     }
 }

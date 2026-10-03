@@ -135,10 +135,6 @@ pub struct ExecutionEvent {
 /// Synchronous observations surrounding an actual role attempt. Captured
 /// results remain in the outcome; observers do not decide navigation.
 pub enum ExecutionProgress<'a> {
-    Admitted {
-        state: &'a WorkbenchState,
-        stages: &'a [Stage],
-    },
     Starting {
         stage: &'a Stage,
         role: ExecutableRole,
@@ -348,23 +344,19 @@ fn movement_choices(state: &WorkbenchState, stages: &[Stage]) -> Vec<MovementCho
     choices
 }
 
-pub trait StageDiscovery: Send + Sync {
+pub trait StageDiscovery {
     fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
 }
 
-pub trait StageDefinitionReader: Send + Sync {
-    fn read(
-        &self,
-        path: &Path,
-        maximum_bytes: usize,
-    ) -> Result<StageDefinitionContents, StageDefinitionReadError>;
+pub trait StageDefinitionReader {
+    fn read(&self, path: &Path) -> Result<Vec<u8>, StageDefinitionReadError>;
 }
 
-pub trait WorkbenchQueries: Send + Sync {
+pub trait WorkbenchQueries {
     fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError>;
 }
 
-pub trait WorkbenchWrites: Send + Sync {
+pub trait WorkbenchWrites {
     /// Record one orchestration checkpoint as an independently atomic mutation.
     fn record_checkpoint(&self, checkpoint: &WorkbenchState) -> Result<(), PersistenceError>;
 }
@@ -379,22 +371,16 @@ pub struct MoveToInput<'a> {
 pub struct StageDefinitionsInput<'a> {
     pub workspace_root: &'a Path,
     pub stage_number: u32,
-    pub maximum_bytes: usize,
 }
 
-pub trait ExecutableRunner: Send + Sync {
+pub trait ExecutableRunner {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError>;
-}
-
-pub struct StageDefinitionContents {
-    pub bytes: Vec<u8>,
-    pub truncated: bool,
 }
 
 pub struct StageDefinition {
     pub role: ExecutableRole,
     pub path: PathBuf,
-    pub contents: Result<StageDefinitionContents, StageDefinitionReadError>,
+    pub contents: Result<Vec<u8>, StageDefinitionReadError>,
 }
 
 pub struct StageDefinitions {
@@ -481,10 +467,6 @@ impl Workbench {
             return Err(MoveToError::StaleCheckpoint);
         }
         let target_count = target_count(&stages, target_stage)?;
-        observe(ExecutionProgress::Admitted {
-            state: &state,
-            stages: &stages,
-        });
         let mut log = ExecutionLog {
             executions: Vec::new(),
             observe,
@@ -595,7 +577,6 @@ impl Workbench {
         let StageDefinitionsInput {
             workspace_root,
             stage_number,
-            maximum_bytes,
         } = input;
         let stages = self.load_stages(workspace_root)?;
         let stage = stages
@@ -613,7 +594,7 @@ impl Workbench {
             path.map(|path| StageDefinition {
                 role,
                 path: path.to_path_buf(),
-                contents: self.definition_reader.read(path, maximum_bytes),
+                contents: self.definition_reader.read(path),
             })
         })
         .collect();
@@ -848,12 +829,7 @@ mod stage_definition_contract_tests {
     struct FailingReader;
 
     impl StageDefinitionReader for FailingReader {
-        fn read(
-            &self,
-            _: &Path,
-            maximum_bytes: usize,
-        ) -> Result<StageDefinitionContents, StageDefinitionReadError> {
-            assert_eq!(maximum_bytes, 64);
+        fn read(&self, _: &Path) -> Result<Vec<u8>, StageDefinitionReadError> {
             Err(StageDefinitionReadError::new(io::Error::other(
                 "definition read denied",
             )))
@@ -891,7 +867,6 @@ mod stage_definition_contract_tests {
             .stage_definitions(StageDefinitionsInput {
                 workspace_root,
                 stage_number: 7,
-                maximum_bytes: 64,
             })
             .unwrap();
         assert_eq!(definitions.stage.number, 7);
@@ -902,7 +877,6 @@ mod stage_definition_contract_tests {
         let unknown = match workbench.stage_definitions(StageDefinitionsInput {
             workspace_root,
             stage_number: 99,
-            maximum_bytes: 64,
         }) {
             Ok(_) => panic!("unknown stage unexpectedly resolved"),
             Err(error) => error,
@@ -913,7 +887,6 @@ mod stage_definition_contract_tests {
         let empty_error = match empty.stage_definitions(StageDefinitionsInput {
             workspace_root,
             stage_number: 7,
-            maximum_bytes: 64,
         }) {
             Ok(_) => panic!("empty stage discovery unexpectedly succeeded"),
             Err(error) => error,
@@ -932,7 +905,6 @@ mod stage_definition_contract_tests {
         let failure = match failed.stage_definitions(StageDefinitionsInput {
             workspace_root,
             stage_number: 7,
-            maximum_bytes: 64,
         }) {
             Ok(_) => panic!("failing stage discovery unexpectedly succeeded"),
             Err(error) => error,

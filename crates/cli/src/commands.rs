@@ -22,7 +22,6 @@ pub(super) fn run_move(
             expected_checkpoint: None,
         },
         &mut |progress| match progress {
-            ExecutionProgress::Admitted { .. } => {}
             ExecutionProgress::Starting { stage, role } => {
                 println!(
                     "[stage {} {} ({})] starting",

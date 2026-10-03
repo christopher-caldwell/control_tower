@@ -22,22 +22,8 @@ struct Runner(Arc<Mutex<Memory>>);
 struct Discovery(Vec<Stage>);
 struct Reader;
 impl StageDefinitionReader for Reader {
-    fn read(
-        &self,
-        path: &Path,
-        maximum_bytes: usize,
-    ) -> Result<StageDefinitionContents, StageDefinitionReadError> {
-        let bytes = path
-            .to_string_lossy()
-            .as_bytes()
-            .iter()
-            .copied()
-            .take(maximum_bytes)
-            .collect();
-        Ok(StageDefinitionContents {
-            bytes,
-            truncated: false,
-        })
+    fn read(&self, path: &Path) -> Result<Vec<u8>, StageDefinitionReadError> {
+        Ok(path.to_string_lossy().as_bytes().to_vec())
     }
 }
 impl WorkbenchQueries for Queries {
@@ -647,7 +633,6 @@ fn synchronous_observations_surround_each_role_before_the_next_invocation() {
                     .unwrap()
                     .trace
                     .push(format!("starting {} {role}", stage.number)),
-                ExecutionProgress::Admitted { .. } => {}
                 ExecutionProgress::Finished { stage, execution } => {
                     let output = execution.result.as_ref().unwrap();
                     assert_eq!(output.stdout, b"raw\xff");
@@ -874,8 +859,8 @@ fn failed_checkpoint_publication_returns_latest_confirmed_state_and_attempted_up
         );
         assert_eq!(
             observations,
-            1 + case.calls.len() * 2,
-            "one admission observation plus attempted role observations only"
+            case.calls.len() * 2,
+            "only attempted role start/finish observations are emitted"
         );
         assert_eq!(outcome.executions.len(), case.calls.len());
         for event in &outcome.executions {

@@ -15,14 +15,14 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI and macOS loopback browser UI drive the same workspace behavior; the browser adds project-local workspace discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workspace behavior; the browser adds project-local workspace discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
 
 | Need | Start here |
 | --- | --- |
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
-| Inspect workspaces in a browser (macOS) | [Browser workbench](reference/browser-workbench.md) |
+| Inspect workspaces in a browser | [Browser workbench](reference/browser-workbench.md) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |
 | See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workspaces/uuid-file/README.md) |
 | Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workspaces/generated-id/README.md) (Python 3) |

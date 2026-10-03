@@ -24,7 +24,7 @@ Build both local executables, prepare a disposable workspace, and run the suppli
 
 Install Git and [Rust with Cargo through rustup](https://rust-lang.org/tools/install/). Use a current stable toolchain. You also need a working native C compiler/linker: the `rusqlite` dependency builds bundled SQLite. No PostgreSQL server, SQLite service, SQLite command-line program, Node, Docker, or account is needed for the supplied shell example.
 
-The workspace declares Rust **1.85** as its minimum. The locked workspace test suite passed on Rust 1.85.0 and 1.94.0 on macOS 26.6.2 arm64; see the [macOS delivery validation](../research/2026-10-03-macos-ui-delivery.md). These instructions use Unix tools (`sh`, `mktemp`, `cp`, `chmod`, `cat`). The browser UI is supported on macOS only; native Windows or Linux UI support is not included. The [documentation validation](../research/documentation-validation.md) retains the distinct Linux script-only check and its limits.
+The workspace declares Rust **1.85** as its minimum. The locked workspace test suite passed on Rust 1.85.0 and 1.94.0 on macOS 26.6.2 arm64; see the [macOS delivery validation](../research/2026-10-03-macos-ui-delivery.md) for that historical run. These instructions use Unix tools (`sh`, `mktemp`, `cp`, `chmod`, `cat`). The browser host uses a generic Rust loopback listener; the platform-specific validation record is evidence about its original run, not a platform support matrix. The [documentation validation](../research/documentation-validation.md) retains the distinct Linux script-only check and its limits.
 
 Check your tools:
 

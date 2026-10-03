@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
 pub(super) struct MovementObservation {
-    pub(super) operation_id: String,
     pub(super) direction: &'static str,
     pub(super) target_stage: u32,
     pub(super) state: &'static str,
@@ -26,10 +25,8 @@ pub(super) struct RoleObservation {
     pub(super) state: &'static str,
     pub(super) exit_code: Option<i32>,
     pub(super) message: Option<String>,
-    pub(super) elapsed_ms: Option<u64>,
-    pub(super) output_available: bool,
-    pub(super) stdout_bytes: u64,
-    pub(super) stderr_bytes: u64,
+    pub(super) stdout: Option<String>,
+    pub(super) stderr: Option<String>,
 }
 #[derive(Clone, Serialize)]
 pub(super) struct FailureView {
@@ -106,18 +103,7 @@ impl From<CheckpointState> for WorkbenchState {
 #[derive(Clone, Serialize)]
 pub(super) struct ProjectView {
     pub(super) name: String,
-    pub(super) workspace_root: String,
-    pub(super) workspaces: Vec<WorkspaceSummary>,
-}
-#[derive(Clone, Serialize)]
-pub(super) struct WorkspaceSummary {
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) available: bool,
-    pub(super) issue: Option<String>,
-    pub(super) stage_count: Option<usize>,
-    pub(super) accepted_stage: Option<StageIdentity>,
-    pub(super) pending_transition: Option<PendingView>,
+    pub(super) workspaces: Vec<WorkspaceIdentity>,
 }
 #[derive(Clone, Serialize)]
 pub(super) struct StageIdentity {
@@ -177,7 +163,6 @@ pub(super) struct DefinitionView {
     pub(super) role: &'static str,
     pub(super) path: String,
     pub(super) contents: Option<String>,
-    pub(super) truncated: bool,
     pub(super) issue: Option<String>,
 }
 #[derive(Serialize)]
