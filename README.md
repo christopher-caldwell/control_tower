@@ -1,8 +1,26 @@
 # Control Tower
 
-A local CLI workbench for stepping through your own executable actions: set up a test fixture, verify it, change your application, then move backward and try again.
+A local CLI workbench, with an optional macOS browser UI, for stepping through your own executable actions: set up a test fixture, verify it, change your application, then move backward and try again.
 
-You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control Tower runs them in order and remembers your position between commands. No server, account, or built-in HTTP/database action language.
+You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control Tower runs them in order and remembers your position between commands. No hosted server, account, or built-in HTTP/database action language.
+
+## Browser workbench (macOS)
+
+The browser UI uses the same Rust executable and a prebuilt React interface. It is a read-only stage inspector in this first slice; it does not execute scripts. Build and launch it from a copied Project directory:
+
+```sh
+cargo build --locked --release --workspace
+repo="$(pwd)"
+project="$(mktemp -d)/simple"
+cp -R "$repo/examples/simple" "$project"
+workspace="$project/workspaces/uuid-file"
+"$repo/target/release/control-tower-db" bootstrap-local "$workspace"
+"$repo/target/release/control-tower-db" migrate-local "$workspace"
+"$repo/target/release/control-tower-db" verify-local "$workspace"
+(cd "$project" && "$repo/target/release/control-tower" ui)
+```
+
+The Project launch directory supplies workspace context. Workspaces switch inside the UI; project switching is not included. Node is only needed when rebuilding frontend source, not to run the packaged interface. See the [browser workbench reference](docs/reference/browser-workbench.md) for setup, security, scope, and lifecycle details.
 
 ## Try the three-stage example
 

@@ -24,7 +24,7 @@ Build both local executables, prepare a disposable workspace, and run the suppli
 
 Install Git and [Rust with Cargo through rustup](https://rust-lang.org/tools/install/). Use a current stable toolchain. You also need a working native C compiler/linker: the `rusqlite` dependency builds bundled SQLite. No PostgreSQL server, SQLite service, SQLite command-line program, Node, Docker, or account is needed for the supplied shell example.
 
-The workspace declares Rust **1.85** as its minimum, but the committed implementation validation used **1.94.0 on macOS**, not that minimum. Do not treat the declared minimum as an independently verified compatibility claim. These instructions use Unix tools (`sh`, `mktemp`, `cp`, `chmod`, `cat`); native Windows is not verified. The [validation record](../research/documentation-validation.md) distinguishes full CLI runs from script-only checks on Linux.
+The workspace declares Rust **1.85** as its minimum, but the committed implementation validation used **1.94.0 on macOS**, not that minimum. Do not treat the declared minimum as an independently verified compatibility claim. These instructions use Unix tools (`sh`, `mktemp`, `cp`, `chmod`, `cat`). The browser UI is supported on macOS only; native Windows or Linux UI support is not included. The [validation record](../research/documentation-validation.md) distinguishes full CLI runs from script-only checks on Linux.
 
 Check your tools:
 
@@ -51,6 +51,8 @@ An existing checkout only needs the build command from its repository root. With
 | --- | --- |
 | `target/debug/control-tower` | User commands: `up`, `down`, `status`. |
 | `target/debug/control-tower-db` | Explicit local database setup and verification. |
+
+`control-tower ui` starts the optional macOS browser workbench from the current directory. See the [browser workbench reference](../reference/browser-workbench.md) for a complete launch example. The packaged interface does not require Node; Node is needed only to rebuild its React assets.
 
 `--locked` uses the committed dependency resolution. The initial build needs access to the Rust dependency registry unless those dependencies are already cached. The workbench itself needs no network service; your own scripts may use the network.
 

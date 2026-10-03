@@ -1,4 +1,7 @@
 target/
+ui/node_modules/
+ui/coverage/
+ui/tsconfig.tsbuildinfo
 .DS_Store
 .env
 .control_tower/
