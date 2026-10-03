@@ -42,7 +42,7 @@ Control Tower should borrow the density, explicit output affordances and resizab
 
 ## Inngest: persistent selection plus detail context
 
-![Inngest trace view showing the execution timeline beside a selected-step details panel](https://www.inngest.com/assets/docs/platform/monitor/traces/trace-overview.webp)
+![Inngest trace view showing the execution timeline beside a selected-step details panel](https://www.inngest.com/_next/image?q=75&url=%2Fassets%2Fdocs%2Fplatform%2Fmonitor%2Ftraces%2Ftrace-overview.webp&w=3840)
 
 Source: [Inngest Traces](https://www.inngest.com/docs/platform-and-operations/traces).
 
