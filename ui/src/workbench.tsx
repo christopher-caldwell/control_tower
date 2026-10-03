@@ -249,22 +249,32 @@ function RolePreview({ role, stage, results, failure }: { role: string; stage: S
 }
 function resultIndex(observation: MovementObservation | null, result: RoleObservation): number { return observation?.role_results.indexOf(result) ?? -1; }
 function RoleOutput({ result, workspaceId, operationId, resultIndex }: { result: RoleObservation; workspaceId: string; operationId: string; resultIndex: number }) {
-  if (!result.output_available) return <div className="captured-role"><b>{result.stage.name} · {result.role}</b><p className="subtle-note">Output unavailable because the executable could not be started.</p></div>;
+  if (!result.output_available) return <div className="captured-role"><b>{result.stage.name} · {result.role}</b>
+    <p className="subtle-note">{result.state === "in_progress" ? "Captured output will be available when the role returns." : result.state === "launch_failed" ? "Output unavailable because the executable could not be started." : "Captured output is unavailable."}</p>
+    {result.state === "launch_failed" && result.message && <p className="subtle-note">{result.message}</p>}</div>;
   return <div className="captured-role"><div className="captured-role-heading"><b>Stage {result.stage.number} · {result.role}</b><span>{result.stdout_bytes.toLocaleString()} stdout · {result.stderr_bytes.toLocaleString()} stderr</span></div>
-    <CapturedStream key={resultIndex + "-out"} workspaceId={workspaceId} operationId={operationId} resultIndex={resultIndex} streamName="stdout" result={result} />
-    <CapturedStream key={resultIndex + "-err"} workspaceId={workspaceId} operationId={operationId} resultIndex={resultIndex} streamName="stderr" result={result} /></div>;
+    <CapturedStream key={JSON.stringify([workspaceId, operationId, resultIndex, "stdout"])} workspaceId={workspaceId} operationId={operationId} resultIndex={resultIndex} streamName="stdout" result={result} />
+    <CapturedStream key={JSON.stringify([workspaceId, operationId, resultIndex, "stderr"])} workspaceId={workspaceId} operationId={operationId} resultIndex={resultIndex} streamName="stderr" result={result} /></div>;
 }
 function CapturedStream({ workspaceId, operationId, resultIndex, streamName, result }: { workspaceId: string; operationId: string; resultIndex: number; streamName: "stdout" | "stderr"; result: RoleObservation }) {
   const [preview, setPreview] = useState<string | null>(null), [issue, setIssue] = useState<string | null>(null), [loading, setLoading] = useState(false);
   const endpoint = "/api/workspaces/" + encodeURIComponent(workspaceId) + "/outputs/" + encodeURIComponent(operationId) + "/" + resultIndex + "/" + streamName;
+  const identity = JSON.stringify([workspaceId, operationId, resultIndex, streamName]);
   const size = streamName === "stdout" ? result.stdout_bytes : result.stderr_bytes;
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), [endpoint]);
+  useEffect(() => () => controller.current?.abort(), [identity]);
   async function show() {
     controller.current?.abort(); const next = new AbortController(); controller.current = next; setLoading(true); setIssue(null);
-    try { const response = await fetch(endpoint, { credentials: "same-origin", signal: next.signal }); if (!response.ok) throw new Error("Output read failed (" + response.status + ")."); setPreview(safePreview(new Uint8Array(await response.arrayBuffer()))); }
-    catch (error) { if (!next.signal.aborted) setIssue(error instanceof Error ? error.message : "Output could not be read."); }
-    finally { if (!next.signal.aborted) setLoading(false); }
+    const isCurrent = () => controller.current === next && !next.signal.aborted;
+    try {
+      const response = await fetch(endpoint, { credentials: "same-origin", signal: next.signal });
+      if (!isCurrent()) return;
+      if (!response.ok) throw new Error("Output read failed (" + response.status + ").");
+      const bytes = await response.arrayBuffer();
+      if (isCurrent()) setPreview(safePreview(new Uint8Array(bytes)));
+    }
+    catch (error) { if (isCurrent()) setIssue(error instanceof Error ? error.message : "Output could not be read."); }
+    finally { if (isCurrent()) setLoading(false); }
   }
   return <div className="captured-stream"><div className="captured-stream-heading"><span>{streamName}</span><small>{size.toLocaleString()} bytes</small></div>
     {size === 0 ? <small className="empty-stream">Empty stream</small> : <div className="captured-stream-actions"><button className="output-button" onClick={() => void show()} disabled={loading}>{loading ? "Reading…" : preview === null ? "Preview " + streamName : "Reload " + streamName}</button><a className="output-download" href={endpoint} download={result.role + "-" + streamName + ".bin"}>Download raw bytes</a></div>}
