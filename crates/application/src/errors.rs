@@ -50,6 +50,8 @@ pub enum MoveToError {
     InvalidState(String),
     #[error("invalid target: {0}")]
     InvalidTarget(String),
+    #[error("the workspace checkpoint changed; refresh before submitting this movement")]
+    StaleCheckpoint,
 }
 
 impl From<StatusError> for MoveToError {
@@ -60,6 +62,18 @@ impl From<StatusError> for MoveToError {
             StatusError::InvalidState(message) => Self::InvalidState(message),
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum StageDefinitionsError {
+    #[error("stage discovery failed: {0}")]
+    StageDiscovery(#[from] StageDiscoveryError),
+    #[error("stage {0} was not found in this Workspace")]
+    UnknownStage(u32),
+    #[error("workspace state failed: {0}")]
+    Persistence(#[from] PersistenceError),
+    #[error("invalid stored workbench state: {0}")]
+    InvalidState(String),
 }
 
 #[cfg(test)]

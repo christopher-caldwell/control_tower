@@ -1,10 +1,10 @@
 use super::{
     ServerContext,
     dto::*,
-    movement::execute_movement,
-    runtime::{OperationGuard, WorkspaceRuntime, lock_unpoison, sse_json_event},
+    movement::{MovementTask, execute_movement},
+    runtime::sse_json_event,
     workspace::{
-        definition_view, find_workspace, project_snapshot, read_status, workspace_snapshot,
+        MAX_DEFINITION_BYTES, find_workspace, project_snapshot, relative_path, stage_identity,
     },
 };
 use axum::{
@@ -30,7 +30,6 @@ use futures_util::stream;
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::{path::Path, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
 use uuid::Uuid;
 
 #[derive(RustEmbed)]
@@ -45,7 +44,7 @@ pub(super) fn router(context: Arc<ServerContext>) -> Router {
         .route("/api/workspaces/{id}/movements", post(start_movement))
         .route("/api/workspaces/{id}/events", get(workspace_events))
         .route(
-            "/api/workspaces/{id}/outputs/{output_id}/{stream_name}",
+            "/api/workspaces/{id}/outputs/{operation_id}/{result_index}/{stream_name}",
             get(read_output),
         )
         .route(
@@ -133,17 +132,11 @@ pub(super) async fn create_session(
 }
 
 pub(super) async fn project_view(State(context): State<Arc<ServerContext>>) -> Response<Body> {
-    let project = context.project.clone();
-    match tokio::task::spawn_blocking(move || project_snapshot(&project)).await {
+    match tokio::task::spawn_blocking(move || project_snapshot(&context.project)).await {
         Ok(view) => api_json(view),
-        Err(error) => api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "project_read_failed",
-            format!("Could not read Project status: {error}"),
-        ),
+        Err(error) => fatal_worker_error(error),
     }
 }
-
 pub(super) async fn workspace_view(
     State(context): State<Arc<ServerContext>>,
     RoutePath(id): RoutePath<String>,
@@ -155,108 +148,17 @@ pub(super) async fn workspace_view(
             "That Workspace was not discovered when Control Tower started.",
         );
     };
+    let runtime = context
+        .observations
+        .workspace_state(&context.project.name, &workspace);
     let project_name = context.project.name.clone();
-    let runtime = context.observations.workspace_state(&id);
-    let server_instance_id = context.observations.server_instance_id.clone();
-    match tokio::task::spawn_blocking(move || workspace_snapshot(&project_name, &workspace)).await {
-        Ok(Ok(mut view)) => {
-            view.storage_issue = None;
-            runtime.remember_view(view.clone());
-            let snapshot = runtime.snapshot(&id, &server_instance_id);
-            apply_runtime_snapshot(&mut view, snapshot);
-            runtime.remember_view(view.clone());
-            api_json(view)
-        }
-        Ok(Err(message)) => cached_workspace_response(
-            runtime,
-            &id,
-            &server_instance_id,
-            message,
-            StatusCode::SERVICE_UNAVAILABLE,
-            "workspace_unavailable",
-        ),
-        Err(error) => cached_workspace_response(
-            runtime,
-            &id,
-            &server_instance_id,
-            format!("Could not read Workspace status: {error}"),
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "workspace_read_failed",
-        ),
+    match tokio::task::spawn_blocking(move || runtime.current_snapshot(&project_name, &workspace))
+        .await
+    {
+        Ok(view) => api_json(view),
+        Err(error) => fatal_worker_error(error),
     }
 }
-
-pub(super) fn cached_workspace_response(
-    runtime: Arc<WorkspaceRuntime>,
-    workspace_id: &str,
-    server_instance_id: &str,
-    issue: String,
-    status: StatusCode,
-    code: &'static str,
-) -> Response<Body> {
-    let Some(mut view) = runtime.last_known_view() else {
-        return api_error(status, code, issue);
-    };
-    view.storage_issue = Some(issue);
-    let snapshot = runtime.snapshot(workspace_id, server_instance_id);
-    apply_runtime_snapshot(&mut view, snapshot);
-    api_json(view)
-}
-
-pub(super) fn apply_runtime_snapshot(view: &mut WorkspaceView, snapshot: RuntimeSnapshot) {
-    view.server_instance_id = snapshot.server_instance_id;
-    view.observation_revision = snapshot.revision;
-    view.movement_busy = snapshot.movement_busy;
-    let checkpoint_and_choices = snapshot
-        .observation
-        .as_ref()
-        .and_then(|observation| {
-            observation
-                .confirmed_checkpoint
-                .clone()
-                .map(|checkpoint| (checkpoint, observation.movement_choices.clone()))
-        })
-        .or_else(|| {
-            snapshot
-                .checkpoint
-                .map(|checkpoint| (checkpoint, snapshot.movement_choices))
-        });
-    view.observation = snapshot.observation;
-    if let Some((checkpoint, choices)) = checkpoint_and_choices {
-        apply_checkpoint(view, checkpoint);
-        view.movement_choices = choices.unwrap_or_default();
-    }
-}
-
-pub(super) fn apply_checkpoint(view: &mut WorkspaceView, checkpoint: CheckpointView) {
-    let accepted_index = checkpoint.accepted_stage.as_ref().and_then(|accepted| {
-        view.stages
-            .iter()
-            .position(|stage| stage.number == accepted.number)
-    });
-    let pending_number = checkpoint
-        .pending_transition
-        .as_ref()
-        .map(|pending| pending.stage.number);
-    view.stages = view
-        .stages
-        .iter()
-        .enumerate()
-        .map(|(index, stage)| StageView {
-            state: if pending_number == Some(stage.number) {
-                "pending"
-            } else if accepted_index.is_some_and(|accepted| index <= accepted) {
-                "accepted"
-            } else {
-                "future"
-            },
-            is_accepted_checkpoint: accepted_index == Some(index),
-            ..stage.clone()
-        })
-        .collect();
-    view.checkpoint = checkpoint;
-}
-
 pub(super) async fn start_movement(
     State(context): State<Arc<ServerContext>>,
     RoutePath(id): RoutePath<String>,
@@ -265,11 +167,10 @@ pub(super) async fn start_movement(
     let request = match request {
         Ok(Json(request)) => request,
         Err(error) => {
-            return movement_error(
+            return api_error(
                 StatusCode::BAD_REQUEST,
                 "malformed_request",
                 format!("Movement request is not valid JSON: {error}"),
-                None,
             );
         }
     };
@@ -277,188 +178,115 @@ pub(super) async fn start_movement(
         "up" => Direction::Up,
         "down" => Direction::Down,
         _ => {
-            return movement_error(
+            return api_error(
                 StatusCode::BAD_REQUEST,
                 "invalid_direction",
-                "Movement direction must be `up` or `down`.",
-                None,
+                "Movement direction must be up or down.",
             );
         }
     };
     if direction == Direction::Up && request.target_stage == 0 {
-        return movement_error(
+        return api_error(
             StatusCode::BAD_REQUEST,
             "invalid_target",
             "An upward movement must name a numbered Stage.",
-            None,
         );
     }
     let Some(workspace) = find_workspace(&context.project, &id) else {
-        return movement_error(
-            StatusCode::NOT_FOUND,
-            "unknown_workspace",
-            "That Workspace was not discovered when Control Tower started.",
-            None,
-        );
-    };
-    if let Some(issue) = workspace.unavailable_reason.as_deref() {
-        return movement_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "workspace_unavailable",
-            issue,
-            None,
-        );
-    }
-
-    let operation_id = Uuid::new_v4().to_string();
-    let runtime = context.observations.workspace_state(&id);
-    let Some(_started_observation) = runtime.begin_operation(
-        &id,
-        &context.observations.server_instance_id,
-        &operation_id,
-        direction,
-        request.target_stage,
-    ) else {
-        return movement_error(
-            StatusCode::CONFLICT,
-            "workspace_busy",
-            "A movement is already executing for this Workspace.",
-            None,
-        );
-    };
-    let runtime_for_worker = runtime.clone();
-    let server_instance_id = context.observations.server_instance_id.clone();
-    let operation_id_for_worker = operation_id.clone();
-    let handle = tokio::task::spawn_blocking(move || {
-        let mut guard = OperationGuard::new(
-            runtime_for_worker.clone(),
-            id.clone(),
-            server_instance_id.clone(),
-            operation_id_for_worker.clone(),
-        );
-        let mut worker_result = execute_movement(
-            &workspace,
-            direction,
-            request.target_stage,
-            runtime_for_worker,
-            &server_instance_id,
-            &operation_id_for_worker,
-        );
-        worker_result.observation = guard.finish(worker_result.observation, "movement.finished");
-        worker_result
-    });
-
-    match handle.await {
-        Ok(result) if result.error.is_none() => api_json(MovementResponse {
-            observation: result.observation,
-        }),
-        Ok(result) => {
-            let (status, code, message) = result.error.expect("checked above");
-            movement_error(status, code, message, Some(result.observation.operation_id))
-        }
-        Err(error) => movement_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "movement_task_failed",
-            format!("The movement worker stopped unexpectedly: {error}"),
-            Some(operation_id),
-        ),
-    }
-}
-
-pub(super) async fn workspace_events(
-    State(context): State<Arc<ServerContext>>,
-    RoutePath(id): RoutePath<String>,
-) -> Response<Body> {
-    if find_workspace(&context.project, &id).is_none() {
         return api_error(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
             "That Workspace was not discovered when Control Tower started.",
         );
+    };
+    let runtime = context
+        .observations
+        .workspace_state(&context.project.name, &workspace);
+    let Some(permit) = runtime.try_admit() else {
+        return api_error(
+            StatusCode::CONFLICT,
+            "workspace_busy",
+            "A movement is already executing for this Workspace.",
+        );
+    };
+    let project_name = context.project.name.clone();
+    let expected = request.expected_checkpoint.into();
+    let target_stage = request.target_stage;
+    let operation_id = Uuid::new_v4().to_string();
+    let task = MovementTask {
+        project_name,
+        workspace,
+        direction,
+        target_stage,
+        expected,
+        runtime,
+        operation_id,
+        permit,
+    };
+    let worker = tokio::task::spawn_blocking(move || execute_movement(task));
+    match worker.await {
+        Ok(result) => match result.error {
+            Some((status, code, message)) => api_error(status, code, message),
+            None => add_browser_headers(StatusCode::NO_CONTENT.into_response()),
+        },
+        Err(error) => fatal_worker_error(error),
     }
-    let runtime = context.observations.workspace_state(&id);
-    // Subscribe before taking the first snapshot. An operation that begins in
-    // the gap is either represented in the snapshot or queued for this stream.
-    let receiver = runtime.events.subscribe();
+}
+pub(super) async fn workspace_events(
+    State(context): State<Arc<ServerContext>>,
+    RoutePath(id): RoutePath<String>,
+) -> Response<Body> {
+    let Some(workspace) = find_workspace(&context.project, &id) else {
+        return api_error(
+            StatusCode::NOT_FOUND,
+            "unknown_workspace",
+            "That Workspace was not discovered when Control Tower started.",
+        );
+    };
+    let runtime = context
+        .observations
+        .workspace_state(&context.project.name, &workspace);
+    let mut snapshots = runtime.subscribe();
+    let project_name = context.project.name.clone();
+    let runtime_for_snapshot = runtime.clone();
+    let workspace_for_snapshot = workspace.clone();
+    match tokio::task::spawn_blocking(move || {
+        runtime_for_snapshot.current_snapshot(&project_name, &workspace_for_snapshot)
+    })
+    .await
+    {
+        Ok(_) => {}
+        Err(error) => return fatal_worker_error(error),
+    }
+    let initial = snapshots.borrow_and_update().clone();
     let shutdown = context.shutdown.subscribe();
-    let snapshot = runtime.snapshot(&id, &context.observations.server_instance_id);
-    let stream_id = id.clone();
-    let server_instance_id = context.observations.server_instance_id.clone();
-    let event_stream = stream::unfold(
-        (
-            receiver,
-            Some(snapshot),
-            runtime,
-            stream_id,
-            server_instance_id,
-            shutdown,
-        ),
-        |(mut receiver, initial, runtime, workspace_id, server_instance_id, mut shutdown)| async move {
+    let stream = stream::unfold(
+        (snapshots, Some(initial), shutdown),
+        |(mut snapshots, initial, mut shutdown)| async move {
             if *shutdown.borrow() {
                 return None;
             }
             if let Some(snapshot) = initial {
-                let event = sse_json_event("snapshot", &snapshot);
                 return Some((
-                    Ok::<_, std::convert::Infallible>(event),
-                    (
-                        receiver,
-                        None,
-                        runtime,
-                        workspace_id,
-                        server_instance_id,
-                        shutdown,
-                    ),
+                    Ok::<_, std::convert::Infallible>(sse_json_event("snapshot", &snapshot)),
+                    (snapshots, None, shutdown),
                 ));
             }
             loop {
-                let received = tokio::select! {
-                    result = receiver.recv() => Some(result),
+                tokio::select! {
+                    changed = snapshots.changed() => {
+                        if changed.is_err() { return None; }
+                        let snapshot = snapshots.borrow_and_update().clone();
+                        return Some((Ok(sse_json_event("snapshot", &snapshot)), (snapshots, None, shutdown)));
+                    }
                     changed = shutdown.changed() => {
-                        if changed.is_err() || *shutdown.borrow() {
-                            return None;
-                        }
-                        continue;
+                        if changed.is_err() || *shutdown.borrow() { return None; }
                     }
-                };
-                match received.expect("the event or shutdown branch completed") {
-                    Ok(event) if event.workspace_id == workspace_id => {
-                        let kind = event.kind;
-                        let next = sse_json_event(kind, &event);
-                        return Some((
-                            Ok(next),
-                            (
-                                receiver,
-                                None,
-                                runtime,
-                                workspace_id,
-                                server_instance_id,
-                                shutdown,
-                            ),
-                        ));
-                    }
-                    Ok(_) => continue,
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        let snapshot = runtime.snapshot(&workspace_id, &server_instance_id);
-                        let event = sse_json_event("resync", &snapshot);
-                        return Some((
-                            Ok(event),
-                            (
-                                receiver,
-                                None,
-                                runtime,
-                                workspace_id,
-                                server_instance_id,
-                                shutdown,
-                            ),
-                        ));
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return None,
                 }
             }
         },
     );
-    let mut response = Sse::new(event_stream)
+    let mut response = Sse::new(stream)
         .keep_alive(
             KeepAlive::new()
                 .interval(Duration::from_secs(15))
@@ -470,12 +298,16 @@ pub(super) async fn workspace_events(
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     add_browser_headers(response)
 }
-
 pub(super) async fn read_output(
     State(context): State<Arc<ServerContext>>,
-    RoutePath((id, output_id, stream_name)): RoutePath<(String, String, String)>,
+    RoutePath((id, operation_id, result_index, stream_name)): RoutePath<(
+        String,
+        String,
+        String,
+        String,
+    )>,
 ) -> Response<Body> {
-    let Some(_workspace) = find_workspace(&context.project, &id) else {
+    let Some(workspace) = find_workspace(&context.project, &id) else {
         return api_error(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
@@ -483,37 +315,31 @@ pub(super) async fn read_output(
         );
     };
     let stream_name = match stream_name.as_str() {
-        "stdout" => "stdout",
-        "stderr" => "stderr",
+        "stdout" | "stderr" => stream_name,
         _ => {
             return api_error(
                 StatusCode::BAD_REQUEST,
                 "invalid_output_stream",
-                "Output stream must be `stdout` or `stderr`.",
+                "Output stream must be stdout or stderr.",
             );
         }
     };
-    let runtime = context.observations.workspace_state(&id);
-    let record = lock_unpoison(&runtime.record);
-    let Some(output) = record.outputs.get(&output_id) else {
+    let Ok(result_index) = result_index.parse::<usize>() else {
+        return api_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_output_index",
+            "Output result index must be a nonnegative integer.",
+        );
+    };
+    let runtime = context
+        .observations
+        .workspace_state(&context.project.name, &workspace);
+    let Some(bytes) = runtime.read_output(&operation_id, result_index, &stream_name) else {
         return api_error(
             StatusCode::GONE,
             "output_unavailable",
-            "This output is no longer retained by the current in-process observation.",
+            "This output is no longer retained by the current movement.",
         );
-    };
-    let (bytes, original_length, truncated) = if stream_name == "stdout" {
-        (
-            output.stdout.clone(),
-            output.stdout_bytes,
-            output.stdout_truncated,
-        )
-    } else {
-        (
-            output.stderr.clone(),
-            output.stderr_bytes,
-            output.stderr_truncated,
-        )
     };
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::OK;
@@ -528,19 +354,8 @@ pub(super) async fn read_output(
     {
         response.headers_mut().insert(CONTENT_DISPOSITION, value);
     }
-    if let Ok(value) = HeaderValue::from_str(&original_length.to_string()) {
-        response.headers_mut().insert(
-            HeaderName::from_static("x-control-tower-original-bytes"),
-            value,
-        );
-    }
-    response.headers_mut().insert(
-        HeaderName::from_static("x-control-tower-truncated"),
-        HeaderValue::from_static(if truncated { "true" } else { "false" }),
-    );
     add_browser_headers(response)
 }
-
 pub(super) async fn stage_definition(
     State(context): State<Arc<ServerContext>>,
     RoutePath((id, stage_number)): RoutePath<(String, String)>,
@@ -562,34 +377,60 @@ pub(super) async fn stage_definition(
             "That Workspace was not discovered when Control Tower started.",
         );
     };
+    let root = workspace.root.clone();
     match tokio::task::spawn_blocking(move || {
-        let status = read_status(&workspace)?;
-        let stage = status
-            .stages
-            .iter()
-            .find(|stage| stage.number == stage_number)
-            .ok_or_else(|| format!("Stage {stage_number} was not found in this Workspace."))?;
-        Ok::<_, String>(definition_view(stage, &workspace.root))
+        workspace
+            .workbench
+            .stage_definitions(&workspace.root, stage_number, MAX_DEFINITION_BYTES)
     })
     .await
     {
-        Ok(Ok(view)) => api_json(view),
-        Ok(Err(message)) => {
-            let status = if message.starts_with("Stage ") {
+        Ok(Ok(result)) => {
+            let definitions = result
+                .definitions
+                .into_iter()
+                .map(|definition| match definition.contents {
+                    Ok(contents) => DefinitionView {
+                        role: definition.role.as_str(),
+                        path: relative_path(&root, &definition.path),
+                        contents: Some(String::from_utf8_lossy(&contents.bytes).into_owned()),
+                        truncated: contents.truncated,
+                        issue: None,
+                    },
+                    Err(error) => DefinitionView {
+                        role: definition.role.as_str(),
+                        path: relative_path(&root, &definition.path),
+                        contents: None,
+                        truncated: false,
+                        issue: Some(error.to_string()),
+                    },
+                })
+                .collect();
+            api_json(StageDefinitionView {
+                stage: stage_identity(&result.stage),
+                definitions,
+            })
+        }
+        Ok(Err(error)) => {
+            let status = if matches!(
+                error,
+                control_tower_application::StageDefinitionsError::UnknownStage(_)
+            ) {
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::SERVICE_UNAVAILABLE
             };
-            api_error(status, "stage_unavailable", message)
+            api_error(status, "stage_unavailable", error.to_string())
         }
-        Err(error) => api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "stage_read_failed",
-            format!("Could not read Stage definitions: {error}"),
-        ),
+        Err(error) => fatal_worker_error(error),
     }
 }
-
+fn fatal_worker_error(error: tokio::task::JoinError) -> Response<Body> {
+    eprintln!(
+        "Control Tower worker stopped unexpectedly ({error}); exiting because execution state may be incomplete."
+    );
+    std::process::exit(1)
+}
 pub(super) async fn index() -> Response<Body> {
     let Some(file) = FrontendAssets::get("index.html") else {
         return StatusCode::NOT_FOUND.into_response();
@@ -684,29 +525,6 @@ pub(super) fn api_error(
                 code,
                 message: message.into(),
             },
-        }),
-    )
-        .into_response();
-    response
-        .headers_mut()
-        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    add_browser_headers(response)
-}
-
-pub(super) fn movement_error(
-    status: StatusCode,
-    code: &'static str,
-    message: impl Into<String>,
-    operation_id: Option<String>,
-) -> Response<Body> {
-    let mut response = (
-        status,
-        Json(MovementErrorEnvelope {
-            error: ApiErrorDetail {
-                code,
-                message: message.into(),
-            },
-            operation_id,
         }),
     )
         .into_response();

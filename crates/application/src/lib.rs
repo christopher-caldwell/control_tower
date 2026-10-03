@@ -135,6 +135,10 @@ pub struct ExecutionEvent {
 /// Synchronous observations surrounding an actual role attempt. Captured
 /// results remain in the outcome; observers do not decide navigation.
 pub enum ExecutionProgress<'a> {
+    Admitted {
+        state: &'a WorkbenchState,
+        stages: &'a [Stage],
+    },
     Starting {
         stage: &'a Stage,
         role: ExecutableRole,
@@ -344,15 +348,23 @@ fn movement_choices(state: &WorkbenchState, stages: &[Stage]) -> Vec<MovementCho
     choices
 }
 
-pub trait StageDiscovery {
+pub trait StageDiscovery: Send + Sync {
     fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
 }
 
-pub trait WorkbenchQueries {
+pub trait StageDefinitionReader: Send + Sync {
+    fn read(
+        &self,
+        path: &Path,
+        maximum_bytes: usize,
+    ) -> Result<StageDefinitionContents, StageDefinitionReadError>;
+}
+
+pub trait WorkbenchQueries: Send + Sync {
     fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError>;
 }
 
-pub trait WorkbenchWrites {
+pub trait WorkbenchWrites: Send + Sync {
     /// Record one orchestration checkpoint as an independently atomic mutation.
     fn record_checkpoint(&self, checkpoint: &WorkbenchState) -> Result<(), PersistenceError>;
 }
@@ -361,10 +373,60 @@ pub struct MoveToInput<'a> {
     pub workspace_root: &'a Path,
     pub direction: Direction,
     pub target_stage: u32,
+    pub expected_checkpoint: Option<&'a WorkbenchState>,
 }
 
-pub trait ExecutableRunner {
+pub trait ExecutableRunner: Send + Sync {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError>;
+}
+
+pub struct StageDefinitionContents {
+    pub bytes: Vec<u8>,
+    pub truncated: bool,
+}
+
+pub struct StageDefinition {
+    pub role: ExecutableRole,
+    pub path: PathBuf,
+    pub contents: Result<StageDefinitionContents, StageDefinitionReadError>,
+}
+
+pub struct StageDefinitions {
+    pub stage: Stage,
+    pub definitions: Vec<StageDefinition>,
+}
+
+pub struct StageDefinitionReadError {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl StageDefinitionReadError {
+    pub fn new(source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self {
+            source: Box::new(source),
+        }
+    }
+}
+
+impl fmt::Display for StageDefinitionReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.source.fmt(formatter)
+    }
+}
+
+impl fmt::Debug for StageDefinitionReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("StageDefinitionReadError")
+            .field(&self.source)
+            .finish()
+    }
+}
+
+impl std::error::Error for StageDefinitionReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.source)
+    }
 }
 
 pub struct Workbench {
@@ -372,6 +434,7 @@ pub struct Workbench {
     queries: Box<dyn WorkbenchQueries>,
     writes: Box<dyn WorkbenchWrites>,
     executable_runner: Box<dyn ExecutableRunner>,
+    definition_reader: Box<dyn StageDefinitionReader>,
 }
 
 impl Workbench {
@@ -380,12 +443,14 @@ impl Workbench {
         queries: Box<dyn WorkbenchQueries>,
         writes: Box<dyn WorkbenchWrites>,
         executable_runner: Box<dyn ExecutableRunner>,
+        definition_reader: Box<dyn StageDefinitionReader>,
     ) -> Self {
         Self {
             stage_discovery,
             queries,
             writes,
             executable_runner,
+            definition_reader,
         }
     }
 
@@ -402,10 +467,18 @@ impl Workbench {
             workspace_root,
             direction,
             target_stage,
+            expected_checkpoint,
         } = input;
         let stages = self.load_stages(workspace_root)?;
-        let target_count = target_count(&stages, target_stage)?;
         let mut state = self.load_state(stages.len())?;
+        if expected_checkpoint.is_some_and(|expected| expected != &state) {
+            return Err(MoveToError::StaleCheckpoint);
+        }
+        let target_count = target_count(&stages, target_stage)?;
+        observe(ExecutionProgress::Admitted {
+            state: &state,
+            stages: &stages,
+        });
         let mut log = ExecutionLog {
             executions: Vec::new(),
             observe,
@@ -507,6 +580,41 @@ impl Workbench {
         let stages = self.load_stages(workspace_root)?;
         let state = self.load_state(stages.len())?;
         Ok(WorkbenchStatus { state, stages })
+    }
+
+    pub fn stage_definitions(
+        &self,
+        workspace_root: &Path,
+        stage_number: u32,
+        maximum_bytes: usize,
+    ) -> Result<StageDefinitions, StageDefinitionsError> {
+        let stages = self
+            .load_stages(workspace_root)
+            .map_err(|error| match error {
+                StatusError::StageDiscovery(error) => StageDefinitionsError::StageDiscovery(error),
+                StatusError::Persistence(error) => StageDefinitionsError::Persistence(error),
+                StatusError::InvalidState(message) => StageDefinitionsError::InvalidState(message),
+            })?;
+        let stage = stages
+            .into_iter()
+            .find(|stage| stage.number == stage_number)
+            .ok_or(StageDefinitionsError::UnknownStage(stage_number))?;
+        let definitions = [
+            (ExecutableRole::Up, stage.up.as_deref()),
+            (ExecutableRole::Down, stage.down.as_deref()),
+            (ExecutableRole::VerifyUp, stage.verify_up.as_deref()),
+            (ExecutableRole::VerifyDown, stage.verify_down.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(role, path)| {
+            path.map(|path| StageDefinition {
+                role,
+                path: path.to_path_buf(),
+                contents: self.definition_reader.read(path, maximum_bytes),
+            })
+        })
+        .collect();
+        Ok(StageDefinitions { stage, definitions })
     }
 
     fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StatusError> {

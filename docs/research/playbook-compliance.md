@@ -96,7 +96,7 @@ Recorded classifications: 42 COMPLIANT WITH RULE, 2 DEFAULT DEVIATION WITH JUSTI
 
 ## Default deviations and SQL inventory
 
-**SQL1 — DEFAULT DEVIATION WITH JUSTIFICATION.** Retain rusqlite for this actual synchronous program: short-lived CLI processes, blocking filesystem/process execution, one independent checkpoint read/upsert at a time, one embedded file and no async executor/pool/request concurrency. SQLx would introduce an executor and async ports/adapters or synchronous executor wrappers, plus checked-schema/offline preparation for databases provisioned per workspace. Those are concrete runtime/build costs without a present async/pooling requirement. The cost accepted is no compile-time SQL/schema checking. Mitigation is external feature-local SQL and real SQLite mapping/absence/source-error/adoption tests. Reassess if the workload acquires asynchronous delivery, complex SQL, pooling or Application transactions. This does not waive Database/package, lane or error MUSTs.
+**SQL1 — DEFAULT DEVIATION WITH JUSTIFICATION.** Retain rusqlite for the synchronous Application and embedded SQLite workload: one independent checkpoint read/upsert at a time, one file per workspace, no query pool, no Application transaction, and blocking filesystem/process operations. The browser host uses Tokio for HTTP/SSE but runs Workbench status, definition reads, and synchronous movements through `spawn_blocking`; no rusqlite connection or service-wide lock is held while a script runs. Independent read-only and read-write SQLite connections each have a short-lived mutex held only during that connection's database call, because rusqlite `Connection` is not `Sync`. SQLx would add an executor and async ports/adapters or synchronous executor wrappers plus checked-schema/offline preparation for per-workspace databases. The accepted cost is no compile-time SQL/schema checking; external feature-local SQL and real SQLite tests mitigate it. Reassess if pooling, complex SQL or Application transactions become necessary. This does not waive Database/package, lane or error MUSTs.
 
 **M3 — DEFAULT DEVIATION WITH JUSTIFICATION.** Keep operational setup on the same rusqlite driver instead of adding a second SQLx library/runtime or externally installed migration CLI solely for one local embedded migration. The project already ships bundled SQLite through rusqlite. A small Database-owned runner uses SQLite transactional DDL and records version/history with the schema change; actual rollback, adoption and rerun evidence is present. Explicit database just commands are followed. No live deployment/credentials or nontransactional migration exception is introduced. Lost benefit: SQLx's standard migration history/tooling ecosystem; the local version-1 history implementation must be maintained here.
 
@@ -156,3 +156,42 @@ Test evidence boundaries:
 - Actual SQLite tests prove absent/round-trip/upsert mapping, source retention for Query and Write driver failures, legacy pending/UUID checkpoint preservation, version/history and migration rollback. They do not prove crash recovery or multi-instance coordination.
 - Actual Infrastructure test proves original I/O sources survive discovery and process-start failure wrappers. Application test proves use-case error stacking retains the capability/source chain.
 - The known failed-verify-up backout semantics remain outside this evidence and were not corrected or certified.
+
+
+## UI host implementation update (2026-10-03)
+
+The table and executed counts above describe the earlier pinned `d4d5e3c` baseline.
+The `feat/add_ui` host update changes the applicable implementation evidence as
+follows; these statements are scoped to current source and are to be paired with
+the full acceptance run recorded at delivery.
+
+- Startup discovers the fixed workspace inventory, canonicalizes and deduplicates
+  roots, composes one `Arc<Workbench>` per workspace, and validates stages, prepared
+  storage, and checkpoint state before HTTP delivery or browser launch. Invalid or
+  empty setup fails with workspace-specific repair guidance and performs no repair.
+- Workbench ports are `Send + Sync`; boxed adapters retain exclusive ownership, and
+  rusqlite read/write connections remain separate behind individual short-lived
+  mutexes. Synchronous Workbench operations are isolated with `spawn_blocking`;
+  scripts do not run under a connection or host-wide service lock.
+- The project endpoint's status fanout is the documented H3 default exception: it is
+  read-only presentation aggregation across independent workspaces, with no
+  cross-workspace operation or transaction, so it stays at the UI host.
+- Definition reads are a Workbench use case backed by an inward-owned Application
+  capability and Infrastructure filesystem adapter. HTTP error mapping uses typed
+  Application errors.
+- UI movement includes the complete expected checkpoint and rejects stale state
+  before effects. Per-canonical-workspace admission stays with the blocking worker
+  through terminal snapshot publication.
+- A per-workspace Tokio watch channel carries complete snapshots. Current state and
+  actions always come from fresh Workbench status; failed reads explicitly remove
+  current actions while preserving attempt diagnostics. Outputs remain exact and
+  available until the next admitted movement.
+- Verification completed: `cargo test --workspace` (55 passed),
+  `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo +1.85.0 check --workspace --all-targets`, and `cargo fmt --all -- --check`;
+  frontend tests (3 passed), production build, and Playwright browser tests (7
+  passed). A rebuilt embedded binary served two real Chromium tabs: one advanced a
+  prepared workspace, the other received the terminal full snapshot, and a fresh
+  GET confirmed checkpoint 10 with its role result. `git diff --check` passed, and
+  source searches confirmed the removed revision, replay, invalidation and output
+  eviction mechanisms are absent.
