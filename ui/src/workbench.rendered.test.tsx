@@ -112,6 +112,30 @@ describe("workspace browser adapter", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("no such table: checkpoint");
   });
 
+  it("keeps the last observed role output readable while current status is unavailable", async () => {
+    const snapshot = workspace("workspace-a", {
+      current_status: "unavailable",
+      status_issue: "unable to open database file",
+      checkpoint: null,
+      movement_choices: [],
+      stages: [],
+      observation: observation([
+        result({ stdout: "mutation out", stderr: "mutation err" }),
+        result({ role: "verify-up", stdout: "verifier out", stderr: "verifier err" }),
+      ]),
+    });
+    installWorkbench({ "workspace-a": snapshot });
+    await emitSnapshot("workspace-a", snapshot);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("unable to open database file");
+    expect(screen.getAllByLabelText("stdout").map((element) => element.textContent)).toEqual(["mutation out", "verifier out"]);
+    expect(screen.getAllByLabelText("stderr").map((element) => element.textContent)).toEqual(["mutation err", "verifier err"]);
+    expect(screen.queryByText("Select a stage")).not.toBeInTheDocument();
+    expect(screen.queryByText("CURRENT CHECKPOINT")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Workspace unavailable/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Advance|Back out/ })).not.toBeInTheDocument();
+  });
+
   it("renders buffered stdout and stderr as inert text from the selected workspace snapshot", async () => {
     const snapshot = workspace("workspace-a", {
       observation: observation([result({ stdout: "<script>window.fixture=true</script>", stderr: "separate error text" })]),

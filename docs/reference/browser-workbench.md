@@ -105,6 +105,11 @@ definition is inspection only. Full normal file contents are displayed as escape
 text; ordinary read errors are shown beside the affected role. No fixed-size preview
 or truncation contract is applied.
 
+If current status cannot be read, the stage list, checkpoint and movement choices
+are omitted and movement stays disabled. The status error is shown, and the latest
+role results this host observed remain in the inspector with their separate
+stdout/stderr, labelled as observed output rather than current state.
+
 ## HTTP and observations
 
 The API uses the same loopback origin as the embedded UI and has four capabilities:

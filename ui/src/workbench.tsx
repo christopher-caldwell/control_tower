@@ -167,11 +167,13 @@ function Inspector({ selectedStage, definition, definitionIssue, checkpoint, obs
   selectedStage: StageView | null; definition: DefinitionView | null; definitionIssue: string | null;
   checkpoint: CheckpointView | null; observation: MovementObservation | null; loading: boolean; onCollapse: () => void;
 }) {
+  const retained = !selectedStage && observation?.role_results.length ? observation : null;
   const results = selectedStage ? observation?.role_results.filter((result) => result.stage.number === selectedStage.number) ?? [] : [];
   const failure = observation?.failure && selectedStage && (observation.failure.stage?.number === selectedStage.number || results.length > 0) ? observation.failure : null;
   return <>
     <div className="inspector-header"><div><span className="eyebrow">DETAILS</span><h2>Stage inspector</h2></div><button className="rail-toggle" onClick={onCollapse} aria-label="Collapse stage inspector">›</button></div>
-    <div className="inspector-scroll">{!selectedStage && <div className="inspector-empty"><span className="empty-icon">⌕</span><b>Select a stage</b><p>Selection only inspects a definition; it never runs a script.</p></div>}
+    <div className="inspector-scroll">{!selectedStage && !retained && <div className="inspector-empty"><span className="empty-icon">⌕</span><b>Select a stage</b><p>Selection only inspects a definition; it never runs a script.</p></div>}
+      {retained && <section className="inspector-section"><div className="section-title"><h4>Latest observed output</h4></div><p className="subtle-note">Current stage status is unavailable. These are the latest role results this host observed.</p>{retained.role_results.map((result) => <RoleOutput key={resultIndex(retained, result)} result={result} />)}</section>}
       {selectedStage && <>
         <section className="inspector-stage-title"><span className="stage-index-label">STAGE {String(selectedStage.number).padStart(3, "0")}</span><h3>{selectedStage.name}</h3><span className={"status-pill pill-" + selectedStage.state}>{selectedStage.state === "accepted" ? "Applied" : selectedStage.state === "pending" ? "Pending" : "Future stage"}</span></section>
         <section className="inspector-section"><div className="section-title"><span className="section-number">01</span><h4>Checkpoint state</h4></div>

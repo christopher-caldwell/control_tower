@@ -314,7 +314,7 @@ pub(super) fn api_json<T: Serialize>(value: T) -> Response<Body> {
 
 pub(super) fn add_browser_headers(mut response: Response<Body>) -> Response<Body> {
     response.headers_mut().insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     ));
     response
         .headers_mut()
