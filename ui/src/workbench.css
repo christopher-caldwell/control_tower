@@ -538,6 +538,9 @@ body, .application-frame { background: var(--canvas-bg); }
   background: #403473;
   color: #fff;
 }
+.movement-buttons { flex-wrap: wrap; }
+.movement-buttons .forward-action { min-width: 118px; }
+.movement-buttons .run-to-action { min-width: 190px; }
 
 .rail-heading .count-pill { margin-left: auto; margin-right: 8px; }
 .inspector-header h2 { margin: 0; }
