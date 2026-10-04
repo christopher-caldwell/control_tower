@@ -85,15 +85,23 @@ width. Both rails can be collapsed and reopened while the UI is running;
 collapse state resets when the page reloads.
 
 Selecting a workflow opens its live view. Selecting any stage changes inspection
-only: it does not execute a script, write a checkpoint, or change the movement target.
-The accepted checkpoint remains separate from the selected stage. Pending transitions
+only: it does not execute a script or write a checkpoint. Selection is primarily
+inspection state; a selected future stage may also name the target of an explicit
+Run to Stage X action. The accepted checkpoint remains separate from the selected stage. Pending transitions
 show their direction with the last accepted position, while future stages remain
 inspectable without running them.
 
 The action region consumes Application's immediate `movement_choices`. It names the
-next stage or the stage being backed out and keeps sparse stage numbers intact. React
-does not reconstruct legal movements from selected stage, checkpoint arithmetic, or
-definition files. A verifier failure observed in the current attempt can supply
+next stage or the stage being backed out and keeps sparse stage numbers intact. When
+no verification is pending, **Run next** submits the immediate upward choice. **Run to
+Stage X** appears when the selected stage is a future stage farther than the next one,
+and **Run all** appears when the final stage is future and farther than the next one.
+Each submits one ordinary upward movement request, using the same expected checkpoint,
+whose `target_stage` is the selected or final stage. The existing Application movement
+engine validates the target, walks the intermediate stages, verifies each, updates the
+checkpoint, and stops on the first failure; React does not sequence stages itself or
+reconstruct legal movements from checkpoint arithmetic or definition files. Pending-verification recovery (retry-only verification and backout) is unchanged and
+remains separate from these controls. A verifier failure observed in the current attempt can supply
 Application-owned retry-only verification and reversal choices. Mutation and
 verification results are shown separately. A cold pending checkpoint does not
 fabricate a verifier failure, and a historical accepted stage without retained role
