@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use commands::{run_move, run_status};
+use commands::{run_move, run_status, run_validate};
 use control_tower_application::Direction;
 mod commands;
 mod deps;
+mod guides;
 mod web;
 
 #[derive(Debug, Parser)]
@@ -17,6 +18,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Print the embedded Control Tower agent guidance.
+    Guide {
+        #[arg(value_enum)]
+        action: Option<guides::GuideAction>,
+    },
+    /// Validate the workspace in the current directory without running roles.
+    Validate,
     /// Open the local browser workbench for the current project.
     Ui,
     /// Apply stages through the requested stage number.
@@ -42,27 +50,38 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    if matches!(&cli.command, Command::Ui) {
-        match web::run_from_current_directory() {
+    match &cli.command {
+        Command::Guide { action } => {
+            guides::print(*action);
+            return ExitCode::SUCCESS;
+        }
+        Command::Ui => match web::run_from_current_directory() {
             Ok(()) => return ExitCode::SUCCESS,
             Err(message) => {
                 eprintln!("error: {message}");
                 return ExitCode::FAILURE;
             }
-        }
+        },
+        _ => {}
     }
-    let workspace = match &cli.command {
+    let workspace_root = match &cli.command {
+        Command::Validate => match std::env::current_dir() {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("error: cannot read current directory: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
         Command::Up { workspace, .. }
         | Command::Down { workspace, .. }
-        | Command::Status { workspace } => workspace,
-        Command::Ui => unreachable!("UI command handled above"),
-    };
-    let workspace_root = match resolve_workspace(workspace) {
-        Ok(path) => path,
-        Err(message) => {
-            eprintln!("error: {message}");
-            return ExitCode::FAILURE;
-        }
+        | Command::Status { workspace } => match resolve_workspace(workspace) {
+            Ok(path) => path,
+            Err(message) => {
+                eprintln!("error: {message}");
+                return ExitCode::FAILURE;
+            }
+        },
+        Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
     };
     let workbench = match deps::workbench(&workspace_root) {
         Ok(service) => service,
@@ -73,12 +92,13 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
+        Command::Validate => run_validate(&workbench, &workspace_root),
         Command::Up { stage, .. } => run_move(&workbench, &workspace_root, Direction::Up, stage),
         Command::Down { stage, .. } => {
             run_move(&workbench, &workspace_root, Direction::Down, stage)
         }
         Command::Status { .. } => run_status(&workbench, &workspace_root),
-        Command::Ui => unreachable!("UI command handled above"),
+        Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
     }
 }
 

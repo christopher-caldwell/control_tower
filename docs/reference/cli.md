@@ -4,7 +4,7 @@ title: CLI reference
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-03'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -40,11 +40,29 @@ An installed binary can run from any directory. Relative workspace paths are res
 ## Workbench commands
 
 ```text
+control-tower guide [ACTION]
+control-tower validate
 control-tower ui
 control-tower up --workspace PATH --stage NUMBER
 control-tower down --workspace PATH --stage NUMBER
 control-tower status --workspace PATH
 ```
+
+### Agent guidance and validation
+
+`control-tower guide` prints the embedded routing index and does not require a
+workspace. Its only actions are `create_workspace`, `edit_workspace`,
+`workspace_contract`, `operate_workspace`, and `recover_workspace`; each prints
+its compile-time embedded Markdown. The shipped zero-guidance agent Skill is
+[`skills/control-tower/SKILL.md`](../../skills/control-tower/SKILL.md) and
+dispatches to this CLI guidance.
+
+`control-tower validate` uses the current directory as the workspace. It reuses
+the Workbench status path to discover stages and read/check the saved checkpoint.
+It runs no role, takes no workspace path, does not search parent directories, and
+does not prepare or change workspace storage. A successful result means the
+layout, prepared database and saved state can be loaded; it does not establish
+that role scripts work or that external application state matches the checkpoint.
 
 `PATH` must be an existing workspace with a prepared database and a `stages/` directory. `NUMBER` is an existing stage's numeric prefix, not a count of commands to execute. `0` denotes the baseline. Stage numbers may have gaps; `--stage 20` selects a stage numbered 20, not the twentieth stage.
 
@@ -77,13 +95,15 @@ After this invocation fails at a verifier, the CLI prints shell-quoted commands 
 
 ```sh
 control-tower --help
+control-tower guide --help
+control-tower validate --help
 control-tower up --help
 control-tower down --help
 control-tower status --help
 control-tower ui --help
 ```
 
-A completed/no-op movement, successful status, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.
+A completed/no-op movement, successful status or validation, successful guide request, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.
 
 Movement first identifies the selected workspace and requested direction/target. Each actual role attempt gets a flushed start line with its numeric stage, label and role, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that role returns, before the next role is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
 

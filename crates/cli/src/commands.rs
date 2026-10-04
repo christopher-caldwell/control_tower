@@ -96,6 +96,19 @@ pub(super) fn run_status(workbench: &Workbench, workspace: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+pub(super) fn run_validate(workbench: &Workbench, workspace: &Path) -> ExitCode {
+    let status = match workbench.status(workspace) {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("Workspace is valid: {}", workspace.display());
+    println!("Discovered stages: {}", status.stages.len());
+    ExitCode::SUCCESS
+}
+
 fn render_position(state: &WorkbenchState, stages: &[Stage]) {
     if state.completed_stage_count == 0 {
         println!("Completed stage: baseline (0)");

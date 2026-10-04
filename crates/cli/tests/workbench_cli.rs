@@ -756,6 +756,136 @@ fn failure_choices_do_not_advertise_missing_reverse_or_misclassify_failed_revers
 }
 
 #[test]
+fn guide_index_and_exact_embedded_actions_work_without_a_workspace() {
+    let workspace = Workspace::from_fixture();
+    let cwd = workspace.path().join("not-a-workspace");
+    fs::create_dir(&cwd).unwrap();
+    let index = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("guide")
+        .current_dir(&cwd)
+        .output()
+        .unwrap();
+    assert!(index.status.success(), "{}", output_text(&index));
+    let text = String::from_utf8(index.stdout).unwrap();
+    let actions: Vec<_> = text
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("- `")
+                .and_then(|line| line.split_once('`'))
+                .map(|(action, _)| action)
+        })
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            "create_workspace",
+            "edit_workspace",
+            "workspace_contract",
+            "operate_workspace",
+            "recover_workspace",
+        ]
+    );
+    assert!(!cwd.join(".control_tower").exists());
+
+    for (action, heading) in [
+        ("create_workspace", "# Create a workspace"),
+        ("edit_workspace", "# Edit an existing workspace"),
+        ("workspace_contract", "# Workspace and executable contract"),
+        ("operate_workspace", "# Operate an existing workspace"),
+        (
+            "recover_workspace",
+            "# Recover a failed, pending, or uncertain workspace",
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+            .args(["guide", action])
+            .current_dir(&cwd)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", output_text(&output));
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .starts_with(heading)
+        );
+    }
+
+    let create = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["guide", "create_workspace"])
+        .current_dir(&cwd)
+        .output()
+        .unwrap();
+    let create = String::from_utf8(create.stdout).unwrap();
+    assert!(create.contains("control-tower validate"));
+    assert!(!create.contains("status --workspace"));
+    let edit = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["guide", "edit_workspace"])
+        .current_dir(&cwd)
+        .output()
+        .unwrap();
+    let edit = String::from_utf8(edit.stdout).unwrap();
+    assert!(edit.contains("control-tower validate"));
+    assert!(edit.contains("status --workspace PATH"));
+    assert!(!edit.contains("1. Choose a new directory"));
+
+    let extra_action = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["guide", "validate"])
+        .current_dir(cwd)
+        .output()
+        .unwrap();
+    assert!(!extra_action.status.success());
+}
+
+#[test]
+fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() {
+    let workspace = Workspace::from_fixture();
+    let role_marker = workspace.path().join("validate-ran-a-role");
+    for entry in fs::read_dir(workspace.path().join("stages")).unwrap() {
+        let directory = entry.unwrap().path();
+        for role in ["up", "down", "verify-up", "verify-down"] {
+            let path = directory.join(role);
+            if path.is_file() {
+                write_executable(
+                    &path,
+                    "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKSPACE/validate-ran-a-role\"\n",
+                );
+            }
+        }
+    }
+    let database = workspace.path().join(".control_tower/state.sqlite3");
+    let before = fs::read(&database).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("validate")
+        .current_dir(workspace.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", output_text(&output));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Workspace is valid:"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Discovered stages: 3"));
+    assert!(!role_marker.exists(), "validation must not execute a role");
+    assert_eq!(fs::read(&database).unwrap(), before);
+
+    let path_option = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["validate", "--workspace"])
+        .arg(workspace.path())
+        .current_dir(workspace.path())
+        .output()
+        .unwrap();
+    assert!(!path_option.status.success());
+
+    let invalid = workspace.path().join("not-a-workspace");
+    fs::create_dir(&invalid).unwrap();
+    let failed = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("validate")
+        .current_dir(&invalid)
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert!(output_text(&failed).contains("error:"));
+    assert!(!invalid.join(".control_tower").exists());
+}
+
+#[test]
 fn conditional_sqlite_save_failures_report_confirmed_checkpoint_and_retain_role_output() {
     for (name, condition, expected_calls) in [
         (

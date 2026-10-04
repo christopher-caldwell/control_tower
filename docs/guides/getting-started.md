@@ -4,7 +4,7 @@ title: Build and run Control Tower
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -49,7 +49,7 @@ An existing checkout only needs the build command from its repository root. With
 
 | Executable | Purpose |
 | --- | --- |
-| `target/debug/control-tower` | User commands: `up`, `down`, `status`. |
+| `target/debug/control-tower` | User commands: `guide`, `validate`, `up`, `down`, `status`, and `ui`. |
 | `target/debug/control-tower-db` | Explicit local database setup and verification. |
 
 For browser UI preparation and launch requirements, see [Start the UI](../reference/browser-workbench.md#start-the-ui). The packaged interface does not require Node; Node is needed only to rebuild its React assets.
