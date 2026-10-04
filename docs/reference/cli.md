@@ -26,16 +26,16 @@ This page describes the implemented CLI, not proposed command spellings from dis
 Commands below use installed binaries. From the repository root, you can instead use `./target/debug/control-tower` after building, or invoke the same command through Cargo:
 
 ```sh
-cargo run --locked -p control-tower-cli -- status --workspace "$workspace"
+cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
 ```
 
 The package is `control-tower-cli`; its executable is `control-tower`. For database operations:
 
 ```sh
-cargo run --locked -p control-tower-database --bin control-tower-db -- verify-local "$workspace"
+cargo run --locked -p control-tower-database --bin control-tower-db -- verify-local "$workflow"
 ```
 
-An installed binary can run from any directory. Relative workspace paths are resolved against the directory from which you invoke the command. Use an absolute path when changing directories between invocations.
+An installed binary can run from any directory. Relative workflow paths are resolved against the directory from which you invoke the command. Use an absolute path when changing directories between invocations.
 
 ## Workbench commands
 
@@ -43,28 +43,28 @@ An installed binary can run from any directory. Relative workspace paths are res
 control-tower guide [ACTION]
 control-tower validate
 control-tower ui
-control-tower up --workspace PATH --stage NUMBER
-control-tower down --workspace PATH --stage NUMBER
-control-tower status --workspace PATH
+control-tower up --workflow PATH --stage NUMBER
+control-tower down --workflow PATH --stage NUMBER
+control-tower status --workflow PATH
 ```
 
 ### Agent guidance and validation
 
 `control-tower guide` prints the embedded routing index and does not require a
-workspace. Its only actions are `create_workspace`, `edit_workspace`,
-`workspace_contract`, `operate_workspace`, and `recover_workspace`; each prints
+workflow. Its only actions are `create_workflow`, `edit_workflow`,
+`workflow_contract`, `operate_workflow`, and `recover_workflow`; each prints
 its compile-time embedded Markdown. The shipped zero-guidance agent Skill is
 [`skills/control-tower/SKILL.md`](../../skills/control-tower/SKILL.md) and
 dispatches to this CLI guidance.
 
-`control-tower validate` uses the current directory as the workspace. It reuses
+`control-tower validate` uses the current directory as the workflow. It reuses
 the Workbench status path to discover stages and read/check the saved checkpoint.
-It runs no role, takes no workspace path, does not search parent directories, and
-does not prepare or change workspace storage. A successful result means the
+It runs no role, takes no workflow path, does not search parent directories, and
+does not prepare or change workflow storage. A successful result means the
 layout, prepared database and saved state can be loaded; it does not establish
 that role scripts work or that external application state matches the checkpoint.
 
-`PATH` must be an existing workspace with a prepared database and a `stages/` directory. `NUMBER` is an existing stage's numeric prefix, not a count of commands to execute. `0` denotes the baseline. Stage numbers may have gaps; `--stage 20` selects a stage numbered 20, not the twentieth stage.
+`PATH` must be an existing workflow with a prepared database and a `stages/` directory. `NUMBER` is an existing stage's numeric prefix, not a count of commands to execute. `0` denotes the baseline. Stage numbers may have gaps; `--stage 20` selects a stage numbered 20, not the twentieth stage.
 
 | Command | Behavior |
 | --- | --- |
@@ -72,7 +72,7 @@ that role scripts work or that external application state matches the checkpoint
 | `down` | Reverse stages toward the target, in reverse numeric order. To go from stage 3 to stage 2, run stage 3's `down` and supplied `verify-down`; do not run stage 2's `down`. |
 | `status` | Read the saved completed position, UUID, pending verification when present, and number of discovered stages. It does not run a verifier or inspect external fixture correctness. |
 
-`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Project. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI submits one Application-supplied transition at a time, with separate inspection selection and outcome-specific pending-verification recovery. See [build, workspace inventory, and interface details](browser-workbench.md).
+`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Workspace. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI submits one Application-supplied transition at a time, with separate inspection selection and outcome-specific pending-verification recovery. See [build, workflow inventory, and interface details](browser-workbench.md).
 
 Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no roles ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
 
@@ -89,7 +89,7 @@ The completed pointer alone does not make a request a no-op while a transition i
 
 There is no separate `verify` command. Repeat `up` or `down` with the appropriate target to retry a pending verifier. Repeating a command at an already settled target does not reverify it. See [the worked failure example](../guides/verification-and-navigation.md#try-a-verification-failure).
 
-After this invocation fails at a verifier, the CLI prints shell-quoted commands using the current executable and absolute workspace. Their targets resolve **only the active stage**: for stages 10/200, pending 200/up offers up 200 and, if its down exists, down 10. Pending 200/down offers down 10 and, if its up exists, up 200. The first stage's lower target is 0. A farther target can continue traversal after resolving the check. These choices are not printed after a mutation or checkpoint-save failure, even when an older pending checkpoint remains.
+After this invocation fails at a verifier, the CLI prints shell-quoted commands using the current executable and absolute workflow. Their targets resolve **only the active stage**: for stages 10/200, pending 200/up offers up 200 and, if its down exists, down 10. Pending 200/down offers down 10 and, if its up exists, up 200. The first stage's lower target is 0. A farther target can continue traversal after resolving the check. These choices are not printed after a mutation or checkpoint-save failure, even when an older pending checkpoint remains.
 
 ### Help, output, and exit results
 
@@ -105,7 +105,7 @@ control-tower ui --help
 
 A completed/no-op movement, successful status or validation, successful guide request, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.
 
-Movement first identifies the selected workspace and requested direction/target. Each actual role attempt gets a flushed start line with its numeric stage, label and role, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that role returns, before the next role is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
+Movement first identifies the selected workflow and requested direction/target. Each actual role attempt gets a flushed start line with its numeric stage, label and role, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that role returns, before the next role is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
 
 Output remains buffered for one role; a quiet long-running role shows its start but does not stream intermediate bytes. Stdout/stderr stay separate, with stage/role context and a display newline when needed; the captured bytes in Application remain unchanged. Relative chronology across the streams is not preserved. There is no structured JSON contract or persistent log viewer.
 
@@ -121,7 +121,7 @@ control-tower-db migrate-local PATH
 control-tower-db verify-local PATH
 ```
 
-These use a positional workspace path, **not** `--workspace`. The path must already be a directory. All operate on `PATH/.control_tower/state.sqlite3`.
+These use a positional workflow path, **not** `--workflow`. The path must already be a directory. All operate on `PATH/.control_tower/state.sqlite3`.
 
 | Operation | Effect |
 | --- | --- |
@@ -136,16 +136,16 @@ Ordinary workbench commands never run these operations. A successful database op
 From the repository root, the `justfile` supplies equivalents:
 
 ```sh
-just db-bootstrap-local "$workspace"
-just db-migrate-local "$workspace"
-just db-verify-local "$workspace"
+just db-bootstrap-local "$workflow"
+just db-migrate-local "$workflow"
+just db-verify-local "$workflow"
 ```
 
 These recipes call the same operations through Cargo. Their names do not refer to stage `up`/`down` or stage verification.
 
 ## Storage and limitations
 
-State is local to each workspace. Keep using the same path across commands. Normal process exits retain the last recorded position, UUID and pending direction. **Restarting does not reset a workspace.**
+State is local to each workflow. Keep using the same path across commands. Normal process exits retain the last recorded position, UUID and pending direction. **Restarting does not reset a workflow.**
 
 A successful return to baseline clears the active run UUID but leaves the database prepared. There is no `reset`, `force`, `skip`, arbitrary-action or resume-after-crash command. Directory-structure changes during a stored run, multiple instances and external-state reconciliation are outside v0's guarantees. See [troubleshooting](../guides/troubleshooting.md) instead of deleting SQLite as an attempted external rollback.
 

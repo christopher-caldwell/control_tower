@@ -4,7 +4,7 @@ title: Use a loopback web UI as the first graphical driving adapter
 type: decision
 status: accepted
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction-after-targeted-source-review
@@ -105,14 +105,14 @@ The host choice does not freeze the detailed visual design, but the first UI sho
 The leading shape is:
 
 ```text
-workspace/run context
+workflow/run context
 + ordered vertical stage rail
 + selected-stage inspector/output
 ```
 
 Completed position and an active pending transition must remain visibly distinct. Stages are ordered migration-like states, not a DAG; the UI must not imply branching/dependency semantics that Control Tower does not have.
 
-The desktop information architecture, project/workspace terminology, rail behavior and declarative progression controls are now settled by [ADR-0007](0007-desktop-ui-shell.md). Component library, exact styling and pixel sizing remain implementation/design tuning.
+The desktop information architecture, workspace/workflow terminology, rail behavior and declarative progression controls are now settled by [ADR-0007](0007-desktop-ui-shell.md). Component library, exact styling and pixel sizing remain implementation/design tuning.
 
 ## Consequences
 

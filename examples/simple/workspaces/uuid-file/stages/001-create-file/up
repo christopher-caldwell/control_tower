@@ -1,7 +1,0 @@
-#!/bin/sh
-set -eu
-
-directory="$CONTROL_TOWER_WORKSPACE/data"
-mkdir -p "$directory"
-: > "$directory/$CONTROL_TOWER_UUID"
-printf 'created %s\n' "$CONTROL_TOWER_UUID"

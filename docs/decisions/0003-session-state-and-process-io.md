@@ -4,7 +4,7 @@ title: Keep v0 state handoff minimal and storage-independent
 type: decision
 status: proposed
 created: '2026-09-30'
-updated: '2026-10-01'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: discovery-leading-candidate
@@ -44,7 +44,7 @@ This ADR concerns the logical data that needs to flow, not how the adapter store
 The fixture needs a token such as:
 
 ~~~text
-workspace/run identifier:
+workflow/run identifier:
   550e8400-e29b-41d4-a716-446655440000
 ~~~
 

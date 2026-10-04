@@ -7,7 +7,7 @@ impl ExecutableRunner for SystemExecutableRunner {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError> {
         let output = Command::new(&invocation.executable)
             .current_dir(&invocation.working_directory)
-            .env("CONTROL_TOWER_WORKSPACE", &invocation.workspace_root)
+            .env("CONTROL_TOWER_WORKFLOW", &invocation.workflow_root)
             .env("CONTROL_TOWER_UUID", &invocation.uuid)
             .env("CONTROL_TOWER_STAGE", invocation.stage_number.to_string())
             .env("CONTROL_TOWER_DIRECTION", invocation.direction.as_str())

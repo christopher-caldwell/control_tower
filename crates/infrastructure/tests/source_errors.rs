@@ -28,7 +28,7 @@ fn filesystem_and_process_errors_keep_io_sources() {
     let invocation = Invocation {
         executable: missing.join("up"),
         working_directory: std::env::temp_dir(),
-        workspace_root: missing,
+        workflow_root: missing,
         stage_number: 1,
         direction: Direction::Up,
         role: ExecutableRole::Up,

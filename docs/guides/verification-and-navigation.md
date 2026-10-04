@@ -4,7 +4,7 @@ title: Navigate and retry verification
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -18,17 +18,17 @@ sources:
 
 A **completed stage** is Control Tower's last accepted, recorded position. A **pending transition** records that a mutation succeeded but its verifier has not succeeded. Both facts can be true at once; the stored position is not a claim that the external system remained unchanged.
 
-Movement shows the workspace/target, then a flushed start and captured result for each actual role before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one role, so the start identity may be the only output during a long operation. Success of a role does not by itself confirm the following checkpoint write.
+Movement shows the workflow/target, then a flushed start and captured result for each actual role before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one role, so the start identity may be the only output during a long operation. Success of a role does not by itself confirm the following checkpoint write.
 
 ## Move to a target
 
-With the [three-stage example](../../examples/simple/workspaces/uuid-file/README.md) prepared, run these from the repository root:
+With the [three-stage example](../../examples/simple/workflows/uuid-file/README.md) prepared, run these from the repository root:
 
 ```sh
-./target/debug/control-tower up --workspace "$workspace" --stage 2
-./target/debug/control-tower status --workspace "$workspace"
-./target/debug/control-tower up --workspace "$workspace" --stage 3
-./target/debug/control-tower down --workspace "$workspace" --stage 2
+./target/debug/control-tower up --workflow "$workflow" --stage 2
+./target/debug/control-tower status --workflow "$workflow"
+./target/debug/control-tower up --workflow "$workflow" --stage 3
+./target/debug/control-tower down --workflow "$workflow" --stage 2
 ```
 
 The first command applies stages 1 and 2 if starting from baseline. The last reverses only stage 3. Every transition is ordered:
@@ -60,24 +60,24 @@ This is representative output, not a stable machine-readable format. The file ma
 
 Changing application code does not itself redo the mutation. If you need to exercise the changed mutation, back out first and then run up again.
 
-The failed movement prints runnable retry/backout commands using the current executable and workspace, with shell quoting for spaces/apostrophes. Their targets resolve only this active stage. For sparse stages 10/200, pending 200/up suggests up 200 or down 10; pending 200/down suggests down 10 or up 200. The lower side of the first stage is 0. A reverse command is offered only when that mutation exists.
+The failed movement prints runnable retry/backout commands using the current executable and workflow, with shell quoting for spaces/apostrophes. Their targets resolve only this active stage. For sparse stages 10/200, pending 200/up suggests up 200 or down 10; pending 200/down suggests down 10 or up 200. The lower side of the first stage is 0. A reverse command is offered only when that mutation exists.
 
 Asking for `down --stage 1` first resolves stage 3's reversal, then reverses stage 2. It does not skip the unfinished stage.
 
 ## Try a verification failure
 
-Use a **fresh disposable copy**, not a workspace containing valuable test state. These commands start from the repository root after building the executables:
+Use a **fresh disposable copy**, not a workflow containing valuable test state. These commands start from the repository root after building the executables:
 
 ```sh
 example="$(mktemp -d)/simple"
 cp -R examples/simple "$example"
-workspace="$example/workspaces/uuid-file"
-./target/debug/control-tower-db bootstrap-local "$workspace"
-./target/debug/control-tower-db migrate-local "$workspace"
-./target/debug/control-tower-db verify-local "$workspace"
+workflow="$example/workflows/uuid-file"
+./target/debug/control-tower-db bootstrap-local "$workflow"
+./target/debug/control-tower-db migrate-local "$workflow"
+./target/debug/control-tower-db verify-local "$workflow"
 
-check="$workspace/stages/003-add-to-you/verify-up"
-cp "$check" "$workspace/verify-up.original"
+check="$workflow/stages/003-add-to-you/verify-up"
+cp "$check" "$workflow/verify-up.original"
 printf '#!/bin/sh\nexit 23\n' > "$check"
 chmod +x "$check"
 ```
@@ -85,14 +85,14 @@ chmod +x "$check"
 Now deliberately run a command that fails. A nonzero exit here is the expected result, not failed setup:
 
 ```sh
-./target/debug/control-tower up --workspace "$workspace" --stage 3
+./target/debug/control-tower up --workflow "$workflow" --stage 3
 ```
 
 Run status separately even though the preceding command failed:
 
 ```sh
-./target/debug/control-tower status --workspace "$workspace"
-cat "$workspace"/data/*
+./target/debug/control-tower status --workflow "$workflow"
+cat "$workflow"/data/*
 printf '\n'
 ```
 
@@ -101,14 +101,14 @@ The file should contain `hello to you`, but completed position remains 2 with pe
 ### Back out and exercise the mutation again
 
 ```sh
-./target/debug/control-tower down --workspace "$workspace" --stage 2
-cat "$workspace"/data/*
+./target/debug/control-tower down --workflow "$workflow" --stage 2
+cat "$workflow"/data/*
 printf '\n'
 
-cp "$workspace/verify-up.original" "$check"
+cp "$workflow/verify-up.original" "$check"
 chmod +x "$check"
-./target/debug/control-tower up --workspace "$workspace" --stage 3
-./target/debug/control-tower status --workspace "$workspace"
+./target/debug/control-tower up --workflow "$workflow" --stage 3
+./target/debug/control-tower status --workflow "$workflow"
 ```
 
 After down, the file contains `hello`. After the repaired forward run it contains `hello to you`, with no pending verification.
@@ -118,9 +118,9 @@ After down, the file contains `hello`. After the repaired forward run it contain
 Use this **instead of** the preceding back-out block while stage 3/up is still pending:
 
 ```sh
-cp "$workspace/verify-up.original" "$check"
+cp "$workflow/verify-up.original" "$check"
 chmod +x "$check"
-./target/debug/control-tower up --workspace "$workspace" --stage 3
+./target/debug/control-tower up --workflow "$workflow" --stage 3
 ```
 
 Only stage 3/verify-up should appear in this invocation's role results. There is no standalone `verify` subcommand.
@@ -130,8 +130,8 @@ Checks are optional and discovered afresh. Editing/removing a pending verifier c
 When finished with either path:
 
 ```sh
-./target/debug/control-tower down --workspace "$workspace" --stage 0
-./target/debug/control-tower status --workspace "$workspace"
+./target/debug/control-tower down --workflow "$workflow" --stage 0
+./target/debug/control-tower status --workflow "$workflow"
 ```
 
 ## Downward and reverse verification
@@ -140,7 +140,7 @@ The same rules apply in both directions. If completed stage 3/down succeeds but 
 
 Reversing an unfinished up has a different completed baseline. If stage 2 is complete, stage 3/up is pending, and stage 3/down succeeds but verify-down fails, completed stays **2**, with pending **down 3**. Another downward request retries only verify-down. The successful down is not repeated.
 
-The UUID stays available in all these cases, including a pending return to baseline. It clears only when the workspace successfully settles at 0. SQLite retains this bookkeeping across separate CLI processes.
+The UUID stays available in all these cases, including a pending return to baseline. It clears only when the workflow successfully settles at 0. SQLite retains this bookkeeping across separate CLI processes.
 
 ## A mutation failure is not a verifier failure
 
@@ -151,7 +151,7 @@ Verifier retry/backout recipes are printed only for this invocation's failed ver
 `down` reverses accepted workflow transitions. A failed mutation may leave an external
 effect while its stage remains unaccepted, so normal traversal will not invoke that
 stage's `down`. Recovery belongs to the workflow that owns the effect. In the
-[Postgres example](../../examples/simple/workspaces/postgres/README.md#failed-stage-002-retry-or-abandon),
+[Postgres example](../../examples/simple/workflows/postgres/README.md#failed-stage-002-retry-or-abandon),
 stage 2 can commit its run-owned row and then fail writing a local receipt: completed
 position stays at stage 1 and the UUID is retained. Repair/retry validates the same
 row; abandonment requires explicit UUID-scoped SQL cleanup before returning to

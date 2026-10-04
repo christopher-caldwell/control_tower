@@ -8,15 +8,15 @@ use std::process::ExitCode;
 
 pub(super) fn run_move(
     workbench: &Workbench,
-    workspace: &Path,
+    workflow: &Path,
     direction: Direction,
     target: u32,
 ) -> ExitCode {
-    println!("Workspace: {}", workspace.display());
+    println!("Workflow: {}", workflow.display());
     println!("Requested: {direction} to stage {target}");
     let outcome = match workbench.move_to_observed(
         MoveToInput {
-            workspace_root: workspace,
+            workflow_root: workflow,
             direction,
             target_stage: target,
             expected_checkpoint: None,
@@ -66,10 +66,10 @@ pub(super) fn run_move(
                         .into()
                 });
                 println!("Retry this check only:");
-                render_choice(&executable, workspace, choices.retry);
+                render_choice(&executable, workflow, choices.retry);
                 if let Some(reverse) = choices.reverse {
                     println!("Reverse the active stage:");
-                    render_choice(&executable, workspace, reverse);
+                    render_choice(&executable, workflow, reverse);
                 }
             } else if matches!(
                 failure,
@@ -84,8 +84,8 @@ pub(super) fn run_move(
     }
 }
 
-pub(super) fn run_status(workbench: &Workbench, workspace: &Path) -> ExitCode {
-    let status = match workbench.status(workspace) {
+pub(super) fn run_status(workbench: &Workbench, workflow: &Path) -> ExitCode {
+    let status = match workbench.status(workflow) {
         Ok(status) => status,
         Err(error) => {
             eprintln!("error: {error}");
@@ -96,15 +96,15 @@ pub(super) fn run_status(workbench: &Workbench, workspace: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub(super) fn run_validate(workbench: &Workbench, workspace: &Path) -> ExitCode {
-    let status = match workbench.status(workspace) {
+pub(super) fn run_validate(workbench: &Workbench, workflow: &Path) -> ExitCode {
+    let status = match workbench.status(workflow) {
         Ok(status) => status,
         Err(error) => {
             eprintln!("error: {error}");
             return ExitCode::FAILURE;
         }
     };
-    println!("Workspace loaded successfully: {}", workspace.display());
+    println!("Workflow loaded successfully: {}", workflow.display());
     println!("Discovered stages: {}", status.stages.len());
     ExitCode::SUCCESS
 }
@@ -130,12 +130,12 @@ fn render_position(state: &WorkbenchState, stages: &[Stage]) {
     println!("Discovered stages: {}", stages.len());
 }
 
-fn render_choice(executable: &Path, workspace: &Path, choice: MovementChoice) {
+fn render_choice(executable: &Path, workflow: &Path, choice: MovementChoice) {
     println!(
-        "  {} {} --workspace {} --stage {}",
+        "  {} {} --workflow {} --stage {}",
         shell_quote(&executable.to_string_lossy()),
         choice.direction,
-        shell_quote(&workspace.to_string_lossy()),
+        shell_quote(&workflow.to_string_lossy()),
         choice.target_stage
     );
 }

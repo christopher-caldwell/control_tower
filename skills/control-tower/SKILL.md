@@ -1,6 +1,6 @@
 ---
 name: control-tower
-description: Dispatch Control Tower workspace tasks to the version-matched CLI guidance.
+description: Dispatch Control Tower workflow tasks to the version-matched CLI guidance.
 ---
 
 # Control Tower

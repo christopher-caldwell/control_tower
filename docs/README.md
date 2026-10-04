@@ -15,7 +15,7 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workspace behavior; the browser adds project-local workspace discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workflow behavior; the browser adds workspace-local workflow discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
 
@@ -23,18 +23,18 @@ Control Tower is a local workbench for user-owned executable stages. The CLI and
 | --- | --- |
 | Give a coding agent version-matched Control Tower guidance | [`control-tower guide`](reference/cli.md#agent-guidance-and-validation) and the [dispatcher Skill](../skills/control-tower/SKILL.md) |
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
-| Inspect workspaces in a browser | [Browser workbench](reference/browser-workbench.md) |
+| Inspect workflows in a browser | [Browser workbench](reference/browser-workbench.md) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |
-| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workspaces/uuid-file/README.md) |
-| Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workspaces/generated-id/README.md) (Python 3) |
+| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workflows/uuid-file/README.md) |
+| Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workflows/generated-id/README.md) (Python 3) |
 | Choose a usage pattern | [Example gallery](../examples/README.md) |
-| Write your own stages | [Create a workspace](guides/creating-a-workspace.md) |
+| Write your own stages | [Create a workflow](guides/creating-a-workflow.md) |
 | Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
 | Look up commands and database operations | [CLI reference](reference/cli.md) |
 | Look up role names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
 | Diagnose setup or script failures | [Troubleshooting](guides/troubleshooting.md) |
 
-Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence. The [October 2 gallery validation](research/2026-10-02-examples-gallery-validation.md) records the family/workspace restructure and its executed integration checks.
+Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence. The [October 2 gallery validation](research/2026-10-02-examples-gallery-validation.md) records the family/workflow restructure and its executed integration checks.
 
 ## Design and development
 
@@ -48,7 +48,7 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 | [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Application-owned storage contracts with SQLite as the v0 runtime adapter. |
 | [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |
 | [ADR-0006](decisions/0006-loopback-web-ui.md) | Accepted | First graphical Entry uses embedded React over loopback HTTP/SSE; Tauri and live byte streaming remain unselected. |
-| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with fixed-width collapsible rails, declarative progression and a stage inspector. |
+| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only workspace/workflow/stage shell with fixed-width collapsible rails, declarative progression and a stage inspector. |
 
 [The UI reference review](research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright screenshots/patterns behind ADR-0007. It is reference evidence, not a second UI specification.
 
@@ -78,6 +78,8 @@ The root README is the short entry point. Each example README belongs beside its
 ## Authority and maintenance
 
 Explicit user choices and accepted decisions govern the product. Guides/reference describe implementation, not new approval. If code and an accepted decision disagree, identify the mismatch; do not rewrite the decision to make code appear correct. Proposals do not become accepted because they were committed or repeated. Preserve historical evidence with its original revision and execution limits, adding dated links to later evidence rather than rewriting a past run.
+
+**Vocabulary in older records.** Dated research and history keep the terms in force when they were written. Until 2026-10-04 the hierarchy was Project → Workspace → Stage; it is now **Workspace → Workflow → Stage** ([ADR-0007](decisions/0007-desktop-ui-shell.md)). When reading an older record, map Project → Workspace and Workspace → Workflow, and the matching identifiers: `workspaces/` → `workflows/`, `--workspace` → `--workflow`, `CONTROL_TOWER_WORKSPACE` → `CONTROL_TOWER_WORKFLOW`, `/api/project` → `/api/workspace` and `/api/workspaces/{id}` → `/api/workflows/{id}`. Guides, reference and the current design use the new terms.
 
 Update the relevant guide/reference when an interface changes. Update the current design and decision record together only when intent changes. A material documentation or implementation observation can be recorded in one cohesive dated research/validation record; do not create a file per chat response or checklist item.
 

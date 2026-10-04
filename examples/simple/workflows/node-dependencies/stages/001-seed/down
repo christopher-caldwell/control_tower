@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const data = path.join(process.env.CONTROL_TOWER_WORKFLOW, "data");
+fs.rmSync(path.join(data, "record.json"), {force: true});

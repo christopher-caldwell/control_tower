@@ -4,7 +4,7 @@ title: User documentation audit and validation
 type: research
 status: recorded
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 verified_on: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
@@ -12,7 +12,7 @@ method: Pinned-source review, Markdown checks and direct shell-fixture execution
 sources:
 - ../../README.md
 - ../README.md
-- ../../examples/simple/workspaces/uuid-file/README.md
+- ../../examples/simple/workflows/uuid-file/README.md
 - ../reference/cli.md
 - ../reference/stage-executables.md
 - documentation-strategy.md
@@ -68,7 +68,7 @@ The existing [run-semantics validation](run-semantics-validation.md#executed-ver
 
 ## Reproduce full documentation acceptance locally
 
-From the checkout root, follow the root README exactly in a fresh workspace. Then execute the [stage-by-stage example](../../examples/simple/workspaces/uuid-file/README.md#walk-forward-and-observe) and [failed-verifier exercise](../guides/verification-and-navigation.md#try-a-verification-failure). Those instructions show expected outcomes and identify intentional nonzero exits.
+From the checkout root, follow the root README exactly in a fresh workspace. Then execute the [stage-by-stage example](../../examples/simple/workflows/uuid-file/README.md#walk-forward-and-observe) and [failed-verifier exercise](../guides/verification-and-navigation.md#try-a-verification-failure). Those instructions show expected outcomes and identify intentional nonzero exits.
 
 Run the workspace checks:
 
@@ -83,4 +83,4 @@ Record the actual revision, toolchain and results when these are rerun. Keep fut
 
 ## October 2, 2026 example relocation
 
-Live example links now target the family `workspaces/` layout. Earlier command paths and validation revisions above retain their original historical meaning.
+Live example links now target the family `workflows/` layout (the former `workspaces/` directory, renamed on 2026-10-04 when the Workspace → Workflow → Stage terminology was adopted; see [ADR-0007](../decisions/0007-desktop-ui-shell.md)). Earlier command paths and validation revisions above retain their original historical meaning.

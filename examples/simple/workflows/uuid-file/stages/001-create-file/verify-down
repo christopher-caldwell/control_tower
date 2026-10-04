@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+test ! -e "$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID"
+printf 'UUID file is absent\n'

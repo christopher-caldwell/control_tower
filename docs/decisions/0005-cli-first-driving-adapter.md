@@ -4,7 +4,7 @@ title: Use the CLI as the only v0 driving adapter
 type: decision
 status: accepted
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction-and-established-rust-playbook
@@ -83,7 +83,7 @@ Likewise, the CLI should not be written as a reusable â€œtransport abstractionâ€
 
 CLI is the smallest surface for validating the actual workbench mechanics:
 
-- discover a workspace,
+- discover a workflow,
 - move up/down,
 - run directional verification,
 - inspect current session status/context/results,

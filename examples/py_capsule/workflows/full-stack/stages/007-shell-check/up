@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+test -s "$CONTROL_TOWER_WORKFLOW/data/record.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/tool_result.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/runtime_context.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/node_inspection.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/postgres_receipt.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/psql_command.json"
+test -s "$CONTROL_TOWER_WORKFLOW/data/psql_file.json"
+printf 'ok\n' > "$CONTROL_TOWER_WORKFLOW/data/full_stack_complete"

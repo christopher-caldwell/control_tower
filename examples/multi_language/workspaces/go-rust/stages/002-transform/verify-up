@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-test "$(cat "$CONTROL_TOWER_WORKSPACE/data/doubled.txt")" = "42"

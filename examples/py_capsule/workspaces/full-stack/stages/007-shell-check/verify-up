@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-test "$(cat "$CONTROL_TOWER_WORKSPACE/data/full_stack_complete")" = "ok"

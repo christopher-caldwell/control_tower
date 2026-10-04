@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-rm -f "$CONTROL_TOWER_WORKSPACE/data/psql_command.json"

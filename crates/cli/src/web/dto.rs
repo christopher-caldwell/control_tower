@@ -99,9 +99,9 @@ impl From<CheckpointState> for WorkbenchState {
     }
 }
 #[derive(Clone, Serialize)]
-pub(super) struct ProjectView {
+pub(super) struct WorkspaceView {
     pub(super) name: String,
-    pub(super) workspaces: Vec<WorkspaceIdentity>,
+    pub(super) workflows: Vec<WorkflowIdentity>,
 }
 #[derive(Clone, Serialize)]
 pub(super) struct StageIdentity {
@@ -109,7 +109,7 @@ pub(super) struct StageIdentity {
     pub(super) name: String,
 }
 #[derive(Clone, Serialize)]
-pub(super) struct WorkspaceIdentity {
+pub(super) struct WorkflowIdentity {
     pub(super) id: String,
     pub(super) name: String,
 }
@@ -125,9 +125,9 @@ pub(super) struct CheckpointView {
     pub(super) state: CheckpointState,
 }
 #[derive(Clone, Serialize)]
-pub(super) struct WorkspaceView {
-    pub(super) project_name: String,
-    pub(super) workspace: WorkspaceIdentity,
+pub(super) struct WorkflowView {
+    pub(super) workspace_name: String,
+    pub(super) workflow: WorkflowIdentity,
     pub(super) current_status: &'static str,
     pub(super) status_issue: Option<String>,
     pub(super) checkpoint: Option<CheckpointView>,

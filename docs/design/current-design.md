@@ -4,7 +4,7 @@ title: Current design and decision audit
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-03'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -40,10 +40,22 @@ The core is complete as a candidate for repeated local owner use under the bound
 
 ## Core model
 
-The shipped filesystem convention is `stages/` with numbered directories and up to four role files:
+Control Tower's vocabulary is **Workspace → Workflow → Stage**. A Workspace is a directory holding Workflows under `workflows/`; the browser UI treats its launch directory as the Workspace. A Workflow is the runnable unit: it owns its `stages/` and its own `.control_tower/state.sqlite3`. The CLI addresses one Workflow directly with `--workflow`. Stage executables receive that directory as `CONTROL_TOWER_WORKFLOW`.
 
 ```text
 workspace/
+  workflows/
+    workflow-a/
+      stages/
+      .control_tower/state.sqlite3
+    workflow-b/
+      stages/
+```
+
+The shipped filesystem convention inside a Workflow is `stages/` with numbered directories and up to four role files:
+
+```text
+workflow/
   stages/
     001-create-fixture/
       up
@@ -52,7 +64,7 @@ workspace/
       verify-down
 ```
 
-Both verifiers are optional. A stage needs at least one mutation; a verifier needs its matching mutation. Required missing mutations make traversal unavailable. Stage numbers are unique positive numeric prefixes, sorted numerically; gaps are allowed. No workspace YAML/TOML is used.
+Both verifiers are optional. A stage needs at least one mutation; a verifier needs its matching mutation. Required missing mutations make traversal unavailable. Stage numbers are unique positive numeric prefixes, sorted numerically; gaps are allowed. No workflow YAML/TOML is used.
 
 ```text
 up   -> optional verify-up   -> accept higher position
@@ -65,9 +77,9 @@ The author is responsible for correctness and reversibility. A role name is not 
 
 CLI is the implemented Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
-[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The platform-neutral `control-tower ui` command prints a plain local URL for manual browser opening, serves workspace inventory and selected-workspace movement/definition APIs, and sends SSE role observations. Production does not require Vite or Node.
+[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The platform-neutral `control-tower ui` command prints a plain local URL for manual browser opening, serves workflow inventory and selected-workflow movement/definition APIs, and sends SSE role observations. Production does not require Vite or Node.
 
-The UI Entry composes Workbench inside the CLI package rather than shelling out to the CLI or changing Application ownership. Project scope comes from the launch directory, and startup inventory reads only directory names under `workspaces/`. It does not open sibling databases or validate stages. Each selected workspace is composed and read inside a blocking Entry operation; an unprepared or malformed sibling does not prevent launch or use of a healthy workspace. The UI does not bootstrap, migrate or repair storage. The normal executable embeds prebuilt assets. The UI is desktop-only; exact component styling remains an implementation detail.
+The UI Entry composes Workbench inside the CLI package rather than shelling out to the CLI or changing Application ownership. Workspace scope comes from the launch directory, and startup inventory reads only directory names under `workflows/`. It does not open sibling databases or validate stages. Each selected workflow is composed and read inside a blocking Entry operation; an unprepared or malformed sibling does not prevent launch or use of a healthy workflow. The UI does not bootstrap, migrate or repair storage. The normal executable embeds prebuilt assets. The UI is desktop-only; exact component styling remains an implementation detail.
 
 Application exposes pure immediate movement choices on `WorkbenchStatus` and
 `MoveOutcome`, using the same pending-transition derivation as verifier-failure
@@ -79,23 +91,23 @@ wording and emphasis; it does not add a separate attempted/confirmed checkpoint
 presentation model.
 
 The web implementation remains inside CLI/Entry, with internal modules for DTOs,
-HTTP/static delivery, workspace inventory and selected-status mapping, in-process
+HTTP/static delivery, workflow inventory and selected-status mapping, in-process
 snapshots, and the blocking movement/inspection bridge. Entry composition stays
 explicit in `deps.rs`; the test harness is separate. This split adds no Application
 services, shared Workbench requirements, or persistence model.
 
-Application offers synchronous observations before and after each actual role attempt. CLI renders captured output/results before the next role is attempted. The UI maps those observations to SSE and keeps the latest in-process attempt for the selected workspace. It converts each completed role's captured stdout/stderr to separate displayable text in the snapshot, so completed mutation output remains available while a later verifier runs. The Application outcome and Infrastructure runner retain their existing raw bytes. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
+Application offers synchronous observations before and after each actual role attempt. CLI renders captured output/results before the next role is attempted. The UI maps those observations to SSE and keeps the latest in-process attempt for the selected workflow. It converts each completed role's captured stdout/stderr to separate displayable text in the snapshot, so completed mutation output remains available while a later verifier runs. The Application outcome and Infrastructure runner retain their existing raw bytes. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
 
 The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.
 
-## Selected UI shell: desktop project -> workspace -> stage workbench
+## Selected UI shell: desktop workspace -> workflow -> stage workbench
 
-[ADR-0007](../decisions/0007-desktop-ui-shell.md) fixes the first UI's information architecture before implementation. The launch directory is the v0 **Project** context; the UI discovers and switches among project-local **Workspaces**. Switching to unrelated projects from inside the running UI is deferred.
+[ADR-0007](../decisions/0007-desktop-ui-shell.md) fixes the first UI's information architecture before implementation. The launch directory is the v0 **Workspace** context; the UI discovers and switches among workspace-local **Workflows**. Switching to unrelated Workspaces from inside the running UI is deferred.
 
 The primary desktop shell keeps three contexts visible together:
 
 ```text
-left: project-local workspaces
+left: workspace-local workflows
 center: ordered vertical stages
 right: selected-stage inspector
 bottom: declarative progression/recovery actions
@@ -148,7 +160,7 @@ The compliance pass retained `rusqlite` as a documented DEFAULT deviation: this 
 
 `bootstrap-local` provisions the file; `migrate-local` applies the versioned schema; `verify-local` reads the supported version/history. Ordinary `up`, `down`, and `status` do not call bootstrap/migrate. The current migration can adopt the earlier v0 table and preserve its saved rows. Operational schema history is distinct from a history of user-authored stage executions.
 
-PostgreSQL server roles and privileges do not apply to this embedded file. No server-style DDL privilege isolation is claimed. See [database commands](../reference/cli.md#database-operations), [setup](../guides/getting-started.md#set-up-that-workspaces-database), and the Database-owned operations implementation.
+PostgreSQL server roles and privileges do not apply to this embedded file. No server-style DDL privilege isolation is claimed. See [database commands](../reference/cli.md#database-operations), [setup](../guides/getting-started.md#set-up-that-workflows-database), and the Database-owned operations implementation.
 
 ### Error boundaries and inputs
 
@@ -168,7 +180,7 @@ The [run-semantics validation](../research/run-semantics-validation.md) records 
 
 The shipped runner generates one UUID before a run's first mutation and supplies it to every role. The original UUID-file sample uses it to name a file; it does not generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
 
-This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/simple/workspaces/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
+This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/simple/workflows/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
 
 The UUID persists while verification is pending and is cleared on successful settlement at baseline 0. SQLite remains prepared for the next run.
 
@@ -184,14 +196,14 @@ Movement and status report actual numeric stage identifiers/labels for completed
 
 ## No concurrency or structural-drift machinery
 
-This is one user's one-instance workbench. No project-specific locks, drift detection or reconciliation is implemented. Stage-directory changes during a stored run are the author's responsibility. **Restarting does not clear SQLite state**; finish the run before structural edits or start a fresh workspace after handling external effects yourself.
+This is one user's one-instance workbench. No multi-instance locking, drift detection, or reconciliation is implemented. Stage-directory changes during a stored run are the author's responsibility. **Restarting does not clear SQLite state**; finish the run before structural edits or start a fresh workflow after handling external effects yourself.
 
 ## Deferred reset escape hatch
 
-A workspace-wide reset executable remains a future idea, not a current command. Deleting bookkeeping is not equivalent to running author-owned reversal scripts.
+A workflow-wide reset executable remains a future idea, not a current command. Deleting bookkeeping is not equivalent to running author-owned reversal scripts.
 
 ## What still has not earned scope
 
-The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are implemented as a platform-neutral loopback browser workbench. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped role-definition text. Declarative movement, SSE role observations, completed text output and outcome-specific recovery are implemented in the UI Entry. Native app packaging, project switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
+The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are implemented as a platform-neutral loopback browser workbench. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped role-definition text. Declarative movement, SSE role observations, completed text output and outcome-specific recovery are implemented in the UI Entry. Native app packaging, workspace switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
 
 The first discovery and correction rounds have implementation evidence. The next useful input is actual use, not replaying the historical discovery queue as setup work. [Open questions](open-questions.md) keeps that future work separate; the [discovery brief](discovery-brief.md) and [earlier probe](three-step-workspace.md) remain historical inputs.

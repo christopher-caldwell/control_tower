@@ -9,7 +9,7 @@ mod workspace;
 use self::{
     http::router,
     runtime::ObservationStore,
-    workspace::{ProjectContext, discover_project},
+    workspace::{WorkspaceContext, discover_workspace},
 };
 use axum::serve;
 use std::{net::TcpListener, path::Path, sync::Arc};
@@ -17,18 +17,18 @@ use tokio::net::TcpListener as TokioTcpListener;
 
 #[derive(Clone)]
 struct ServerContext {
-    project: ProjectContext,
+    workspace: WorkspaceContext,
     observations: Arc<ObservationStore>,
 }
 
 pub(super) fn run_from_current_directory() -> Result<(), String> {
-    let project_root = std::env::current_dir()
-        .map_err(|error| format!("cannot determine the launch Project directory: {error}"))?;
-    run_from(&project_root)
+    let workspace_root = std::env::current_dir()
+        .map_err(|error| format!("cannot determine the launch Workspace directory: {error}"))?;
+    run_from(&workspace_root)
 }
 
-fn run_from(project_root: &Path) -> Result<(), String> {
-    let project = discover_project(project_root)?;
+fn run_from(workspace_root: &Path) -> Result<(), String> {
+    let workspace = discover_workspace(workspace_root)?;
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .map_err(|error| format!("cannot bind the loopback UI listener: {error}"))?;
     listener
@@ -39,7 +39,7 @@ fn run_from(project_root: &Path) -> Result<(), String> {
         .map_err(|error| format!("cannot inspect the UI listener: {error}"))?;
     let url = format!("http://127.0.0.1:{}", address.port());
     let context = Arc::new(ServerContext {
-        project,
+        workspace,
         observations: Arc::new(ObservationStore::new()),
     });
 

@@ -1,17 +1,17 @@
 # Simple example
 
 Copy this complete example to experiment with focused Control Tower workflows.
-The workspaces share ordinary Python and Node dependencies; each owns its stages,
+The workflows share ordinary Python and Node dependencies; each owns its stages,
 application data, and Control Tower checkpoint database.
 
-| Workspace | Additional prerequisites | Lesson |
+| Workflow | Additional prerequisites | Lesson |
 | --- | --- | --- |
-| [uuid-file](workspaces/uuid-file/README.md) | Unix shell | One runner UUID, verification, and reversal. |
-| [generated-id](workspaces/generated-id/README.md) | Python 3 with standard-library SQLite | Explicit handoff of an application-generated identifier. |
-| [python-dependencies](workspaces/python-dependencies/README.md) | uv / Python 3.12 | Ordinary example-owned Python dependencies. |
-| [node-dependencies](workspaces/node-dependencies/README.md) | Node / npm | Ordinary example-owned Node dependencies. |
-| [python-isolated-stage](workspaces/python-isolated-stage/README.md) | uv / Python 3.12 | A closer stage project supplies a different dependency. |
-| [postgres](workspaces/postgres/README.md) | uv / Python 3.12 and PostgreSQL | Run-owned external effects, reversal, retry, and abandonment. |
+| [uuid-file](workflows/uuid-file/README.md) | Unix shell | One runner UUID, verification, and reversal. |
+| [generated-id](workflows/generated-id/README.md) | Python 3 with standard-library SQLite | Explicit handoff of an application-generated identifier. |
+| [python-dependencies](workflows/python-dependencies/README.md) | uv / Python 3.12 | Ordinary example-owned Python dependencies. |
+| [node-dependencies](workflows/node-dependencies/README.md) | Node / npm | Ordinary example-owned Node dependencies. |
+| [python-isolated-stage](workflows/python-isolated-stage/README.md) | uv / Python 3.12 | A closer stage project supplies a different dependency. |
+| [postgres](workflows/postgres/README.md) | uv / Python 3.12 and PostgreSQL | Run-owned external effects, reversal, retry, and abandonment. |
 
 ## Setup and run
 
@@ -41,7 +41,7 @@ This installs ordinary `python-dateutil` and `psycopg[binary]` in the example's
 isolated-stage workflow, also prepare its closer project:
 
 ```sh
-uv sync --locked --project workspaces/python-isolated-stage/stages/003-inspect
+uv sync --locked --project workflows/python-isolated-stage/stages/003-inspect
 ```
 
 That stage uses `jsonschema`, which is absent from the example environment.
@@ -53,21 +53,21 @@ npm ci --ignore-scripts --no-audit --no-fund
 
 Node roles resolve example-owned `dayjs` through normal ancestor lookup.
 The UUID workflow needs neither setup command; generated-ID uses only Python's
-standard library. PostgreSQL server/schema setup is documented in its workspace.
+standard library. PostgreSQL server/schema setup is documented in its workflow.
 
-Select a workspace from this example root:
+Select a workflow from this example root:
 
 ```sh
-workspace=workspaces/uuid-file
-control-tower-db bootstrap-local "$workspace"
-control-tower-db migrate-local "$workspace"
-control-tower-db verify-local "$workspace"
-control-tower up --workspace "$workspace" --stage 3
-cat "$workspace"/data/*
-control-tower down --workspace "$workspace" --stage 0
+workflow=workflows/uuid-file
+control-tower-db bootstrap-local "$workflow"
+control-tower-db migrate-local "$workflow"
+control-tower-db verify-local "$workflow"
+control-tower up --workflow "$workflow" --stage 3
+cat "$workflow"/data/*
+control-tower down --workflow "$workflow" --stage 0
 ```
 
-Each workspace README supplies its stage targets, artifacts, and recovery steps.
+Each workflow README supplies its stage targets, artifacts, and recovery steps.
 Dependencies are installed once per example. Schema and generated-ID support code
 stay with their scenarios; only the exceptional Python stage has its own project.
 

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+rm "$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID"
+printf 'removed %s\n' "$CONTROL_TOWER_UUID"

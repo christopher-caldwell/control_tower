@@ -1,16 +1,16 @@
 # PyCapsule example
 
-These workspaces intentionally share reusable typed Python capabilities. Each
-workspace owns its stages and explicit handoffs; the example owns the caller
+These workflows intentionally share reusable typed Python capabilities. Each
+workflow owns its stages and explicit handoffs; the example owns the caller
 Python/Node projects and the reusable [example_tool](tools/example_tool/README.md).
 
-> `tools/` is not part of Control Tower's required workspace structure. It is an application-level pattern shown here because multiple workspaces intentionally reuse the same PyCapsule-backed capabilities.
+> `tools/` is not part of Control Tower's required Workspace structure. It is an application-level pattern shown here because multiple workflows intentionally reuse the same PyCapsule-backed capabilities.
 
-| Workspace | Stages | Lesson |
+| Workflow | Stages | Lesson |
 | --- | --- | --- |
-| [tool-only](workspaces/tool-only/README.md) | 3 | Explicit input → typed API → PyCapsule child → explicit output inspection. |
-| [node-and-tool](workspaces/node-and-tool/README.md) | 3 | Node input and inspection around an encapsulated Python capability. |
-| [full-stack](workspaces/full-stack/README.md) | 7 | Shared tool, ordinary Python, Node, PostgreSQL, native psql, and shell in one investigation. |
+| [tool-only](workflows/tool-only/README.md) | 3 | Explicit input → typed API → PyCapsule child → explicit output inspection. |
+| [node-and-tool](workflows/node-and-tool/README.md) | 3 | Node input and inspection around an encapsulated Python capability. |
+| [full-stack](workflows/full-stack/README.md) | 7 | Shared tool, ordinary Python, Node, PostgreSQL, native psql, and shell in one investigation. |
 
 ## Setup and run
 
@@ -37,23 +37,23 @@ npm ci --ignore-scripts --no-audit --no-fund
 For tool-only, the two Python setup commands suffice. For Node workflows,
 also run npm. Alternatively, `./bootstrap` prepares all Python and Node dependencies. Copy the authored tree before running
 it. When copying an already-used example, exclude generated `.venv`,
-`node_modules`, `data`, `.control_tower`, and caches. The copied project retains
-`tools/`, all `workspaces/`, and dependency metadata.
+`node_modules`, `data`, `.control_tower`, and caches. The copied Workspace retains
+`tools/`, all `workflows/`, and dependency metadata.
 
 From the copied example root:
 
 ```sh
-workspace=workspaces/tool-only
-control-tower-db bootstrap-local "$workspace"
-control-tower-db migrate-local "$workspace"
-control-tower-db verify-local "$workspace"
-control-tower up --workspace "$workspace" --stage 3
-cat "$workspace/data/tool_result.json"
-cat "$workspace/data/runtime_context.json"
-control-tower down --workspace "$workspace" --stage 0
+workflow=workflows/tool-only
+control-tower-db bootstrap-local "$workflow"
+control-tower-db migrate-local "$workflow"
+control-tower-db verify-local "$workflow"
+control-tower up --workflow "$workflow" --stage 3
+cat "$workflow/data/tool_result.json"
+cat "$workflow/data/runtime_context.json"
+control-tower down --workflow "$workflow" --stage 0
 ```
 
-Choose another workspace after setup using its README. Each workspace owns its
+Choose another workflow after setup using its README. Each workflow owns its
 state and output; all reuse the copied shared tool.
 
 ## Dependency and execution boundaries
@@ -67,7 +67,7 @@ from example_tool import normalize_record
 
 The typed API owns the capsule invocation and runtime injection. The tool owns its
 capsule manifest/body and a separate child Python project. The caller environment
-and PyCapsule child environment remain distinct. Workspaces persist tool values and
+and PyCapsule child environment remain distinct. Workflows persist tool values and
 runtime exports as explicit files; Control Tower does not interpret those files.
 
 The shared Python environment includes `python-dateutil` for ordinary timestamp
@@ -88,10 +88,10 @@ separate writes, so inspect partial local output before retrying a failed tool
 stage. This deterministic example can be repeated; it does not establish safe
 replay for an arbitrary external API. A fresh tool call starts a fresh simulated
 runtime; its previous export is output, not implicit input. Diagnostics remain
-under `~/.py_capsule/normalize_record/runs/` after workspace reversal.
+under `~/.py_capsule/normalize_record/runs/` after workflow reversal.
 
 `down` reverses accepted transitions. Partial effects of a failed mutation belong
-to the workflow. See the [full-stack recovery procedure](workspaces/full-stack/README.md#failed-stage-003-retry-or-abandon)
+to the workflow. See the [full-stack recovery procedure](workflows/full-stack/README.md#failed-stage-003-retry-or-abandon)
 and maintained [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).
 
 From the Control Tower repository root:

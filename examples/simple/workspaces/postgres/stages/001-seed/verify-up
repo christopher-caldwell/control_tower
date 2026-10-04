@@ -1,9 +1,0 @@
-#!/usr/bin/env -S uv run python
-import json
-import os
-from pathlib import Path
-
-workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
-data = workspace / "data"
-if json.loads((data / "record.json").read_text()) != {'record_id': '123', 'label': 'EXAMPLE RECORD'}:
-    raise SystemExit("unexpected input record")

@@ -1,35 +1,35 @@
 # Control Tower examples
 
-An **example** is the complete portable project you copy. Its **workspaces**
-are runnable workflows/scenarios inside that project. Control Tower executes
+An **example** is the complete portable Workspace you copy. Its **workflows**
+are the runnable scenarios inside that Workspace. Control Tower executes
 ordinary role files directly; each role selects its runtime through its shebang.
 
 | Example to copy | What it teaches | Where to start |
 | --- | --- | --- |
-| [simple](simple/README.md) | Focused workflows, ordinary dependencies, stage isolation, and database ownership. | [uuid-file](simple/workspaces/uuid-file/README.md). |
-| [multi_language](multi_language/README.md) | Ordinary runtimes composed through explicit files. | [shell-python-node](multi_language/workspaces/shell-python-node/README.md). |
-| [py_capsule](py_capsule/README.md) | Shared encapsulated tools and richer workflows. | [tool-only](py_capsule/workspaces/tool-only/README.md), then full-stack. |
+| [simple](simple/README.md) | Focused workflows, ordinary dependencies, stage isolation, and database ownership. | [uuid-file](simple/workflows/uuid-file/README.md). |
+| [multi_language](multi_language/README.md) | Ordinary runtimes composed through explicit files. | [shell-python-node](multi_language/workflows/shell-python-node/README.md). |
+| [py_capsule](py_capsule/README.md) | Shared encapsulated tools and richer workflows. | [tool-only](py_capsule/workflows/tool-only/README.md), then full-stack. |
 
 ```text
 examples/
-  simple/                     copy this complete example
-    workspaces/               focused scenarios
-  multi_language/             copy this complete example
-    workspaces/               ordinary runtime compositions
-  py_capsule/                 copy this complete example
+  simple/                     a Workspace: copy this complete example
+    workflows/                focused scenarios
+  multi_language/             a Workspace: copy this complete example
+    workflows/                ordinary runtime compositions
+  py_capsule/                 a Workspace: copy this complete example
     tools/                    shared encapsulated capabilities
-    workspaces/               scenarios consuming those capabilities
+    workflows/                scenarios consuming those capabilities
 ```
 
 For example, `cp -R examples/simple ~/somewhere/simple` retains everything
 repository-authored needed by its workflows. Install the documented external CLIs,
-runtimes, and services, then follow setup at the copied example root. Workspaces
-may use their containing example's configuration and helpers; their directories
+runtimes, and services, then follow setup at the copied example root. Workflows
+may use their containing Workspace's configuration and helpers; their directories
 are not the portability boundary. Only PyCapsule demonstrates a reusable `tools/`
 layer. Control Tower gives that directory no special meaning.
 
 The [root quickstart](../README.md#try-the-three-stage-example) uses shell and built
-Control Tower binaries. See [workspace authoring](../docs/guides/creating-a-workspace.md)
+Control Tower binaries. See [workflow authoring](../docs/guides/creating-a-workflow.md)
 and the [executable contract](../docs/reference/stage-executables.md) for global semantics.
 
 ## Optional integration tests

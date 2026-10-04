@@ -108,7 +108,7 @@ pub struct PendingTransition {
 pub struct Invocation {
     pub executable: PathBuf,
     pub working_directory: PathBuf,
-    pub workspace_root: PathBuf,
+    pub workflow_root: PathBuf,
     pub stage_number: u32,
     pub direction: Direction,
     pub role: ExecutableRole,
@@ -345,7 +345,7 @@ fn movement_choices(state: &WorkbenchState, stages: &[Stage]) -> Vec<MovementCho
 }
 
 pub trait StageDiscovery {
-    fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
+    fn discover(&self, workflow_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
 }
 
 pub trait StageDefinitionReader {
@@ -362,14 +362,14 @@ pub trait WorkbenchWrites {
 }
 
 pub struct MoveToInput<'a> {
-    pub workspace_root: &'a Path,
+    pub workflow_root: &'a Path,
     pub direction: Direction,
     pub target_stage: u32,
     pub expected_checkpoint: Option<&'a WorkbenchState>,
 }
 
 pub struct StageDefinitionsInput<'a> {
-    pub workspace_root: &'a Path,
+    pub workflow_root: &'a Path,
     pub stage_number: u32,
 }
 
@@ -456,12 +456,12 @@ impl Workbench {
         observe: &mut dyn FnMut(ExecutionProgress<'_>),
     ) -> Result<MoveOutcome, MoveToError> {
         let MoveToInput {
-            workspace_root,
+            workflow_root,
             direction,
             target_stage,
             expected_checkpoint,
         } = input;
-        let stages = self.load_stages(workspace_root)?;
+        let stages = self.load_stages(workflow_root)?;
         let mut state = self.load_state(stages.len())?;
         if expected_checkpoint.is_some_and(|expected| expected != &state) {
             return Err(MoveToError::StaleCheckpoint);
@@ -495,7 +495,7 @@ impl Workbench {
                 direction,
             };
             if let Err(failure) = self.run_transition(
-                workspace_root,
+                workflow_root,
                 &stages[pending.stage_index],
                 transition,
                 direction != pending.direction,
@@ -539,7 +539,7 @@ impl Workbench {
                 Direction::Down => state.completed_stage_count - 1,
             };
             if let Err(failure) = self.run_transition(
-                workspace_root,
+                workflow_root,
                 &stages[stage_index],
                 PendingTransition {
                     stage_index,
@@ -564,8 +564,8 @@ impl Workbench {
         })
     }
 
-    pub fn status(&self, workspace_root: &Path) -> Result<WorkbenchStatus, StatusError> {
-        let stages = self.load_stages(workspace_root)?;
+    pub fn status(&self, workflow_root: &Path) -> Result<WorkbenchStatus, StatusError> {
+        let stages = self.load_stages(workflow_root)?;
         let state = self.load_state(stages.len())?;
         Ok(WorkbenchStatus { state, stages })
     }
@@ -575,10 +575,10 @@ impl Workbench {
         input: StageDefinitionsInput<'_>,
     ) -> Result<StageDefinitions, StageDefinitionsError> {
         let StageDefinitionsInput {
-            workspace_root,
+            workflow_root,
             stage_number,
         } = input;
-        let stages = self.load_stages(workspace_root)?;
+        let stages = self.load_stages(workflow_root)?;
         let stage = stages
             .into_iter()
             .find(|stage| stage.number == stage_number)
@@ -601,8 +601,8 @@ impl Workbench {
         Ok(StageDefinitions { stage, definitions })
     }
 
-    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
-        let stages = self.stage_discovery.discover(workspace_root)?;
+    fn load_stages(&self, workflow_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+        let stages = self.stage_discovery.discover(workflow_root)?;
         if stages.is_empty() {
             return Err(StageDiscoveryError::message(
                 "no numbered stage directories were found under `stages/`",
@@ -643,7 +643,7 @@ impl Workbench {
 
     fn run_transition(
         &self,
-        workspace_root: &Path,
+        workflow_root: &Path,
         stage: &Stage,
         transition: PendingTransition,
         run_mutation: bool,
@@ -664,7 +664,7 @@ impl Workbench {
                 proposed.uuid = Some(Uuid::new_v4().to_string());
                 self.publish_checkpoint(state, proposed)?;
             }
-            if !self.run_role(workspace_root, stage, direction, false, state, log) {
+            if !self.run_role(workflow_root, stage, direction, false, state, log) {
                 return Err(failure_for_last_execution(&log.executions));
             }
         }
@@ -676,7 +676,7 @@ impl Workbench {
                 proposed.pending = Some(transition);
                 self.publish_checkpoint(state, proposed)?;
             }
-            if !self.run_role(workspace_root, stage, direction, true, state, log) {
+            if !self.run_role(workflow_root, stage, direction, true, state, log) {
                 return Err(failure_for_last_execution(&log.executions));
             }
         }
@@ -705,7 +705,7 @@ impl Workbench {
 
     fn run_role(
         &self,
-        workspace_root: &Path,
+        workflow_root: &Path,
         stage: &Stage,
         direction: Direction,
         verify: bool,
@@ -719,7 +719,7 @@ impl Workbench {
         let invocation = Invocation {
             executable: executable.to_path_buf(),
             working_directory: stage.directory.clone(),
-            workspace_root: workspace_root.to_path_buf(),
+            workflow_root: workflow_root.to_path_buf(),
             stage_number: stage.number,
             direction,
             role,
@@ -861,11 +861,11 @@ mod stage_definition_contract_tests {
 
     #[test]
     fn definition_input_has_narrow_errors_and_keeps_checkpoint_storage_out_of_lookup() {
-        let workspace_root = Path::new("workspace");
+        let workflow_root = Path::new("workflow");
         let workbench = build_workbench(Box::new(Discovery(vec![stage()])));
         let definitions = workbench
             .stage_definitions(StageDefinitionsInput {
-                workspace_root,
+                workflow_root,
                 stage_number: 7,
             })
             .unwrap();
@@ -875,7 +875,7 @@ mod stage_definition_contract_tests {
         assert!(read_error.to_string().contains("definition read denied"));
 
         let unknown = match workbench.stage_definitions(StageDefinitionsInput {
-            workspace_root,
+            workflow_root,
             stage_number: 99,
         }) {
             Ok(_) => panic!("unknown stage unexpectedly resolved"),
@@ -885,7 +885,7 @@ mod stage_definition_contract_tests {
 
         let empty = build_workbench(Box::new(Discovery(Vec::new())));
         let empty_error = match empty.stage_definitions(StageDefinitionsInput {
-            workspace_root,
+            workflow_root,
             stage_number: 7,
         }) {
             Ok(_) => panic!("empty stage discovery unexpectedly succeeded"),
@@ -903,7 +903,7 @@ mod stage_definition_contract_tests {
 
         let failed = build_workbench(Box::new(FailingDiscovery));
         let failure = match failed.stage_definitions(StageDefinitionsInput {
-            workspace_root,
+            workflow_root,
             stage_number: 7,
         }) {
             Ok(_) => panic!("failing stage discovery unexpectedly succeeded"),

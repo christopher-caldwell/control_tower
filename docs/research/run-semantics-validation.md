@@ -4,7 +4,7 @@ title: Run semantics decision alignment and validation
 type: research
 status: recorded
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 verified_on: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
@@ -97,8 +97,8 @@ The manual driver asserted every subprocess exit, exact script call order, a sin
 
 Re-read ADR-0002, current design, open questions, discovery record and historical playbook ledger after the fix. Current design's known backout gap is resolved, its stale generalized checkpoint example is replaced with the implemented minimal model, and ADR-0002 gains an evidence link without a change in authority or meaning. Discovery retains its historical baseline and gains a later-evidence link. Failed-mutation recovery, crash reconciliation, concurrency/drift handling and generalized context remain deferred. No code/accepted-document disagreement remains within this run-semantics scope.
 
-The fixture now lives at [examples/simple/uuid-file](../../examples/simple/workspaces/uuid-file/README.md); the command paths above record the original validation run.
+The fixture now lives at [examples/simple/uuid-file](../../examples/simple/workflows/uuid-file/README.md); the command paths above record the original validation run.
 
 ## October 2, 2026 example relocation
 
-Live example links now target the family `workspaces/` layout. Earlier command paths and validation revisions above retain their original historical meaning.
+Live example links now target the family `workflows/` layout (the former `workspaces/` directory, renamed on 2026-10-04 when the Workspace → Workflow → Stage terminology was adopted; see [ADR-0007](../decisions/0007-desktop-ui-shell.md)). Earlier command paths and validation revisions above retain their original historical meaning.
