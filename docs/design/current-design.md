@@ -86,8 +86,11 @@ Application exposes pure immediate movement choices on `WorkbenchStatus` and
 guidance. These choices identify mechanically available directions and actual
 stage-number targets; they do not establish safe recovery after ambiguous
 authored effects or failed persistence. HTTP maps the choices and current
-checkpoint into its browser DTOs. React consumes supplied choices and owns
-wording and emphasis; it does not add a separate attempted/confirmed checkpoint
+checkpoint into its browser DTOs. React consumes the supplied immediate choices and owns
+wording and emphasis. For Run to X and Run all it reuses the immediate upward choice
+with a farther `target_stage`; Application's existing movement engine remains
+responsible for validating that target, walking intermediate stages, verification,
+checkpoint updates and stopping on failure. React does not add a separate attempted/confirmed checkpoint
 presentation model.
 
 The web implementation remains inside CLI/Entry, with internal modules for DTOs,
@@ -113,9 +116,9 @@ right: selected-stage inspector
 bottom: declarative progression/recovery actions
 ```
 
-The left and right rails are visible by default and may be manually collapsed. Their widths are fixed in CSS, and collapse state lasts only while the page is open. Stage selection is inspection only; it does not execute anything or alter the legal next transition.
+The left and right rails are visible by default and may be manually collapsed. Their widths are fixed in CSS, and collapse state lasts only while the page is open. Stage selection is primarily inspection: it does not execute anything or mutate the checkpoint, and it does not alter the immediate next transition. A selected future stage may also supply the target for an explicit Run to Stage X action.
 
-Primary actions describe intent such as **Advance to 003 · Add suffix**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
+Primary actions describe intent such as **Run next**, **Run to Stage 3 · Add suffix**, **Run all**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
 
 The interface is explicitly desktop-only. Responsive breakpoints must not turn the workbench into stacked cards, hamburger navigation, temporary mobile drawers, bottom sheets or a single-pane drill-down flow. Manual rail collapse is a user choice, not responsive behavior.
 

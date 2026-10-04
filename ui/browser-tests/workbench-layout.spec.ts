@@ -18,6 +18,7 @@ const workflow: WorkflowView = {
   stages: [
     { number: 10, name: "seed", state: "accepted", is_accepted_checkpoint: true, definitions: [{ role: "up", path: "stages/010-seed/up" }] },
     { number: 200, name: "finish", state: "future", is_accepted_checkpoint: false, definitions: [{ role: "up", path: "stages/200-finish/up" }] },
+    { number: 500, name: "verify", state: "future", is_accepted_checkpoint: false, definitions: [{ role: "up", path: "stages/500-verify/up" }] },
   ],
 };
 const workspace: WorkspaceView = { name: "browser-fixture", workflows: [{ id: "fixture", name: "fixture" }] };
@@ -80,19 +81,40 @@ test("stage selection inspects a future definition without submitting movement",
   await futureStage.click();
   await expect(page.getByRole("heading", { name: "finish" })).toBeVisible();
   await expect(futureStage).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Run to Stage/ })).toHaveCount(0);
   expect(api.movementRequests()).toBe(0);
 });
 
 test("the action dock submits an Application choice with its displayed checkpoint", async ({ page }) => {
   let submitted: unknown;
   await installFixtures(page, false, (body) => { submitted = body; });
-  await page.getByRole("button", { name: /Advance to Stage 200/ }).click();
+  await page.getByRole("button", { name: "Run next" }).click();
   await expect.poll(() => submitted).toEqual({ direction: "up", target_stage: 200, expected_checkpoint: checkpoint.state });
+});
+
+test("Run to targets the selected farther stage in one movement request", async ({ page }) => {
+  let submitted: unknown;
+  const api = await installFixtures(page, false, (body) => { submitted = body; });
+  await page.locator(".stage-card").filter({ hasText: "verify" }).click();
+  const runTo = page.getByRole("button", { name: /Run to Stage 500 · verify/ });
+  await expect(runTo).toBeVisible();
+  expect(api.movementRequests()).toBe(0);
+  await runTo.click();
+  await expect.poll(() => submitted).toEqual({ direction: "up", target_stage: 500, expected_checkpoint: checkpoint.state });
+  expect(api.movementRequests()).toBe(1);
+});
+
+test("Run all targets the final stage with the existing checkpoint contract", async ({ page }) => {
+  let submitted: unknown;
+  const api = await installFixtures(page, false, (body) => { submitted = body; });
+  await page.getByRole("button", { name: "Run all" }).click();
+  await expect.poll(() => submitted).toEqual({ direction: "up", target_stage: 500, expected_checkpoint: checkpoint.state });
+  expect(api.movementRequests()).toBe(1);
 });
 
 test("a lost movement response is reported without automatic resubmission", async ({ page }) => {
   const api = await installFixtures(page, true);
-  await page.getByRole("button", { name: /Advance to Stage 200/ }).click();
+  await page.getByRole("button", { name: "Run next" }).click();
   await expect(page.getByText(/Movement response was not confirmed/)).toBeVisible();
   await page.waitForTimeout(250);
   expect(api.movementRequests()).toBe(1);

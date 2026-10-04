@@ -167,8 +167,14 @@ export function App() {
     workflow?.stages.find((stage) => stage.number === stageNumber) ?? null;
   const actions =
     workflow?.current_status === "available" ? movementActions(workflow) : [];
-  const primary = actions[0],
-    alternate = actions[1];
+  const forward =
+    workflow?.current_status === "available"
+      ? forwardActions(workflow, stageNumber)
+      : { next: null, to: null, all: null };
+  const primary = forward.next ?? actions[0];
+  const alternate = forward.next
+    ? actions.find((action) => action.choice.direction === "down")
+    : actions[1];
   const busy = Boolean(
     submitting || workflow?.movement_busy || live !== "Live updates connected",
   );
@@ -502,7 +508,37 @@ export function App() {
                   <span>↶</span>
                 </button>
               )}
-              {primary && (
+              {forward.next && (
+                <button
+                  className="primary-action forward-action"
+                  onClick={() => void run(forward.next!)}
+                  disabled={busy || !workflow?.checkpoint}
+                >
+                  {busy ? "Movement in progress" : "Run next"}
+                  <span>→</span>
+                </button>
+              )}
+              {forward.to && (
+                <button
+                  className="primary-action forward-action run-to-action"
+                  onClick={() => void run(forward.to!)}
+                  disabled={busy || !workflow?.checkpoint}
+                >
+                  {busy ? "Movement in progress" : forward.to.label}
+                  <span>→</span>
+                </button>
+              )}
+              {forward.all && (
+                <button
+                  className="primary-action forward-action"
+                  onClick={() => void run(forward.all!)}
+                  disabled={busy || !workflow?.checkpoint}
+                >
+                  {busy ? "Movement in progress" : "Run all"}
+                  <span>→</span>
+                </button>
+              )}
+              {!forward.next && primary && (
                 <button
                   className="primary-action"
                   onClick={() => void run(primary)}
@@ -1059,6 +1095,60 @@ function movementActions(view: WorkflowView): Action[] {
       detail: "Application supplied this immediate movement.",
     };
   });
+}
+function forwardActions(
+  view: WorkflowView,
+  selectedStageNumber: number | null,
+): { next: Action | null; to: Action | null; all: Action | null } {
+  if (view.checkpoint?.pending_transition) {
+    return { next: null, to: null, all: null };
+  }
+  const immediate = view.movement_choices.find(
+    (choice) => choice.direction === "up",
+  );
+  if (!immediate) return { next: null, to: null, all: null };
+
+  const action = (target: number, label: string, detail: string): Action => ({
+    choice: { ...immediate, target_stage: target },
+    label,
+    detail,
+  });
+  const next: Action = {
+    choice: immediate,
+    label: "Run next",
+    detail: "Run only the next unapplied stage.",
+  };
+  const nextIndex = view.stages.findIndex(
+    (stage) => stage.number === immediate.target_stage,
+  );
+  const selectedIndex = view.stages.findIndex(
+    (stage) => stage.number === selectedStageNumber,
+  );
+  const selected = view.stages[selectedIndex];
+  const to =
+    selected &&
+    selected.state === "future" &&
+    nextIndex >= 0 &&
+    selectedIndex > nextIndex
+      ? action(
+          selected.number,
+          "Run to Stage " + selected.number + " · " + selected.name,
+          "Run the unapplied stages in order through the selected stage.",
+        )
+      : null;
+
+  const finalStage = view.stages.at(-1);
+  const all =
+    finalStage &&
+    finalStage.state === "future" &&
+    finalStage.number !== immediate.target_stage
+      ? action(
+          finalStage.number,
+          "Run all",
+          "Run every remaining stage in workflow order.",
+        )
+      : null;
+  return { next, to, all };
 }
 function checkpointPosition(checkpoint: CheckpointView | null): string {
   return checkpoint?.accepted_stage

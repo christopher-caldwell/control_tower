@@ -72,7 +72,7 @@ that role scripts work or that external application state matches the checkpoint
 | `down` | Reverse stages toward the target, in reverse numeric order. To go from stage 3 to stage 2, run stage 3's `down` and supplied `verify-down`; do not run stage 2's `down`. |
 | `status` | Read the saved completed position, UUID, pending verification when present, and number of discovered stages. It does not run a verifier or inspect external fixture correctness. |
 
-`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Workspace. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI submits one Application-supplied transition at a time, with separate inspection selection and outcome-specific pending-verification recovery. See [build, workflow inventory, and interface details](browser-workbench.md).
+`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Workspace. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI offers Run next, Run to a selected farther stage, and Run all, each submitted as one movement request that the Application movement engine walks; selection is primarily inspection, with outcome-specific pending-verification recovery. See [build, workflow inventory, and interface details](browser-workbench.md).
 
 Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no roles ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
 

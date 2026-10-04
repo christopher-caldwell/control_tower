@@ -189,7 +189,7 @@ describe("workflow browser adapter", () => {
     const fetchMock = installWorkbench({ "workflow-a": snapshot });
     await emitSnapshot("workflow-a", snapshot);
 
-    await user.click(screen.getByRole("button", { name: /STAGE 020.*finish/i }));
+    await user.click(screen.getByRole("button", { name: /Not applied finish/i }));
     expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/stages/20"))).toBe(true);
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
