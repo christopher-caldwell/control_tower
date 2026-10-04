@@ -4,7 +4,7 @@ title: Use a desktop-only three-column workbench shell
 type: decision
 status: accepted
 created: '2026-10-02'
-updated: '2026-10-03'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction-after-ui-reference-review
@@ -21,11 +21,11 @@ sources:
 
 The first graphical Control Tower interface is a **desktop-only developer workbench**.
 
-Its primary workspace screen uses three simultaneously visible regions:
+Its primary workflow screen uses three simultaneously visible regions:
 
 ```text
 ┌────────────────┬──────────────────────────────┬─────────────────────────┐
-│ WORKSPACES     │ STAGES                       │ STAGE INSPECTOR         │
+│ WORKFLOWS      │ STAGES                       │ STAGE INSPECTOR         │
 │                │                              │                         │
 │ left rail      │ primary execution context    │ persistent right rail   │
 │                │                              │                         │
@@ -39,19 +39,21 @@ The shell deliberately preserves context. It is not a mobile-first or responsive
 
 Use these terms consistently:
 
-- **Project**: the enclosing developer project/environment. In the examples repository, `simple`, `multi_language` and `py_capsule` are projects.
-- **Workspace**: a runnable Control Tower scratch/work area inside a project, with its own stages and checkpoint state.
-- **Stage**: one ordered migration-style transition within a workspace.
+- **Workspace**: the enclosing developer environment. In the examples gallery, `simple`, `multi_language` and `py_capsule` are Workspaces.
+- **Workflow**: a runnable Control Tower scratch/work area inside a Workspace, with its own stages and checkpoint state.
+- **Stage**: one ordered migration-style transition within a Workflow.
 
-For UI v0, the directory from which the UI is launched establishes the **Project**. Control Tower discovers workspaces from that project context and the user may switch among those workspaces in the UI.
+> **Terminology update (2026-10-04, [issue #5](https://github.com/christopher-caldwell/control_tower/issues/5)):** this ADR originally named the hierarchy Project → Workspace → Stage. On explicit owner direction it is now **Workspace → Workflow → Stage**: the former Project is the Workspace and the former Workspace is the Workflow. This is a vocabulary change only; none of the decisions below changed. Dated records under `docs/research/` and `docs/history/` keep the earlier wording.
 
-Project switching is deferred. Do not introduce a global project registry, recent-project list, favorites, moved-path recovery or an “Open project” product model for v0. If repeated real use makes relaunching from another project materially painful, project switching can be reconsidered.
+For UI v0, the directory from which the UI is launched establishes the **Workspace**. Control Tower discovers Workflows from that Workspace context and the user may switch among those Workflows in the UI.
 
-The exact filesystem algorithm for identifying workspace candidates is an implementation detail to resolve against existing project/workspace conventions; this ADR does not authorize a new workspace manifest or global registry.
+Workspace switching is deferred. Do not introduce a global workspace registry, recent-workspace list, favorites, moved-path recovery or an “Open workspace” product model for v0. If repeated real use makes relaunching from another Workspace materially painful, Workspace switching can be reconsidered.
 
-## Left workspace rail
+The exact filesystem algorithm for identifying Workflow candidates is an implementation detail to resolve against existing workspace/workflow conventions; this ADR does not authorize a new workflow manifest or global registry.
 
-The left rail is the project-local workspace navigator.
+## Left workflow rail
+
+The left rail is the workspace-local workflow navigator.
 
 It is:
 
@@ -60,7 +62,7 @@ It is:
 - not replaced by a hamburger menu,
 - not automatically hidden because the viewport crosses a responsive breakpoint.
 
-Collapsed state is an in-memory display choice, not a different information architecture. It resets when the page reloads. Arbitrary workspace names do not need invented iconography merely to support a compact mode.
+Collapsed state is an in-memory display choice, not a different information architecture. It resets when the page reloads. Arbitrary workflow names do not need invented iconography merely to support a compact mode.
 
 ## Center stage rail
 
@@ -193,7 +195,7 @@ This ADR does not select:
 - icon set,
 - persistent run/execution history,
 - live byte-by-byte stdout/stderr streaming,
-- project switching,
+- workspace switching,
 - mobile/tablet behavior,
 - a DAG/graph representation.
 

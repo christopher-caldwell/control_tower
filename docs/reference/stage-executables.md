@@ -4,7 +4,7 @@ title: Stage executables and environment
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -19,10 +19,10 @@ sources:
 
 Control Tower discovers files and runs them. It does not interpret your SQL, HTTP responses, application records, or test assertions.
 
-## Workspace layout
+## Workflow layout
 
 ```text
-my-workspace/
+my-workflow/
   stages/
     001-create-fixture/
       up
@@ -62,14 +62,14 @@ set -eu
 After writing a role file, make it executable, for example:
 
 ```sh
-chmod +x "$workspace/stages/001-create-fixture/up"
+chmod +x "$workflow/stages/001-create-fixture/up"
 ```
 
 Control Tower starts the file directly; it does not prepend `sh`, install packages, transpile TypeScript, or substitute expressions into its contents. A Node or Python script can use its normal shebang, but those runtimes and libraries remain the author's responsibility.
 
 ## Working directory and process behavior
 
-Each role runs with **its own stage directory** as the working directory, not the repository root or workspace root. Use `CONTROL_TOWER_WORKSPACE` for workspace-wide paths. Keep shared helper files outside `stages/`, for example `support/`, and reference them explicitly.
+Each role runs with **its own stage directory** as the working directory, not the repository root or workflow root. Use `CONTROL_TOWER_WORKFLOW` for workflow-wide paths. Keep shared helper files outside `stages/`, for example `support/`, and reference them explicitly.
 
 The runner adds no command-line arguments to a role. Its current implementation captures stdout/stderr and gives the child no interactive stdin. Write noninteractive scripts; do not depend on a terminal prompt. Other environment variables are inherited from the launching process, with the five variables below set by Control Tower.
 
@@ -77,7 +77,7 @@ The CLI flushes the stage/role identity before attempting invocation. It shows c
 
 | Variable | Value |
 | --- | --- |
-| `CONTROL_TOWER_WORKSPACE` | Canonical absolute path to the selected workspace. |
+| `CONTROL_TOWER_WORKFLOW` | Canonical absolute path to the selected workflow. |
 | `CONTROL_TOWER_UUID` | One runner-generated UUID for the active run, reused across stages and directions. |
 | `CONTROL_TOWER_STAGE` | Numeric stage identifier without filename padding, such as `3`. |
 | `CONTROL_TOWER_DIRECTION` | `up` or `down` for this invocation. |
@@ -87,13 +87,13 @@ A verifier receives the direction it verifies (`up` for `verify-up`, `down` for 
 
 ### What the UUID does and does not mean
 
-**The current implementation generates and records the UUID in Control Tower before the first mutation of a run. The stage does not generate or publish it.** The UUID-file example uses that UUID as a filename. After the workspace successfully records settlement at baseline 0, the UUID is cleared; a later run gets a new one. It remains available while verification of a return to baseline is pending. A failed first mutation can retain the UUID with baseline/no pending check; a down-0 no-op does not clear it, and retry reuses it.
+**The current implementation generates and records the UUID in Control Tower before the first mutation of a run. The stage does not generate or publish it.** The UUID-file example uses that UUID as a filename. After the workflow successfully records settlement at baseline 0, the UUID is cleared; a later run gets a new one. It remains available while verification of a return to baseline is pending. A failed first mutation can retain the UUID with baseline/no pending check; a down-0 no-op does not clear it, and retry reuses it.
 
-This proves a minimal runner-supplied identifier handoff. There is no supported `WB_OUTPUT`, `DAGU_OUTPUT_FILE`, generic context-patch channel, or parser that turns script stdout into persisted values. A script printing an API-created ID does not automatically pass it to the next stage. Such scripts can deliberately share their own workspace files, but that storage/cleanup is author-owned, not a managed Control Tower output protocol.
+This proves a minimal runner-supplied identifier handoff. There is no supported `WB_OUTPUT`, `DAGU_OUTPUT_FILE`, generic context-patch channel, or parser that turns script stdout into persisted values. A script printing an API-created ID does not automatically pass it to the next stage. Such scripts can deliberately share their own workflow files, but that storage/cleanup is author-owned, not a managed Control Tower output protocol.
 
 Earlier discovery explored stage-produced IDs and richer context views. Those are not the shipped process interface. See [ADR-0003's implementation note](../decisions/0003-session-state-and-process-io.md#current-implementation-observation).
 
-The optional [generated-ID example](../../examples/simple/workspaces/generated-id/README.md) uses Python's standard-library SQLite client and an author-owned JSON file to carry the database-generated record ID through two stages. Its application database is separate from Control Tower's checkpoint file. Its checks open read-only connections and never initialize or repair the fixture. This is an ordinary authoring pattern, not a new runner protocol.
+The optional [generated-ID example](../../examples/simple/workflows/generated-id/README.md) uses Python's standard-library SQLite client and an author-owned JSON file to carry the database-generated record ID through two stages. Its application database is separate from Control Tower's checkpoint file. Its checks open read-only connections and never initialize or repair the fixture. This is an ordinary authoring pattern, not a new runner protocol.
 
 ## Success, failure, and trust
 
@@ -103,8 +103,8 @@ Write fixture verifiers to observe, not repair, the state they check. Control To
 
 Optional roles are discovered again on each invocation. Editing a pending check changes the next check; removing it can accept the pending transition without replaying its mutation or checking anything. Finish/clean runs before structural stage edits. A later missing mutation stops traversal after earlier stages may already have been accepted; the route is not atomic or fully preflighted.
 
-Scripts run with your user permissions and inherited environment, including any credentials you supply. Local-only does not make execution sandboxed or offline. Read scripts before running an unfamiliar workspace.
+Scripts run with your user permissions and inherited environment, including any credentials you supply. Local-only does not make execution sandboxed or offline. Read scripts before running an unfamiliar workflow.
 
 ## Implementation references
 
-[Discovery](../../crates/infrastructure/src/stage_discovery.rs), [process runner](../../crates/infrastructure/src/executable_runner.rs), and [UUID/transition lifecycle](../../crates/application/src/lib.rs) define these mechanics. For a runnable example, open [the UUID-file workspace](../../examples/simple/workspaces/uuid-file/README.md).
+[Discovery](../../crates/infrastructure/src/stage_discovery.rs), [process runner](../../crates/infrastructure/src/executable_runner.rs), and [UUID/transition lifecycle](../../crates/application/src/lib.rs) define these mechanics. For a runnable example, open [the UUID-file workflow](../../examples/simple/workflows/uuid-file/README.md).

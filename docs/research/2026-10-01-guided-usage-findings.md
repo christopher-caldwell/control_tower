@@ -4,7 +4,7 @@ title: Guided usage findings and core refinement evidence
 type: research
 status: recorded
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 verified_on: '2026-10-01'
 owner: christopher-caldwell
 authored_by: assistant
@@ -19,7 +19,7 @@ sources:
 - ../decisions/0005-cli-first-driving-adapter.md
 - ../../crates/application/tests/run_semantics.rs
 - ../../crates/cli/tests/workbench_cli.rs
-- ../../examples/simple/workspaces/generated-id/README.md
+- ../../examples/simple/workflows/generated-id/README.md
 ---
 
 # Guided usage findings and core refinement evidence
@@ -55,7 +55,7 @@ Phase 1 commit **`03478f5f5a4a6ee9a9cb733d81e7f909bf0361d0`** adds Application-o
 
 The same commit saves a proposed checkpoint before publishing it as confirmed state. Failures retain the latest confirmed checkpoint, attempted update, original storage cause, and all executed role results; no later role/write follows. It covers UUID allocation, pending publication, acceptance and baseline clearing without repair/retry machinery. CLI clearly separates process success from checkpoint confirmation.
 
-Phase 2 example commit **`3ec3039f99ba857df9df98535412e23213baa8ac`** adds eight thin executable roles and one standard-library Python helper in [the generated-ID example](../../examples/simple/workspaces/generated-id/README.md). Two stages carry a SQLite-generated integer ID in author-owned JSON through create/change/restore/delete. Checks use read-only application DB connections and fail rather than create/repair data. Python is an optional example prerequisite, not a Control Tower runtime requirement or a prerequisite for the original quickstart.
+Phase 2 example commit **`3ec3039f99ba857df9df98535412e23213baa8ac`** adds eight thin executable roles and one standard-library Python helper in [the generated-ID example](../../examples/simple/workflows/generated-id/README.md). Two stages carry a SQLite-generated integer ID in author-owned JSON through create/change/restore/delete. Checks use read-only application DB connections and fail rather than create/repair data. Python is an optional example prerequisite, not a Control Tower runtime requirement or a prerequisite for the original quickstart.
 
 Navigation, optional-role policy, settled-target no-op, UUID lifetime, persistence schema, five environment variables, direct process launching, null stdin, and explicit DB setup remain unchanged. Production Infrastructure and Database are unchanged. The CLI's only new dependency is **test-only** `rusqlite` for real conditional faults; no dependency versions changed. No new command, driver, managed context, event bus, async runtime, output store, recovery/history mechanism, schema readiness expansion, UI/server, locking or drift protection was added.
 
@@ -170,4 +170,4 @@ experiments/42-failed-mutation-uuid-and-cleanup/transcript.md
 
 ## October 2, 2026 example relocation
 
-Live example links now target the family `workspaces/` layout. Earlier command paths and validation revisions above retain their original historical meaning.
+Live example links now target the family `workflows/` layout (the former `workspaces/` directory, renamed on 2026-10-04 when the Workspace → Workflow → Stage terminology was adopted; see [ADR-0007](../decisions/0007-desktop-ui-shell.md)). Earlier command paths and validation revisions above retain their original historical meaning.

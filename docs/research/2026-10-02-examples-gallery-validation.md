@@ -4,14 +4,14 @@ title: Example portability validation
 type: research
 status: recorded
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 verified_on: '2026-10-02'
 method: Source review, real CLI integration, and documentation checks on macOS
 sources:
 - ../../examples/README.md
-- ../../examples/tests/test_ordinary_workspaces.py
+- ../../examples/tests/test_ordinary_workflows.py
 - ../../examples/tests/test_py_capsule.py
 - ../../examples/tests/test_postgres.py
 - ../guides/verification-and-navigation.md

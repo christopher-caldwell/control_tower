@@ -4,7 +4,7 @@ title: Browser workbench
 type: reference
 status: maintained
 created: '2026-10-02'
-updated: '2026-10-03'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -42,49 +42,49 @@ only.
 
 ## Start the UI
 
-Run `control-tower ui` from the Project directory: the directory that contains
-`workspaces/`. The host binds IPv4 loopback on an available port and prints a plain
+Run `control-tower ui` from the Workspace directory: the directory that contains
+`workflows/`. The host binds IPv4 loopback on an available port and prints a plain
 URL. Open that URL manually in a browser. There is no browser launch command, URL
 token, session exchange, or runtime frontend server.
 
 From a checkout, the equivalent command is:
 
 ```sh
-cd /path/to/project
+cd /path/to/workspace
 /path/to/control_tower/target/debug/control-tower ui
 ```
 
-The launch inventory is the directory names directly under `workspaces/`. The UI
+The launch inventory is the directory names directly under `workflows/`. The UI
 lists directories without opening their databases, reading their stages, or running
 scripts. A missing or empty inventory produces an empty state. The list is fixed at
-startup; restart the UI to pick up added or removed workspaces.
+startup; restart the UI to pick up added or removed workflows.
 
-Selecting a workspace reads that workspace's current state and stages. An
-unprepared or malformed workspace reports its ordinary error when selected; it does
+Selecting a workflow reads that workflow's current state and stages. An
+unprepared or malformed workflow reports its ordinary error when selected; it does
 not block the UI or a healthy sibling. Listing, selection, and status do not bootstrap,
-migrate, repair, or verify storage. Prepare each workspace explicitly before using
+migrate, repair, or verify storage. Prepare each workflow explicitly before using
 its movement controls:
 
 ```sh
-control-tower-db bootstrap-local workspaces/my-workspace
-control-tower-db migrate-local workspaces/my-workspace
-control-tower-db verify-local workspaces/my-workspace
+control-tower-db bootstrap-local workflows/my-workflow
+control-tower-db migrate-local workflows/my-workflow
+control-tower-db verify-local workflows/my-workflow
 ```
 
-Each workspace uses the existing `stages/<number>-<name>/` layout and its own
+Each workflow uses the existing `stages/<number>-<name>/` layout and its own
 SQLite checkpoint. Stage numbers are ordered identities; gaps such as 10 and 200
 are allowed. The UI does not traverse example dependencies or require their
-runtimes to list workspace names.
+runtimes to list workflow names.
 
-## Workspace shell and movement controls
+## Workflow shell and movement controls
 
-The desktop shell shows the launch Project, a manually collapsible workspace rail,
+The desktop shell shows the launch Workspace, a manually collapsible workflow rail,
 an ordered stage narrative, a persistent selected-stage inspector, and a progression
 action region. It has no mobile or tablet layout. The inspector has a fixed CSS
 width. Both rails can be collapsed and reopened while the UI is running;
 collapse state resets when the page reloads.
 
-Selecting a workspace opens its live view. Selecting any stage changes inspection
+Selecting a workflow opens its live view. Selecting any stage changes inspection
 only: it does not execute a script, write a checkpoint, or change the movement target.
 The accepted checkpoint remains separate from the selected stage. Pending transitions
 show their direction with the last accepted position, while future stages remain
@@ -116,20 +116,20 @@ The API uses the same loopback origin as the embedded UI and has four capabiliti
 
 | Method and path | Purpose |
 | --- | --- |
-| GET `/api/project` | Return the startup Project name and workspace directory identities. |
-| GET `/api/workspaces/{id}/events` | Send the selected workspace's current snapshot and later changes as SSE `snapshot` events. |
-| POST `/api/workspaces/{id}/movements` | Submit `{direction, target_stage, expected_checkpoint}`. |
-| GET `/api/workspaces/{id}/stages/{number}` | Read the selected stage's full definitions through Workbench. |
+| GET `/api/workspace` | Return the startup Workspace name and workflow directory identities. |
+| GET `/api/workflows/{id}/events` | Send the selected workflow's current snapshot and later changes as SSE `snapshot` events. |
+| POST `/api/workflows/{id}/movements` | Submit `{direction, target_stage, expected_checkpoint}`. |
+| GET `/api/workflows/{id}/stages/{number}` | Read the selected stage's full definitions through Workbench. |
 
 The movement request copies `completed_stage_count`, `uuid`, and `pending` from the
 shown checkpoint. Application compares that complete expected state to the fresh
 stored state before it launches a role or writes a checkpoint. A mismatch returns
-409 `stale_checkpoint`; an overlapping request for the same workspace returns 409
-`workspace_busy`. Both use `{ "error": { "code": string, "message": string } }`.
+409 `stale_checkpoint`; an overlapping request for the same workflow returns 409
+`workflow_busy`. Both use `{ "error": { "code": string, "message": string } }`.
 A completed request returns 204. HTTP does not decide legal movement targets or call
 persistence directly.
 
-SSE begins with the current selected-workspace snapshot; reconnecting observes state
+SSE begins with the current selected-workflow snapshot; reconnecting observes state
 without replaying commands. The snapshot carries status, movement choices, busy
 state, the latest movement outcome, role results, and buffered role output. Starting
 and finished callbacks report semantic role state. Stdout and stderr are attached as
@@ -137,7 +137,7 @@ separate displayable text when that role returns. Normal text is decoded lossily
 the outer UI boundary and rendered as inert text. There is no raw-byte download API,
 output identifier/cache, WebSocket, or byte-by-byte process stream.
 
-Each workspace has one in-process admission guard. It covers the blocking Workbench
+Each workflow has one in-process admission guard. It covers the blocking Workbench
 operation and final snapshot publication, including when the browser request ends.
 This is local single-instance coordination; there is no interprocess lock, queue,
 durable execution history, or cancellation framework. A stopped or failed movement
@@ -145,15 +145,15 @@ is reported with the current checkpoint and ordinary error text. Process results
 not imply checkpoint acceptance when Application could not complete or save the
 movement.
 
-Project inventory is separate from per-workspace status. The browser loads names
-once, then observes only the selected workspace. A new SSE subscription reads a
-fresh selected-workspace snapshot; it does not fan out status reads across siblings.
+Workflow inventory is separate from per-workflow status. The browser loads names
+once, then observes only the selected workflow. A new SSE subscription reads a
+fresh selected-workflow snapshot; it does not fan out status reads across siblings.
 The Rust host constructs Workbench inside each blocking status, movement, or
 inspection operation, while Entry selects Database and Infrastructure
 implementations.
 
 Stop the UI host from its launching terminal when finished. Stopping the host does
-not roll back author-owned effects; inspect the workspace and external systems if a
+not roll back author-owned effects; inspect the workflow and external systems if a
 role was interrupted. Closing a tab or losing a POST response does not itself cancel
 a movement, and the browser does not retry a movement automatically.
 

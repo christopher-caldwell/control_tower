@@ -6,11 +6,11 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 ## Browser workbench
 
-Run `control-tower ui` from a Project directory to print a local URL, then open it in your browser. The [browser workbench reference](docs/reference/browser-workbench.md) explains workspace inventory and use.
+Run `control-tower ui` from a Workspace directory to print a local URL, then open it in your browser. A **Workspace** is a directory with a `workflows/` folder; each **Workflow** inside it owns a `stages/` folder and its own checkpoint database. The [browser workbench reference](docs/reference/browser-workbench.md) explains workflow inventory and use.
 
 ## Agent guidance
 
-Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From a workspace directory, `control-tower validate` checks that its current layout and prepared checkpoint state load without running stage roles.
+Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From a workflow directory, `control-tower validate` checks that its current layout and prepared checkpoint state load without running stage roles.
 
 ## Try the three-stage example
 
@@ -25,16 +25,16 @@ cargo build --locked --workspace
 
 example="$(mktemp -d)/simple"
 cp -R examples/simple "$example"
-workspace="$example/workspaces/uuid-file"
-printf 'Example workspace: %s\n' "$workspace"
+workflow="$example/workflows/uuid-file"
+printf 'Example workflow: %s\n' "$workflow"
 
-./target/debug/control-tower-db bootstrap-local "$workspace"
-./target/debug/control-tower-db migrate-local "$workspace"
-./target/debug/control-tower-db verify-local "$workspace"
+./target/debug/control-tower-db bootstrap-local "$workflow"
+./target/debug/control-tower-db migrate-local "$workflow"
+./target/debug/control-tower-db verify-local "$workflow"
 
-./target/debug/control-tower up --workspace "$workspace" --stage 3
-./target/debug/control-tower status --workspace "$workspace"
-cat "$workspace"/data/*
+./target/debug/control-tower up --workflow "$workflow" --stage 3
+./target/debug/control-tower status --workflow "$workflow"
+cat "$workflow"/data/*
 printf '\n'
 ```
 
@@ -50,19 +50,19 @@ The file should contain **`hello to you`**, and status should report completed s
 Back out the example:
 
 ```sh
-./target/debug/control-tower down --workspace "$workspace" --stage 0
-./target/debug/control-tower status --workspace "$workspace"
+./target/debug/control-tower down --workflow "$workflow" --stage 0
+./target/debug/control-tower status --workflow "$workflow"
 ```
 
-The example file is now absent; status reports baseline 0 and no UUID. The temporary workspace and its SQLite file remain available for another run. Each command is a separate process. Database setup is explicit and does not run during `up`, `down`, or `status`.
+The example file is now absent; status reports baseline 0 and no UUID. The temporary workflow and its SQLite file remain available for another run. Each command is a separate process. Database setup is explicit and does not run during `up`, `down`, or `status`.
 
 ## Use it in your work
 
-[Walk through the example one stage at a time](examples/simple/workspaces/uuid-file/README.md), then [create your own workspace](docs/guides/creating-a-workspace.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
+[Walk through the example one stage at a time](examples/simple/workflows/uuid-file/README.md), then [create your own workflow](docs/guides/creating-a-workflow.md). A failed verifier leaves the stage unfinished: repeat the direction to retry the check, or request the opposite direction to back it out. [Navigation and verification](docs/guides/verification-and-navigation.md) explains the loop.
 
-For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/simple/workspaces/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
+For a database-generated record ID carried between stages in an author-owned file, try the optional [two-stage generated-ID example](examples/simple/workflows/generated-id/README.md). That example additionally requires Python 3's standard-library SQLite module.
 
-The [example gallery](examples/README.md) also includes ordinary Python/Node dependencies, multi-language composition, PostgreSQL recovery, and shared PyCapsule tools. Copy a complete example directory; its README explains setup and workspace selection.
+The [example gallery](examples/README.md) also includes ordinary Python/Node dependencies, multi-language composition, PostgreSQL recovery, and shared PyCapsule tools. Copy a complete example directory; its README explains setup and workflow selection.
 
 Scripts run with your permissions and can change real systems. Control Tower does not guarantee that `down` undoes `up`, provide a sandbox, or reconcile external effects after a crash.
 
