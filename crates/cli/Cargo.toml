@@ -14,7 +14,16 @@ control-tower-application.workspace = true
 control-tower-database.workspace = true
 control-tower-infrastructure.workspace = true
 clap.workspace = true
+axum.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 control-tower-database.workspace = true
 rusqlite.workspace = true
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tokio = { workspace = true, features = ["io-util"] }

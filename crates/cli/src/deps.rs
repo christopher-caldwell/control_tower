@@ -1,7 +1,9 @@
 use control_tower_application::{PersistenceError, Workbench};
 use control_tower_database::workbench::{SqliteWorkbenchQueries, SqliteWorkbenchWrites};
 use control_tower_infrastructure::{
-    executable_runner::SystemExecutableRunner, stage_discovery::FilesystemStageDiscovery,
+    executable_runner::SystemExecutableRunner,
+    stage_definition_reader::FilesystemStageDefinitionReader,
+    stage_discovery::FilesystemStageDiscovery,
 };
 use std::path::Path;
 
@@ -14,5 +16,6 @@ pub(super) fn workbench(workspace: &Path) -> Result<Workbench, PersistenceError>
         Box::new(queries),
         Box::new(writes),
         Box::new(SystemExecutableRunner),
+        Box::new(FilesystemStageDefinitionReader),
     ))
 }

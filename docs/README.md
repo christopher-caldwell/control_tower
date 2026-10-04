@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -15,13 +15,14 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI is the current implemented interface; a loopback browser UI is selected as the first graphical Entry but is not implemented yet. Start with the runnable example; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workspace behavior; the browser adds project-local workspace discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
 
 | Need | Start here |
 | --- | --- |
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
+| Inspect workspaces in a browser | [Browser workbench](reference/browser-workbench.md) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |
 | See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workspaces/uuid-file/README.md) |
 | Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workspaces/generated-id/README.md) (Python 3) |
@@ -46,7 +47,7 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 | [ADR-0004](decisions/0004-session-storage-port-and-adapters.md) | Accepted | Application-owned storage contracts with SQLite as the v0 runtime adapter. |
 | [ADR-0005](decisions/0005-cli-first-driving-adapter.md) | Accepted | CLI driving adapter and explicit composition; future UI stays outside Application. |
 | [ADR-0006](decisions/0006-loopback-web-ui.md) | Accepted | First graphical Entry uses embedded React over loopback HTTP/SSE; Tauri and live byte streaming remain unselected. |
-| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with persistent collapsible rails, declarative progression and a stage inspector. |
+| [ADR-0007](decisions/0007-desktop-ui-shell.md) | Accepted | Desktop-only project/workspace/stage shell with fixed-width collapsible rails, declarative progression and a stage inspector. |
 
 [The UI reference review](research/2026-10-02-ui-reference-review.md) preserves the Dagu, Inngest, Decagon and Playwright screenshots/patterns behind ADR-0007. It is reference evidence, not a second UI specification.
 

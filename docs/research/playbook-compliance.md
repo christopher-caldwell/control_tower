@@ -4,7 +4,7 @@ title: Pinned playbook correction evidence
 type: research
 status: recorded
 created: '2026-09-30'
-updated: '2026-09-30'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 verified_on: '2026-09-30'
@@ -17,6 +17,8 @@ sources:
 # Pinned playbook correction evidence
 
 Playbook: `christopher-caldwell/rust_simpler_playbook@8d2ff6d906676020d671ba3b0674c0f8b58d9414`. Implementation inspected first: `f967bda7683860932a7a55d4eee872da31cb6a10`, clean `main`. Assessment target: the correction commit containing this ledger (all final implementation files and executed checks below), not the uncorrected base. This is builder evidence and root source review, not an independent subagent audit.
+
+**Historical scope.** The scope statements, rule-level ledger, SQL inventory, Cargo evidence and executed-verification table below record the CLI-only correction (`1d1c83c`, 2026-09-30). They are historical records of that correction and do not certify the browser host or the current head. Where the loopback host changed a listed fact (HTTP being absent, the CLI package's third-party dependencies), the [UI host section](#ui-host-implementation-update-2026-10-03) states the current source facts. This ledger carries no test counts for the current head; rerun the commands in the verification table for the revision being assessed.
 
 Read the pinned APPLY skill, implementation README, precedence and project-start/feature/compliance checklists before edits; then the selected WS, Domain, service, port, error, persistence, Query, Write, Infrastructure, Database/SQL, migration, composition and testing cards and owning human decisions. Rules use the human source meaning; examples are not requirements. No playbook files were changed.
 
@@ -45,13 +47,13 @@ Sources link to the owning human decision at the pinned revision. Card IDs/stren
 | [D4](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/domain/validation/domain-validation.md) / DEFAULT | No distinct Domain validation. | Workbench::load_state validates an orchestration checkpoint against discovered stages; discovery validates executable layout. | No business entity validation or prepared creation types. | NOT APPLICABLE |
 | [AS1](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-organization/feature-services.md) / MUST | Workbench exposes ordinary movement and status use cases. | crates/application/src/lib.rs: Workbench private four capabilities and new(); only public service operations drive the workflow. | None. | COMPLIANT WITH RULE |
 | [AS2](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-organization/dependency-ownership.md) / DEFAULT | No concrete dependency relationship or independently shared adapter. | Workbench stores four Box<dyn ...> ports; no UoW generics or Arc. Rc diagnostic sharing is only between one event and its stopped outcome. | None; sharing actual diagnostics does not share injected adapters. | COMPLIANT WITH RULE |
-| [AS3](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-inputs/use-case-inputs.md) / DEFAULT | move_to has workspace, direction and target values; status has only workspace. | MoveToInput public fields; Workbench::move_to(input); Workbench::status(&Path). | None. | COMPLIANT WITH RULE |
+| [AS3](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-inputs/use-case-inputs.md) / DEFAULT | move_to has workspace, direction, target and checkpoint values; stage_definitions has workspace and stage number; status has only workspace. | Public MoveToInput and StageDefinitionsInput<'a> fields name the multi-value use cases; Workbench::move_to(input), Workbench::stage_definitions(input) and Workbench::status(&Path). `cargo test --locked -p control-tower-application` and `cargo test --locked -p control-tower-cli` passed. | The public Rust signature changed; unknown external downstream callers were not assessed. Full verification gates remain for the implementation phase. | COMPLIANT WITH RULE |
 | [AS4](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-outputs/use-case-outputs.md) / DEFAULT | Both operations have named actual answers. | MoveOutcome/MoveStatus and WorkbenchStatus use existing Application checkpoint/stage types. Public workspace path/stage number identify the operation; UUID is an opaque child handoff, not an entity lookup key. | UUID-entity entry guidance has no matching entity in this tool. | COMPLIANT WITH RULE |
 | [AS5](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-organization/feature-services.md) / DEFAULT | One coherent workbench feature. | Workbench::move_to/status and private load/run helpers; no constructed per-operation handlers or service call chains. Status accepting a service with unused write/run dependencies follows the accepted feature-service tradeoff. | None. | COMPLIANT WITH RULE |
 | [P1](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/ports-and-adapters/application-ports.md) / MUST | Four external capabilities. | Application owns StageDiscovery, ExecutableRunner, WorkbenchQueries, WorkbenchWrites and their error contracts; outer packages implement them. | None. | COMPLIANT WITH RULE |
 | [P2](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/ports-and-adapters/application-ports.md) / MUST | Only current callers earn operations. | discover/run/read_checkpoint/record_checkpoint; no unused CRUD, optional transaction parameter or provider-mirroring interface. | None. | COMPLIANT WITH RULE |
 | [P3](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/ports-and-adapters/application-ports.md) / DEFAULT | Capability vocabulary is part of the workbench. | Port names describe discovery, execution and checkpoint persistence; Sqlite/Filesystem/System appear only in outer implementation names. | None. | COMPLIANT WITH RULE |
-| [E1](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-organization/feature-services.md) / MUST | Status and movement have different error surfaces. | errors.rs: StatusError excludes target failure; MoveToError includes InvalidTarget; TransitionFailure preserves the existing stopped-outcome surface. | None. | COMPLIANT WITH RULE |
+| [E1](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/service-organization/feature-services.md) / MUST | Status, movement and definition lookup expose only their reachable use-case failures. | load_stages returns StageDiscoveryError; StageDefinitionsError contains only StageDiscovery and UnknownStage, while StatusError and MoveToError retain their persistence/invalid-state cases and conversions. `cargo test --locked -p control-tower-application` and `cargo test --locked -p control-tower-cli` passed, covering definition-input, source-chain, run-semantics and definition HTTP behavior. | Full verification gates, Rust 1.85 and release serving remain for the implementation phase; this row does not claim a broader playbook audit. | COMPLIANT WITH RULE |
 | [E2](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/error-boundaries/persistence-and-service-errors.md) / MUST | Filesystem/process/SQLite failures cross capability boundaries. | Ports return Application errors; adapters wrap actual causes. CLI commands render Application errors and never inspect driver codes or downcast sources. | None. | COMPLIANT WITH RULE |
 | [E3](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/error-boundaries/persistence-and-service-errors.md) / MUST | Unexpected Query/Write errors need diagnostics. | PersistenceError boxed Error source; sqlite_boundaries::driver_failures_preserve_their_original_sources asserts original rusqlite errors for both paths; use_case_errors_keep_the_capability_source_chain proves stacking. | None. | COMPLIANT WITH RULE |
 | [E4](https://github.com/christopher-caldwell/rust_simpler_playbook/blob/8d2ff6d906676020d671ba3b0674c0f8b58d9414/docs/application/error-boundaries/capability-and-use-case-errors.md) / DEFAULT | No caller-specific technical recovery distinctions. | StageDiscoveryError/ExecutableRunError opaque sources; source_errors::filesystem_and_process_errors_keep_io_sources walks actual original I/O sources through contextual wrappers. | None; generated validation failures have typed message sources because no original provider error exists. | COMPLIANT WITH RULE |
@@ -96,7 +98,7 @@ Recorded classifications: 42 COMPLIANT WITH RULE, 2 DEFAULT DEVIATION WITH JUSTI
 
 ## Default deviations and SQL inventory
 
-**SQL1 — DEFAULT DEVIATION WITH JUSTIFICATION.** Retain rusqlite for this actual synchronous program: short-lived CLI processes, blocking filesystem/process execution, one independent checkpoint read/upsert at a time, one embedded file and no async executor/pool/request concurrency. SQLx would introduce an executor and async ports/adapters or synchronous executor wrappers, plus checked-schema/offline preparation for databases provisioned per workspace. Those are concrete runtime/build costs without a present async/pooling requirement. The cost accepted is no compile-time SQL/schema checking. Mitigation is external feature-local SQL and real SQLite mapping/absence/source-error/adoption tests. Reassess if the workload acquires asynchronous delivery, complex SQL, pooling or Application transactions. This does not waive Database/package, lane or error MUSTs.
+**SQL1 — DEFAULT DEVIATION WITH JUSTIFICATION.** Retain rusqlite for the synchronous Application and embedded SQLite workload: one independent checkpoint read/upsert at a time, one file per workspace, no query pool, no Application transaction, and blocking filesystem/process operations. The browser host uses Tokio for HTTP/SSE but runs Workbench status, definition reads, and synchronous movements through `spawn_blocking`. Each blocking operation constructs its own Workbench, so its two rusqlite connections are never shared across threads and need no `Sync` wrapper or lock; they hold no transaction while a script runs and drop with the operation. SQLx would add an executor and async ports/adapters or synchronous executor wrappers plus checked-schema/offline preparation for per-workspace databases. The accepted cost is no compile-time SQL/schema checking; external feature-local SQL and real SQLite tests mitigate it. Reassess if pooling, complex SQL or Application transactions become necessary. This does not waive Database/package, lane or error MUSTs.
 
 **M3 — DEFAULT DEVIATION WITH JUSTIFICATION.** Keep operational setup on the same rusqlite driver instead of adding a second SQLx library/runtime or externally installed migration CLI solely for one local embedded migration. The project already ships bundled SQLite through rusqlite. A small Database-owned runner uses SQLite transactional DDL and records version/history with the schema change; actual rollback, adoption and rerun evidence is present. Explicit database just commands are followed. No live deployment/credentials or nontransactional migration exception is introduced. Lost benefit: SQLx's standard migration history/tooling ecosystem; the local version-1 history implementation must be maintained here.
 
@@ -126,7 +128,7 @@ control-tower-cli -> control-tower-infrastructure
 control-tower-cli -(dev)-> control-tower-database
 ```
 
-Application target: lib; Database targets: lib + control-tower-db operational bin + integration test; Infrastructure: lib + integration test; CLI: control-tower bin + integration test, no lib. All listed dependencies are nonoptional, target-independent; no build dependencies or additional target-specific/optional workspace edges exist in these manifests. Third-party direct dependencies: Application thiserror/uuid(v4); Database rusqlite(bundled)/thiserror; Infrastructure thiserror; CLI clap(derive). UUID generation remains Application-owned. No adapter generics, Arc, DI framework, shared/common/core package or outer peer edge was introduced. Metadata/tree/source evidence is scoped to checked native targets/features, not all potential macro expansions or platforms.
+Application target: lib; Database targets: lib + control-tower-db operational bin + integration test; Infrastructure: lib + integration test; CLI: control-tower bin + integration test, no lib. All listed dependencies are nonoptional, target-independent; no build dependencies or additional target-specific/optional workspace edges exist in these manifests. Third-party direct dependencies: Application thiserror/uuid(v4); Database rusqlite(bundled)/thiserror; Infrastructure thiserror; CLI clap(derive). UUID generation remains Application-owned. No adapter generics, Arc, DI framework, shared/common/core package or outer peer edge was introduced. Baseline note: the current CLI manifest also lists `axum`, `rust-embed`, `serde`, `serde_json`, `futures-util` and `tokio` for the loopback host, and `Arc` appears only in that host (server context and per-workspace observation state), never in Application, Database, Infrastructure or `deps.rs` composition; the workspace arrows above are unchanged. Metadata/tree/source evidence is scoped to checked native targets/features, not all potential macro expansions or platforms.
 
 ## Executed verification
 
@@ -156,3 +158,62 @@ Test evidence boundaries:
 - Actual SQLite tests prove absent/round-trip/upsert mapping, source retention for Query and Write driver failures, legacy pending/UUID checkpoint preservation, version/history and migration rollback. They do not prove crash recovery or multi-instance coordination.
 - Actual Infrastructure test proves original I/O sources survive discovery and process-start failure wrappers. Application test proves use-case error stacking retains the capability/source chain.
 - The known failed-verify-up backout semantics remain outside this evidence and were not corrected or certified.
+
+
+## UI host implementation update (2026-10-03)
+
+This section states facts about the current `feat/add_ui` source, read from
+`crates/cli/src/web/*`, `crates/cli/src/deps.rs` and the Application/Infrastructure
+definition path. It is not a rule-by-rule audit and it records no test counts.
+
+- Startup lists the directory names directly under `workspaces/` (`discover_project`).
+  It does not canonicalize or deduplicate paths, open sibling databases, read stages,
+  construct a Workbench, or validate anything before serving. An unprepared sibling
+  reports its ordinary error only when selected.
+- `deps::workbench` builds a `Workbench` from four boxed ports (plus the definition
+  reader) inside each blocking status, movement or definition operation, so every
+  operation owns its own SQLite connections. There is no `Arc<Workbench>`, no
+  `Send + Sync` bound on Application ports, and no mutex around a connection.
+  Application stays synchronous; Tokio and axum exist only in the CLI Entry, with
+  Workbench calls isolated by `spawn_blocking`.
+- `GET /api/project` returns the project name and workspace directory identities. It
+  does no status reads, so there is no cross-workspace aggregation. The definitions
+  endpoint calls `stage_definitions`, and the events endpoint calls `status`. The
+  movement endpoint calls `move_to_observed` and also reads `Workbench::status`
+  (through `WorkspaceRuntime::publish`) after each role event and at the end, so the
+  published snapshot carries the current checkpoint and movement choices beside the
+  role observations. This departs from the H3 DEFAULT of one use case per endpoint.
+  The reason is that presentation need; the extra calls are reads, and Application
+  still owns movement legality.
+- Movement requests carry the complete expected checkpoint; Application compares it
+  with the freshly read state and returns `StaleCheckpoint` before any role runs or
+  checkpoint is written. The movement handler maps typed `MoveToError` variants.
+  The definition handler maps any `StageDefinitionsError` to a 503 with its message
+  text.
+- Admission is one in-process flag per workspace id (`WorkspaceRuntime::try_admit`),
+  held through the blocking worker and terminal snapshot publication. Paths are not
+  canonicalized, and there is no interprocess lock.
+- Each workspace has a Tokio `watch` channel of complete snapshots. Every publish
+  reads fresh `Workbench::status`; if that read fails the snapshot is `unavailable`,
+  with no checkpoint, stages or movement choices, while the latest in-memory
+  observation stays attached so the inspector can still show its role output.
+- Role stdout/stderr are decoded lossily (`String::from_utf8_lossy`) into the
+  snapshot as separate text when the role returns. Application and Infrastructure
+  keep the raw bytes. The latest observation lives in memory until a later movement
+  starts a role or the host stops; the lossy text is therefore not an exact copy of
+  the bytes.
+- Definition reads are the `Workbench::stage_definitions` use case, backed by the
+  Application-owned `StageDefinitionReader` port and the Infrastructure
+  `FilesystemStageDefinitionReader`. Contents are returned in full; there is no byte
+  limit.
+
+**Historical, not current evidence.** An earlier version of this section, written in
+`5283cc7` against a since-discarded implementation, described startup validation,
+shared `Arc<Workbench>` services with `Send + Sync` ports and connection mutexes,
+project-wide status fan-out, exact outputs, and a workspace GET. It also recorded
+that implementation's results: `cargo test --workspace` (55 passed), clippy,
+`cargo +1.85.0 check --workspace --all-targets`, `cargo fmt --all -- --check`,
+frontend tests (3 passed), a production build, Playwright (7 passed), and a two-tab
+Chromium run that confirmed checkpoint 10 through a workspace GET. Those results
+belong to that discarded revision. The current source has none of those mechanisms, so
+they do not certify the current head.

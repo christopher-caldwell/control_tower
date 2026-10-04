@@ -1,4 +1,9 @@
 target/
+ui/node_modules/
+ui/coverage/
+ui/test-results/
+ui/playwright-report/
+ui/tsconfig.tsbuildinfo
 .DS_Store
 .env
 .control_tower/

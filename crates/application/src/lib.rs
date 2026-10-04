@@ -254,6 +254,15 @@ pub struct VerificationChoices {
 }
 
 impl MoveOutcome {
+    /// Immediate mechanically available movements from the last confirmed
+    /// checkpoint. These are not recommendations about author-owned effects.
+    pub fn movement_choices(&self) -> Vec<MovementChoice> {
+        let state = match &self.status {
+            MoveStatus::Complete(state) | MoveStatus::Stopped { state, .. } => state,
+        };
+        movement_choices(state, &self.stages)
+    }
+
     /// Only this invocation's failed verifier earns verifier-specific choices.
     /// An old pending checkpoint after a failed mutation/save is insufficient.
     pub fn verification_choices(&self) -> Option<VerificationChoices> {
@@ -273,38 +282,14 @@ impl MoveOutcome {
         if role != ExecutableRole::for_direction(pending.direction, true) {
             return None;
         }
-        let stage = &self.stages[pending.stage_index];
-        let lower = pending
-            .stage_index
-            .checked_sub(1)
-            .map_or(0, |i| self.stages[i].number);
-        let (retry, reverse) = match pending.direction {
-            Direction::Up => (
-                MovementChoice {
-                    direction: Direction::Up,
-                    target_stage: stage.number,
-                },
-                MovementChoice {
-                    direction: Direction::Down,
-                    target_stage: lower,
-                },
-            ),
-            Direction::Down => (
-                MovementChoice {
-                    direction: Direction::Down,
-                    target_stage: lower,
-                },
-                MovementChoice {
-                    direction: Direction::Up,
-                    target_stage: stage.number,
-                },
-            ),
-        };
+        let choices = self.movement_choices();
         Some(VerificationChoices {
-            retry,
-            reverse: stage
-                .executable(ExecutableRole::for_direction(reverse.direction, false))
-                .map(|_| reverse),
+            retry: *choices
+                .iter()
+                .find(|choice| choice.direction == pending.direction)?,
+            reverse: choices
+                .into_iter()
+                .find(|choice| choice.direction != pending.direction),
         })
     }
 }
@@ -315,8 +300,56 @@ pub struct WorkbenchStatus {
     pub stages: Vec<Stage>,
 }
 
+impl WorkbenchStatus {
+    /// Immediate mechanical choices from this authoritative status. Ordering is
+    /// up then down, not recovery preference. No processes or storage are touched.
+    pub fn movement_choices(&self) -> Vec<MovementChoice> {
+        movement_choices(&self.state, &self.stages)
+    }
+}
+
+fn movement_choices(state: &WorkbenchState, stages: &[Stage]) -> Vec<MovementChoice> {
+    let mut choices = Vec::with_capacity(2);
+    for direction in [Direction::Up, Direction::Down] {
+        let (index, run_mutation) = if let Some(pending) = state.pending {
+            (Some(pending.stage_index), direction != pending.direction)
+        } else {
+            (
+                match direction {
+                    Direction::Up => Some(state.completed_stage_count),
+                    Direction::Down => state.completed_stage_count.checked_sub(1),
+                },
+                true,
+            )
+        };
+        let Some(index) = index else { continue };
+        let Some(stage) = stages.get(index) else {
+            continue;
+        };
+        if run_mutation
+            && stage
+                .executable(ExecutableRole::for_direction(direction, false))
+                .is_none()
+        {
+            continue;
+        }
+        choices.push(MovementChoice {
+            direction,
+            target_stage: match direction {
+                Direction::Up => stage.number,
+                Direction::Down => index.checked_sub(1).map_or(0, |i| stages[i].number),
+            },
+        });
+    }
+    choices
+}
+
 pub trait StageDiscovery {
     fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError>;
+}
+
+pub trait StageDefinitionReader {
+    fn read(&self, path: &Path) -> Result<Vec<u8>, StageDefinitionReadError>;
 }
 
 pub trait WorkbenchQueries {
@@ -332,10 +365,60 @@ pub struct MoveToInput<'a> {
     pub workspace_root: &'a Path,
     pub direction: Direction,
     pub target_stage: u32,
+    pub expected_checkpoint: Option<&'a WorkbenchState>,
+}
+
+pub struct StageDefinitionsInput<'a> {
+    pub workspace_root: &'a Path,
+    pub stage_number: u32,
 }
 
 pub trait ExecutableRunner {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError>;
+}
+
+pub struct StageDefinition {
+    pub role: ExecutableRole,
+    pub path: PathBuf,
+    pub contents: Result<Vec<u8>, StageDefinitionReadError>,
+}
+
+pub struct StageDefinitions {
+    pub stage: Stage,
+    pub definitions: Vec<StageDefinition>,
+}
+
+pub struct StageDefinitionReadError {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl StageDefinitionReadError {
+    pub fn new(source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self {
+            source: Box::new(source),
+        }
+    }
+}
+
+impl fmt::Display for StageDefinitionReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.source.fmt(formatter)
+    }
+}
+
+impl fmt::Debug for StageDefinitionReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("StageDefinitionReadError")
+            .field(&self.source)
+            .finish()
+    }
+}
+
+impl std::error::Error for StageDefinitionReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.source)
+    }
 }
 
 pub struct Workbench {
@@ -343,6 +426,7 @@ pub struct Workbench {
     queries: Box<dyn WorkbenchQueries>,
     writes: Box<dyn WorkbenchWrites>,
     executable_runner: Box<dyn ExecutableRunner>,
+    definition_reader: Box<dyn StageDefinitionReader>,
 }
 
 impl Workbench {
@@ -351,12 +435,14 @@ impl Workbench {
         queries: Box<dyn WorkbenchQueries>,
         writes: Box<dyn WorkbenchWrites>,
         executable_runner: Box<dyn ExecutableRunner>,
+        definition_reader: Box<dyn StageDefinitionReader>,
     ) -> Self {
         Self {
             stage_discovery,
             queries,
             writes,
             executable_runner,
+            definition_reader,
         }
     }
 
@@ -373,10 +459,14 @@ impl Workbench {
             workspace_root,
             direction,
             target_stage,
+            expected_checkpoint,
         } = input;
         let stages = self.load_stages(workspace_root)?;
-        let target_count = target_count(&stages, target_stage)?;
         let mut state = self.load_state(stages.len())?;
+        if expected_checkpoint.is_some_and(|expected| expected != &state) {
+            return Err(MoveToError::StaleCheckpoint);
+        }
+        let target_count = target_count(&stages, target_stage)?;
         let mut log = ExecutionLog {
             executions: Vec::new(),
             observe,
@@ -480,15 +570,43 @@ impl Workbench {
         Ok(WorkbenchStatus { state, stages })
     }
 
-    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StatusError> {
-        let stages = self
-            .stage_discovery
-            .discover(workspace_root)
-            .map_err(StatusError::StageDiscovery)?;
+    pub fn stage_definitions(
+        &self,
+        input: StageDefinitionsInput<'_>,
+    ) -> Result<StageDefinitions, StageDefinitionsError> {
+        let StageDefinitionsInput {
+            workspace_root,
+            stage_number,
+        } = input;
+        let stages = self.load_stages(workspace_root)?;
+        let stage = stages
+            .into_iter()
+            .find(|stage| stage.number == stage_number)
+            .ok_or(StageDefinitionsError::UnknownStage(stage_number))?;
+        let definitions = [
+            (ExecutableRole::Up, stage.up.as_deref()),
+            (ExecutableRole::Down, stage.down.as_deref()),
+            (ExecutableRole::VerifyUp, stage.verify_up.as_deref()),
+            (ExecutableRole::VerifyDown, stage.verify_down.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(role, path)| {
+            path.map(|path| StageDefinition {
+                role,
+                path: path.to_path_buf(),
+                contents: self.definition_reader.read(path),
+            })
+        })
+        .collect();
+        Ok(StageDefinitions { stage, definitions })
+    }
+
+    fn load_stages(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+        let stages = self.stage_discovery.discover(workspace_root)?;
         if stages.is_empty() {
-            return Err(StatusError::StageDiscovery(StageDiscoveryError::message(
+            return Err(StageDiscoveryError::message(
                 "no numbered stage directories were found under `stages/`",
-            )));
+            ));
         }
         Ok(stages)
     }
@@ -658,5 +776,141 @@ fn failure_for_last_execution(executions: &[ExecutionEvent]) -> TransitionFailur
             role: event.role,
             exit_code: output.exit_code,
         },
+    }
+}
+
+#[cfg(test)]
+mod stage_definition_contract_tests {
+    use super::*;
+    use std::{error::Error, io};
+
+    struct Discovery(Vec<Stage>);
+
+    impl StageDiscovery for Discovery {
+        fn discover(&self, _: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct FailingDiscovery;
+
+    impl StageDiscovery for FailingDiscovery {
+        fn discover(&self, _: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+            Err(StageDiscoveryError::new(io::Error::other(
+                "discovery source retained",
+            )))
+        }
+    }
+
+    struct UnusedQueries;
+
+    impl WorkbenchQueries for UnusedQueries {
+        fn read_checkpoint(&self) -> Result<Option<WorkbenchState>, PersistenceError> {
+            panic!("stage definition lookup must not query checkpoint storage")
+        }
+    }
+
+    struct UnusedWrites;
+
+    impl WorkbenchWrites for UnusedWrites {
+        fn record_checkpoint(&self, _: &WorkbenchState) -> Result<(), PersistenceError> {
+            panic!("stage definition lookup must not write checkpoint storage")
+        }
+    }
+
+    struct UnusedRunner;
+
+    impl ExecutableRunner for UnusedRunner {
+        fn run(&self, _: &Invocation) -> Result<ProcessOutput, ExecutableRunError> {
+            panic!("stage definition lookup must not run a role")
+        }
+    }
+
+    struct FailingReader;
+
+    impl StageDefinitionReader for FailingReader {
+        fn read(&self, _: &Path) -> Result<Vec<u8>, StageDefinitionReadError> {
+            Err(StageDefinitionReadError::new(io::Error::other(
+                "definition read denied",
+            )))
+        }
+    }
+
+    fn build_workbench(discovery: Box<dyn StageDiscovery>) -> Workbench {
+        Workbench::new(
+            discovery,
+            Box::new(UnusedQueries),
+            Box::new(UnusedWrites),
+            Box::new(UnusedRunner),
+            Box::new(FailingReader),
+        )
+    }
+
+    fn stage() -> Stage {
+        let directory = PathBuf::from("stages/007-sample");
+        Stage {
+            number: 7,
+            name: "sample".to_owned(),
+            up: Some(directory.join("up")),
+            down: None,
+            verify_up: None,
+            verify_down: None,
+            directory,
+        }
+    }
+
+    #[test]
+    fn definition_input_has_narrow_errors_and_keeps_checkpoint_storage_out_of_lookup() {
+        let workspace_root = Path::new("workspace");
+        let workbench = build_workbench(Box::new(Discovery(vec![stage()])));
+        let definitions = workbench
+            .stage_definitions(StageDefinitionsInput {
+                workspace_root,
+                stage_number: 7,
+            })
+            .unwrap();
+        assert_eq!(definitions.stage.number, 7);
+        assert_eq!(definitions.definitions.len(), 1);
+        let read_error = definitions.definitions[0].contents.as_ref().err().unwrap();
+        assert!(read_error.to_string().contains("definition read denied"));
+
+        let unknown = match workbench.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 99,
+        }) {
+            Ok(_) => panic!("unknown stage unexpectedly resolved"),
+            Err(error) => error,
+        };
+        assert!(matches!(unknown, StageDefinitionsError::UnknownStage(99)));
+
+        let empty = build_workbench(Box::new(Discovery(Vec::new())));
+        let empty_error = match empty.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 7,
+        }) {
+            Ok(_) => panic!("empty stage discovery unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            &empty_error,
+            StageDefinitionsError::StageDiscovery(_)
+        ));
+        assert!(
+            empty_error
+                .to_string()
+                .contains("no numbered stage directories")
+        );
+
+        let failed = build_workbench(Box::new(FailingDiscovery));
+        let failure = match failed.stage_definitions(StageDefinitionsInput {
+            workspace_root,
+            stage_number: 7,
+        }) {
+            Ok(_) => panic!("failing stage discovery unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        let capability = failure.source().unwrap();
+        assert!(capability.is::<StageDiscoveryError>());
+        assert!(capability.source().unwrap().is::<io::Error>());
     }
 }

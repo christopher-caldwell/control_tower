@@ -19,6 +19,7 @@ pub(super) fn run_move(
             workspace_root: workspace,
             direction,
             target_stage: target,
+            expected_checkpoint: None,
         },
         &mut |progress| match progress {
             ExecutionProgress::Starting { stage, role } => {

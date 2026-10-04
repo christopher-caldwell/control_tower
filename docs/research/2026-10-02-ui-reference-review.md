@@ -4,11 +4,11 @@ title: UI reference review for the first graphical workbench
 type: research
 status: recorded
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
-verified_on: '2026-10-02'
-method: source-doc-reading-source-code-inspection-and-public-screenshot-review
+verified_on: '2026-10-03'
+method: source-doc-reading-source-code-inspection-public-screenshot-review-and-image-link-check
 sources:
 - https://docs.dagu.sh/overview/web-ui
 - https://github.com/dagucloud/dagu/blob/3cce8be87f2ad9b205105ecdef90a527fc70cb63/ui/src/features/dags/components/step-details/StepDetailsDrawer.tsx
@@ -38,7 +38,7 @@ Useful patterns:
 - The current Dagu step-details implementation uses a right-side drawer with runtime status, errors, timing, separate stdout/stderr actions and a user-resizable width stored in browser local storage.
 - The drawer defaults to 560px and is constrained between 420px and 960px in the inspected source revision.
 
-Control Tower should borrow the density, explicit output affordances and resizable inspection surface. It should **not** copy Dagu's DAG semantics, broad operations/admin navigation or graph-first presentation.
+Control Tower can borrow the density, explicit output affordances and persistent inspection context. Dagu's resizable inspector is a source-product detail, not a Control Tower requirement. Control Tower should **not** copy Dagu's DAG semantics, broad operations/admin navigation or graph-first presentation.
 
 ## Inngest: persistent selection plus detail context
 
@@ -53,7 +53,7 @@ Useful patterns:
 - Selecting a step changes inspection context; it does not implicitly execute that step.
 - Failed-step details prioritize the error while still retaining timing, input/output and metadata.
 
-Control Tower should borrow the persistent inspector relationship and resizable split. Its center rail remains an ordered migration-style stage narrative rather than a timing waterfall.
+Control Tower can borrow the persistent inspector relationship. Its center rail remains an ordered migration-style stage narrative rather than a timing waterfall; split resizing and local persistence are not part of the selected shell.
 
 ## Decagon: readable vertical execution narrative
 
@@ -95,4 +95,8 @@ project context
                  sticky declarative progression / recovery controls
 ```
 
-The borrowed principle is **simultaneous context**. The product-specific semantics remain Control Tower's: project -> workspace -> ordered stage, accepted position distinct from a pending transition, and Application-owned legal next actions.
+The borrowed principle is **simultaneous context**. The product-specific semantics remain Control Tower's: project -> workspace -> ordered stage, accepted position distinct from a pending transition, and Application-owned legal next actions. Rail collapse is an in-memory choice, with fixed widths set in CSS.
+
+On 2026-10-03, each of the four publisher screenshot URLs above returned HTTP 200
+with an image content type. They remain attributed remote references rather than
+copied product assets; availability may change at the source.

@@ -4,13 +4,14 @@ title: CLI reference
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-01'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
 - ../../crates/cli/src/main.rs
 - ../../crates/cli/src/commands.rs
 - ../../crates/cli/src/deps.rs
+- ../../crates/cli/src/web.rs
 - ../../crates/database/src/bin/control-tower-db.rs
 - ../../crates/database/src/operations.rs
 - ../../justfile
@@ -18,7 +19,7 @@ sources:
 
 # CLI reference
 
-This page describes the implemented CLI, not proposed command spellings from discovery. The executable name is **`control-tower`** (hyphen), not `control_tower`. For first use, follow [setup](../guides/getting-started.md).
+This page describes the implemented CLI, not proposed command spellings from discovery. The executable name is **`control-tower`** (hyphen), not `control_tower`. The optional browser UI is served by the generic Rust loopback host; see the [browser workbench reference](browser-workbench.md). For first use, follow [setup](../guides/getting-started.md).
 
 ## Invocation forms
 
@@ -39,6 +40,7 @@ An installed binary can run from any directory. Relative workspace paths are res
 ## Workbench commands
 
 ```text
+control-tower ui
 control-tower up --workspace PATH --stage NUMBER
 control-tower down --workspace PATH --stage NUMBER
 control-tower status --workspace PATH
@@ -51,6 +53,8 @@ control-tower status --workspace PATH
 | `up` | Apply each needed stage toward the target, in numeric order. Run each supplied `verify-up` before recording that stage complete. |
 | `down` | Reverse stages toward the target, in reverse numeric order. To go from stage 3 to stage 2, run stage 3's `down` and supplied `verify-down`; do not run stage 2's `down`. |
 | `status` | Read the saved completed position, UUID, pending verification when present, and number of discovered stages. It does not run a verifier or inspect external fixture correctness. |
+
+`ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Project. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI submits one Application-supplied transition at a time, with separate inspection selection and outcome-specific pending-verification recovery. See [build, workspace inventory, and interface details](browser-workbench.md).
 
 Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no roles ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
 
@@ -76,6 +80,7 @@ control-tower --help
 control-tower up --help
 control-tower down --help
 control-tower status --help
+control-tower ui --help
 ```
 
 A completed/no-op movement, successful status, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.

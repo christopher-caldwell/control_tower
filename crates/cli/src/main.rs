@@ -6,6 +6,7 @@ use commands::{run_move, run_status};
 use control_tower_application::Direction;
 mod commands;
 mod deps;
+mod web;
 
 #[derive(Debug, Parser)]
 #[command(name = "control-tower", about = "Move through local executable stages")]
@@ -16,6 +17,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Open the local browser workbench for the current project.
+    Ui,
     /// Apply stages through the requested stage number.
     Up {
         #[arg(long)]
@@ -39,10 +42,20 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if matches!(&cli.command, Command::Ui) {
+        match web::run_from_current_directory() {
+            Ok(()) => return ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("error: {message}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let workspace = match &cli.command {
         Command::Up { workspace, .. }
         | Command::Down { workspace, .. }
         | Command::Status { workspace } => workspace,
+        Command::Ui => unreachable!("UI command handled above"),
     };
     let workspace_root = match resolve_workspace(workspace) {
         Ok(path) => path,
@@ -65,6 +78,7 @@ fn main() -> ExitCode {
             run_move(&workbench, &workspace_root, Direction::Down, stage)
         }
         Command::Status { .. } => run_status(&workbench, &workspace_root),
+        Command::Ui => unreachable!("UI command handled above"),
     }
 }
 

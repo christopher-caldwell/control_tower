@@ -42,14 +42,14 @@ Control Tower executable
      -> loopback HTTP API
      -> SSE observations
      -> embedded built React assets
-          -> system browser
+          -> manually opened browser
 ```
 
 The production frontend is built ahead of time and embedded in, or packaged with, the Rust distribution. There is no Vite or Node runtime dependency.
 
 The UI is another concrete driving adapter. It must invoke the same Application use cases as the CLI. It must not shell out to the CLI, recreate navigation rules, own verification semantics, or move business/process rules into HTTP handlers or React state.
 
-The initial distribution remains the ordinary Control Tower executable rather than requiring a macOS `.app` bundle. The exact command spelling and Rust module/crate layout for starting the UI are not decided here.
+The UI is launched through the ordinary Control Tower executable rather than a native app bundle. The host uses a generic loopback listener and prints a plain URL for manual opening; it does not launch the system browser or require a platform-specific app package.
 
 ## HTTP and live updates
 
@@ -72,19 +72,16 @@ role returns
 
 Stdout/stderr remain buffered per role as they are today. Byte-by-byte process-output streaming is **not** part of this decision. Add it only if real use shows that “running, then done — view output” is insufficient.
 
-## Localhost security boundary
+## Loopback boundary
 
-Loopback is an implementation boundary, not an authentication assumption.
-
-The UI server must:
+The UI is a single-person local workbench, bound only to loopback. The host:
 
 - bind only to loopback rather than a LAN-facing address,
 - prefer an ephemeral port rather than a fixed public convention,
 - serve the frontend and API from the same origin,
-- avoid permissive CORS,
-- protect state-changing endpoints against requests originating from unrelated browser content or other local processes.
+- print a usable URL without credentials.
 
-The exact anti-forgery/session mechanism is an implementation decision, but shipping powerful execution endpoints on the assumption that “localhost is trusted” is not acceptable.
+The implementation has no session exchange, bootstrap token, Host/Origin enforcement, or CORS layer. The reconciled product scope is an ordinary local browser adapter rather than a local authentication or request-hardening feature.
 
 ## Why Tauri is not selected
 
@@ -99,7 +96,7 @@ Those benefits do not currently outweigh the added product machinery.
 
 For Control Tower today, Tauri would add a desktop-app distribution/lifecycle path and would require deliberate handling of the shell environment used by user-owned executables. The local web design already provides a single Rust distribution, embedded React assets, no production frontend server process, and a straightforward HTTP/SSE delivery surface.
 
-Tauri may be reconsidered if actual use establishes that launching from Spotlight/Dock, native window ownership, deeper macOS integration, or removal of the loopback HTTP surface is valuable enough to justify the additional environment and packaging behavior.
+Tauri may be reconsidered if actual use establishes that native window ownership, deeper operating-system integration, or removal of the loopback HTTP surface is valuable enough to justify the additional environment and packaging behavior.
 
 ## High-level UI constraint
 

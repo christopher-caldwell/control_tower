@@ -1,8 +1,12 @@
 # Control Tower
 
-A local CLI workbench for stepping through your own executable actions: set up a test fixture, verify it, change your application, then move backward and try again.
+A local CLI workbench, with an optional loopback browser UI, for stepping through your own executable actions: set up a test fixture, verify it, change your application, then move backward and try again.
 
-You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control Tower runs them in order and remembers your position between commands. No server, account, or built-in HTTP/database action language.
+You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control Tower runs them in order and remembers your position between commands. No hosted server, account, or built-in HTTP/database action language.
+
+## Browser workbench
+
+Run `control-tower ui` from a Project directory to print a local URL, then open it in your browser. The [browser workbench reference](docs/reference/browser-workbench.md) explains workspace inventory and use.
 
 ## Try the three-stage example
 

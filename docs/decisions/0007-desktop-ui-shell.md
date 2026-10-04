@@ -4,7 +4,7 @@ title: Use a desktop-only three-column workbench shell
 type: decision
 status: accepted
 created: '2026-10-02'
-updated: '2026-10-02'
+updated: '2026-10-03'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction-after-ui-reference-review
@@ -19,7 +19,7 @@ sources:
 
 ## Decision
 
-The first graphical Control Tower interface is a **desktop-only macOS developer workbench**.
+The first graphical Control Tower interface is a **desktop-only developer workbench**.
 
 Its primary workspace screen uses three simultaneously visible regions:
 
@@ -60,7 +60,7 @@ It is:
 - not replaced by a hamburger menu,
 - not automatically hidden because the viewport crosses a responsive breakpoint.
 
-Collapsed state is a space preference, not a different information architecture. Arbitrary workspace names do not need invented iconography merely to support a compact mode.
+Collapsed state is an in-memory display choice, not a different information architecture. It resets when the page reloads. Arbitrary workspace names do not need invented iconography merely to support a compact mode.
 
 ## Center stage rail
 
@@ -83,7 +83,7 @@ A pending transition must be visually distinct from both accepted and untouched 
 
 Selecting a stage is **read-only inspection**. It changes the right inspector. It does not execute the stage, change the checkpoint or redefine the next legal transition.
 
-Initial selection should follow relevance:
+An initial selection may follow relevance:
 
 ```text
 pending transition exists
@@ -96,7 +96,7 @@ otherwise
   -> select the first available stage
 ```
 
-After a successful forward transition, selection may follow the newly accepted stage. After failure, selection remains on the failed/pending stage. Manual inspection of another stage must not alter execution state.
+The exact initial selection is an implementation choice. After a successful forward transition, selection may follow the newly accepted stage. After failure, selection may follow the failed/pending stage. Manual inspection of another stage must not alter execution state.
 
 ## Persistent right stage inspector
 
@@ -106,11 +106,11 @@ It is:
 
 - visible by default,
 - independently scrollable,
-- user-resizable,
+- fixed to an ordinary CSS width,
 - manually collapsible,
-- allowed to remember its width and collapsed state as local UI preference.
+- collapsed only for the current page session.
 
-A responsive breakpoint must not transform it into a mobile drawer, bottom sheet or separate navigation flow. If the user deliberately collapses the inspector, merely selecting another stage should not override that preference without an explicit reopen affordance.
+A responsive breakpoint must not transform it into a mobile drawer, bottom sheet or separate navigation flow. If the user deliberately collapses the inspector, merely selecting another stage should not reopen it without an explicit reopen affordance.
 
 Inspector information is ordered by usefulness:
 
