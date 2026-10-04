@@ -104,7 +104,7 @@ pub(super) fn run_validate(workbench: &Workbench, workspace: &Path) -> ExitCode 
             return ExitCode::FAILURE;
         }
     };
-    println!("Workspace is valid: {}", workspace.display());
+    println!("Workspace loaded successfully: {}", workspace.display());
     println!("Discovered stages: {}", status.stages.len());
     ExitCode::SUCCESS
 }

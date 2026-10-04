@@ -860,7 +860,7 @@ fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() 
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", output_text(&output));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Workspace is valid:"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Workspace loaded successfully:"));
     assert!(String::from_utf8_lossy(&output.stdout).contains("Discovered stages: 3"));
     assert!(!role_marker.exists(), "validation must not execute a role");
     assert_eq!(fs::read(&database).unwrap(), before);

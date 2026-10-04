@@ -26,4 +26,4 @@ If saving state fails, the CLI distinguishes the last confirmed checkpoint from 
 
 After process interruption, use the saved checkpoint as recorded metadata only. Inspect the relevant role and external state before further movement. Control Tower does not provide process-tree cancellation, crash reconciliation, `reset`, `force`, `skip`, or automatic cleanup. Deleting checkpoint storage does not reverse author-owned effects.
 
-Avoid renaming, reordering, adding, or removing stage directories during a stored run. Control Tower does not reconcile a previous position with structural edits. If existing effects cannot be safely reconciled, use the workflow owner's explicit cleanup procedure before continuing.
+Avoid renaming, reordering, adding, or removing stage directories during a stored run. Control Tower does not reconcile a previous position with structural edits. If existing effects cannot be safely reconciled, use the workspace author's explicit cleanup procedure before continuing.
