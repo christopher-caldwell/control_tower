@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-03'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -21,6 +21,7 @@ Control Tower is a local workbench for user-owned executable stages. The CLI and
 
 | Need | Start here |
 | --- | --- |
+| Give a coding agent version-matched Control Tower guidance | [`control-tower guide`](reference/cli.md#agent-guidance-and-validation) and the [dispatcher Skill](../skills/control-tower/SKILL.md) |
 | Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
 | Inspect workspaces in a browser | [Browser workbench](reference/browser-workbench.md) |
 | Install/build and prepare storage | [Getting started](guides/getting-started.md) |

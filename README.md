@@ -8,6 +8,10 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 Run `control-tower ui` from a Project directory to print a local URL, then open it in your browser. The [browser workbench reference](docs/reference/browser-workbench.md) explains workspace inventory and use.
 
+## Agent guidance
+
+Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From a workspace directory, `control-tower validate` checks that its current layout and prepared checkpoint state load without running stage roles.
+
 ## Try the three-stage example
 
 You need Git, a current stable Rust toolchain with Cargo, a C compiler/linker, and a Unix shell. The recorded full CLI tests ran on macOS; native Windows is not verified. See [setup and toolchain notes](docs/guides/getting-started.md#prerequisites). **Neither `just` nor a separate SQLite installation is required for this path.**
