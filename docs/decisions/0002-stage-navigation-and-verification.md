@@ -67,7 +67,7 @@ SQLite is the v0 runtime adapter, as selected in [ADR-0004](0004-session-storage
 
 An abnormal Rust-process termination has no v0 external-state recovery guarantee. This is distinct from a script or verifier returning failure while Control Tower remains able to record and report the result.
 
-Changing stage-directory structure during a stored workbench run remains the author's responsibility; no detection or reconciliation is required. Multiple simultaneous instances are unsupported and require no workflow-specific protection.
+Changing stage-directory structure during a stored workbench run remains the author's responsibility; no detection or reconciliation is required. Multiple simultaneous instances are unsupported and require no additional race-prevention machinery.
 
 ## Consequence
 

@@ -196,7 +196,7 @@ Movement and status report actual numeric stage identifiers/labels for completed
 
 ## No concurrency or structural-drift machinery
 
-This is one user's one-instance workbench. No workflow-specific locks, drift detection or reconciliation is implemented. Stage-directory changes during a stored run are the author's responsibility. **Restarting does not clear SQLite state**; finish the run before structural edits or start a fresh workflow after handling external effects yourself.
+This is one user's one-instance workbench. No multi-instance locking, drift detection, or reconciliation is implemented. Stage-directory changes during a stored run are the author's responsibility. **Restarting does not clear SQLite state**; finish the run before structural edits or start a fresh workflow after handling external effects yourself.
 
 ## Deferred reset escape hatch
 
