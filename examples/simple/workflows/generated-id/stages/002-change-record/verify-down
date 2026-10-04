@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec python3 "$CONTROL_TOWER_WORKFLOW/support/fixture.py" verify-restored

@@ -104,7 +104,7 @@ impl Fixture {
     fn move_to(&self, direction: Direction, target_stage: u32) -> MoveOutcome {
         self.workbench()
             .move_to(MoveToInput {
-                workspace_root: Path::new("/fixture"),
+                workflow_root: Path::new("/fixture"),
                 direction,
                 target_stage,
                 expected_checkpoint: None,
@@ -525,7 +525,7 @@ fn settled_target_is_noop_and_unreachable_targets_do_not_execute() {
     assert!(fixture.calls().is_empty());
     assert!(matches!(
         fixture.workbench().move_to(MoveToInput {
-            workspace_root: Path::new("/fixture"),
+            workflow_root: Path::new("/fixture"),
             direction: Up,
             target_stage: 9,
             expected_checkpoint: None,
@@ -622,7 +622,7 @@ fn synchronous_observations_surround_each_role_before_the_next_invocation() {
         .workbench()
         .move_to_observed(
             MoveToInput {
-                workspace_root: Path::new("/fixture"),
+                workflow_root: Path::new("/fixture"),
                 direction: Up,
                 target_stage: 2,
                 expected_checkpoint: None,
@@ -812,7 +812,7 @@ fn failed_checkpoint_publication_returns_latest_confirmed_state_and_attempted_up
             .workbench()
             .move_to_observed(
                 MoveToInput {
-                    workspace_root: Path::new("/fixture"),
+                    workflow_root: Path::new("/fixture"),
                     direction: case.direction,
                     target_stage: case.target,
                     expected_checkpoint: None,
@@ -1225,7 +1225,7 @@ fn stale_expected_checkpoints_reject_before_uuid_writes_or_executable_calls() {
     for expected in cases {
         let fixture = Fixture::new();
         let result = fixture.workbench().move_to(MoveToInput {
-            workspace_root: Path::new("/fixture"),
+            workflow_root: Path::new("/fixture"),
             direction: Up,
             target_stage: 1,
             expected_checkpoint: Some(&expected),

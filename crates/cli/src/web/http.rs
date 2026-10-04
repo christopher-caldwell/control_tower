@@ -3,7 +3,7 @@ use super::{
     dto::*,
     movement::{MovementTask, execute_movement},
     runtime::sse_json_event,
-    workspace::{find_workspace, project_snapshot, relative_path, stage_identity},
+    workspace::{find_workflow, relative_path, stage_identity, workspace_snapshot},
 };
 use axum::{
     Router,
@@ -31,11 +31,11 @@ pub(super) struct FrontendAssets;
 
 pub(super) fn router(context: Arc<ServerContext>) -> Router {
     Router::new()
-        .route("/api/project", get(project_view))
-        .route("/api/workspaces/{id}/movements", post(start_movement))
-        .route("/api/workspaces/{id}/events", get(workspace_events))
+        .route("/api/workspace", get(workspace_view))
+        .route("/api/workflows/{id}/movements", post(start_movement))
+        .route("/api/workflows/{id}/events", get(workflow_events))
         .route(
-            "/api/workspaces/{id}/stages/{stage_number}",
+            "/api/workflows/{id}/stages/{stage_number}",
             get(stage_definition),
         )
         .route("/", get(index))
@@ -44,8 +44,8 @@ pub(super) fn router(context: Arc<ServerContext>) -> Router {
         .with_state(context)
 }
 
-pub(super) async fn project_view(State(context): State<Arc<ServerContext>>) -> Response<Body> {
-    api_json(project_snapshot(&context.project))
+pub(super) async fn workspace_view(State(context): State<Arc<ServerContext>>) -> Response<Body> {
+    api_json(workspace_snapshot(&context.workspace))
 }
 
 pub(super) async fn start_movement(
@@ -74,26 +74,26 @@ pub(super) async fn start_movement(
             );
         }
     };
-    let Some(workspace) = find_workspace(&context.project, &id) else {
+    let Some(workflow) = find_workflow(&context.workspace, &id) else {
         return api_error(
             StatusCode::NOT_FOUND,
-            "unknown_workspace",
-            "That Workspace was not found under workspaces/ at startup.",
+            "unknown_workflow",
+            "That Workflow was not found under workflows/ at startup.",
         );
     };
     let runtime = context
         .observations
-        .workspace_state(&context.project.name, &workspace);
+        .workflow_state(&context.workspace.name, &workflow);
     let Some(permit) = runtime.try_admit() else {
         return api_error(
             StatusCode::CONFLICT,
-            "workspace_busy",
-            "A movement is already executing for this Workspace.",
+            "workflow_busy",
+            "A movement is already executing for this Workflow.",
         );
     };
     let task = MovementTask {
-        project_name: context.project.name.clone(),
-        workspace,
+        workspace_name: context.workspace.name.clone(),
+        workflow,
         direction,
         target_stage: request.target_stage,
         expected: request.expected_checkpoint.into(),
@@ -113,29 +113,29 @@ pub(super) async fn start_movement(
     }
 }
 
-pub(super) async fn workspace_events(
+pub(super) async fn workflow_events(
     State(context): State<Arc<ServerContext>>,
     RoutePath(id): RoutePath<String>,
 ) -> Response<Body> {
-    let Some(workspace) = find_workspace(&context.project, &id) else {
+    let Some(workflow) = find_workflow(&context.workspace, &id) else {
         return api_error(
             StatusCode::NOT_FOUND,
-            "unknown_workspace",
-            "That Workspace was not found under workspaces/ at startup.",
+            "unknown_workflow",
+            "That Workflow was not found under workflows/ at startup.",
         );
     };
     let runtime = context
         .observations
-        .workspace_state(&context.project.name, &workspace);
+        .workflow_state(&context.workspace.name, &workflow);
     let mut snapshots = runtime.subscribe();
-    let project_name = context.project.name.clone();
+    let workspace_name = context.workspace.name.clone();
     let runtime_for_snapshot = runtime.clone();
-    let workspace_for_snapshot = workspace.clone();
+    let workflow_for_snapshot = workflow.clone();
     match tokio::task::spawn_blocking(move || {
-        let workbench = crate::deps::workbench(&workspace_for_snapshot.root);
+        let workbench = crate::deps::workbench(&workflow_for_snapshot.root);
         runtime_for_snapshot.current_snapshot(
-            &project_name,
-            &workspace_for_snapshot,
+            &workspace_name,
+            &workflow_for_snapshot,
             workbench.as_ref().map_err(ToString::to_string),
         )
     })
@@ -194,20 +194,20 @@ pub(super) async fn stage_definition(
             );
         }
     };
-    let Some(workspace) = find_workspace(&context.project, &id) else {
+    let Some(workflow) = find_workflow(&context.workspace, &id) else {
         return api_error(
             StatusCode::NOT_FOUND,
-            "unknown_workspace",
-            "That Workspace was not found under workspaces/ at startup.",
+            "unknown_workflow",
+            "That Workflow was not found under workflows/ at startup.",
         );
     };
-    let root = workspace.root.clone();
+    let root = workflow.root.clone();
     let result = tokio::task::spawn_blocking(move || {
         let workbench =
-            crate::deps::workbench(&workspace.root).map_err(|error| error.to_string())?;
+            crate::deps::workbench(&workflow.root).map_err(|error| error.to_string())?;
         workbench
             .stage_definitions(StageDefinitionsInput {
-                workspace_root: &workspace.root,
+                workflow_root: &workflow.root,
                 stage_number,
             })
             .map_err(|error| error.to_string())

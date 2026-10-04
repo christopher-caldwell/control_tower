@@ -1,9 +1,0 @@
-#!/usr/bin/env -S uv run python
-import json
-import os
-from pathlib import Path
-
-workspace = Path(os.environ["CONTROL_TOWER_WORKSPACE"])
-data = workspace / "data"
-if (data / "record.json").exists():
-    raise SystemExit("record.json remains after reversal")

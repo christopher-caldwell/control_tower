@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const data = path.join(process.env.CONTROL_TOWER_WORKFLOW, "data");
+if (fs.existsSync(path.join(data, "node_inspection.json"))) throw new Error("node_inspection.json remains after reversal");

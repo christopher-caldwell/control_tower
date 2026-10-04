@@ -6,21 +6,21 @@ use control_tower_database::operations;
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
     let operation = arguments.next();
-    let workspace = arguments.next().map(PathBuf::from);
-    let (Some(operation), Some(workspace), None) = (operation, workspace, arguments.next()) else {
+    let workflow = arguments.next().map(PathBuf::from);
+    let (Some(operation), Some(workflow), None) = (operation, workflow, arguments.next()) else {
         eprintln!(
-            "usage: control-tower-db <bootstrap-local|migrate-local|verify-local> <workspace>"
+            "usage: control-tower-db <bootstrap-local|migrate-local|verify-local> <workflow>"
         );
         return ExitCode::FAILURE;
     };
-    let workspace = match workspace.canonicalize() {
+    let workflow = match workflow.canonicalize() {
         Ok(path) if path.is_dir() => path,
         _ => {
-            eprintln!("workspace must be an existing directory");
+            eprintln!("workflow must be an existing directory");
             return ExitCode::FAILURE;
         }
     };
-    let database = workspace.join(".control_tower/state.sqlite3");
+    let database = workflow.join(".control_tower/state.sqlite3");
     let result = match operation.to_str() {
         Some("bootstrap-local") => operations::bootstrap(&database),
         Some("migrate-local") => operations::migrate(&database),

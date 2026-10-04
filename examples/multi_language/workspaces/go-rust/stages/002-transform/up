@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-exec cargo run --quiet --locked --manifest-path "$CONTROL_TOWER_WORKSPACE/Cargo.toml" --bin transform

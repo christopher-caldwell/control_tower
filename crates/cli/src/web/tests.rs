@@ -37,8 +37,8 @@ impl Drop for TempDir {
     }
 }
 
-fn prepared_workspace(project: &Path, id: &str, script: &str) -> PathBuf {
-    let root = project.join("workspaces").join(id);
+fn prepared_workflow(workspace: &Path, id: &str, script: &str) -> PathBuf {
+    let root = workspace.join("workflows").join(id);
     let stage = root.join("stages/010-seed");
     fs::create_dir_all(&stage).unwrap();
     fs::write(stage.join("up"), script).unwrap();
@@ -53,9 +53,9 @@ fn prepared_workspace(project: &Path, id: &str, script: &str) -> PathBuf {
     root
 }
 
-fn context(project: ProjectContext) -> Arc<ServerContext> {
+fn context(workspace: WorkspaceContext) -> Arc<ServerContext> {
     Arc::new(ServerContext {
-        project,
+        workspace,
         observations: Arc::new(ObservationStore::new()),
     })
 }
@@ -99,11 +99,7 @@ async fn sse_snapshot(response: Response<Body>) -> serde_json::Value {
 async fn view(app: &Router, id: &str) -> serde_json::Value {
     sse_snapshot(
         app.clone()
-            .oneshot(request(
-                "GET",
-                &format!("/api/workspaces/{id}/events"),
-                None,
-            ))
+            .oneshot(request("GET", &format!("/api/workflows/{id}/events"), None))
             .await
             .unwrap(),
     )
@@ -120,7 +116,7 @@ async fn move_to(
     app.clone()
         .oneshot(request(
             "POST",
-            &format!("/api/workspaces/{id}/movements"),
+            &format!("/api/workflows/{id}/movements"),
             Some(
                 serde_json::json!({
                     "direction": direction,
@@ -135,36 +131,36 @@ async fn move_to(
 }
 
 #[tokio::test]
-async fn inventory_lists_workspace_directories_without_preparing_or_validating_siblings() {
+async fn inventory_lists_workflow_directories_without_preparing_or_validating_siblings() {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(project.join("workspaces/unprepared")).unwrap();
-    let healthy = prepared_workspace(
-        &project,
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(workspace.join("workflows/unprepared")).unwrap();
+    let healthy = prepared_workflow(
+        &workspace,
         "healthy",
-        "#!/bin/sh\necho unexpected > \"$CONTROL_TOWER_WORKSPACE/ran\"\n",
+        "#!/bin/sh\necho unexpected > \"$CONTROL_TOWER_WORKFLOW/ran\"\n",
     );
-    let app = router(context(discover_project(&project).unwrap()));
+    let app = router(context(discover_workspace(&workspace).unwrap()));
 
     let (status, inventory) = json(
         app.clone()
-            .oneshot(request("GET", "/api/project", None))
+            .oneshot(request("GET", "/api/workspace", None))
             .await
             .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let ids = inventory["workspaces"]
+    let ids = inventory["workflows"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|workspace| workspace["id"].as_str().unwrap())
+        .map(|workflow| workflow["id"].as_str().unwrap())
         .collect::<Vec<_>>();
     assert_eq!(ids, ["healthy", "unprepared"]);
     assert!(!healthy.join("ran").exists());
     assert!(
-        !project
-            .join("workspaces/unprepared/.control_tower/state.sqlite3")
+        !workspace
+            .join("workflows/unprepared/.control_tower/state.sqlite3")
             .exists()
     );
 
@@ -180,13 +176,13 @@ async fn inventory_lists_workspace_directories_without_preparing_or_validating_s
 }
 
 #[tokio::test]
-async fn selected_workspace_can_move_and_reconnect_with_completed_text_output_and_full_definitions()
+async fn selected_workflow_can_move_and_reconnect_with_completed_text_output_and_full_definitions()
 {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(&project).unwrap();
-    let root = prepared_workspace(
-        &project,
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    let root = prepared_workflow(
+        &workspace,
         "fixture",
         "#!/bin/sh\nprintf 'mutation stdout\\n'\nprintf 'mutation stderr\\n' >&2\n",
     );
@@ -199,7 +195,7 @@ async fn selected_workspace_can_move_and_reconnect_with_completed_text_output_an
     }
     let long_definition = "stage definition contents\n".repeat(8192);
     fs::write(stage.join("verify-down"), &long_definition).unwrap();
-    let app = router(context(discover_project(&project).unwrap()));
+    let app = router(context(discover_workspace(&workspace).unwrap()));
     let initial = view(&app, "fixture").await;
     assert_eq!(initial["current_status"], "available");
 
@@ -222,7 +218,7 @@ async fn selected_workspace_can_move_and_reconnect_with_completed_text_output_an
 
     let (status, definition) = json(
         app.clone()
-            .oneshot(request("GET", "/api/workspaces/fixture/stages/10", None))
+            .oneshot(request("GET", "/api/workflows/fixture/stages/10", None))
             .await
             .unwrap(),
     )
@@ -240,7 +236,7 @@ async fn selected_workspace_can_move_and_reconnect_with_completed_text_output_an
     assert_eq!(
         app.oneshot(request(
             "GET",
-            "/api/workspaces/fixture/outputs/anything/0/stdout",
+            "/api/workflows/fixture/outputs/anything/0/stdout",
             None
         ))
         .await
@@ -253,14 +249,14 @@ async fn selected_workspace_can_move_and_reconnect_with_completed_text_output_an
 #[tokio::test]
 async fn stale_checkpoint_is_rejected_before_another_role_or_checkpoint_write() {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(&project).unwrap();
-    let root = prepared_workspace(
-        &project,
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    let root = prepared_workflow(
+        &workspace,
         "fixture",
-        "#!/bin/sh\necho run >> \"$CONTROL_TOWER_WORKSPACE/runs\"\n",
+        "#!/bin/sh\necho run >> \"$CONTROL_TOWER_WORKFLOW/runs\"\n",
     );
-    let app = router(context(discover_project(&project).unwrap()));
+    let app = router(context(discover_workspace(&workspace).unwrap()));
     let initial = view(&app, "fixture").await;
     assert_eq!(
         move_to(&app, "fixture", "up", 10, &initial["checkpoint"]["state"])
@@ -294,16 +290,16 @@ async fn stale_checkpoint_is_rejected_before_another_role_or_checkpoint_write() 
 }
 
 #[tokio::test]
-async fn a_dropped_request_keeps_workspace_admission_until_the_worker_finishes() {
+async fn a_dropped_request_keeps_workflow_admission_until_the_worker_finishes() {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(&project).unwrap();
-    let root = prepared_workspace(
-        &project,
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    let root = prepared_workflow(
+        &workspace,
         "fixture",
-        "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKSPACE/started\"\nwhile [ ! -e \"$CONTROL_TOWER_WORKSPACE/release\" ]; do sleep 0.02; done\necho complete\n",
+        "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKFLOW/started\"\nwhile [ ! -e \"$CONTROL_TOWER_WORKFLOW/release\" ]; do sleep 0.02; done\necho complete\n",
     );
-    let app = router(context(discover_project(&project).unwrap()));
+    let app = router(context(discover_workspace(&workspace).unwrap()));
     let initial = view(&app, "fixture").await;
     let expected = initial["checkpoint"]["state"].clone();
     let body =
@@ -315,7 +311,7 @@ async fn a_dropped_request_keeps_workspace_admission_until_the_worker_finishes()
         first_app
             .oneshot(request(
                 "POST",
-                "/api/workspaces/fixture/movements",
+                "/api/workflows/fixture/movements",
                 Some(first_body),
             ))
             .await
@@ -335,7 +331,7 @@ async fn a_dropped_request_keeps_workspace_admission_until_the_worker_finishes()
         app.clone()
             .oneshot(request(
                 "POST",
-                "/api/workspaces/fixture/movements",
+                "/api/workflows/fixture/movements",
                 Some(body.clone()),
             ))
             .await
@@ -343,7 +339,7 @@ async fn a_dropped_request_keeps_workspace_admission_until_the_worker_finishes()
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(error["error"]["code"], "workspace_busy");
+    assert_eq!(error["error"]["code"], "workflow_busy");
     fs::write(root.join("release"), "").unwrap();
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -361,14 +357,14 @@ async fn a_dropped_request_keeps_workspace_admission_until_the_worker_finishes()
 #[tokio::test]
 async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(&project).unwrap();
-    let root = prepared_workspace(
-        &project,
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    let root = prepared_workflow(
+        &workspace,
         "fixture",
         "#!/bin/sh\nprintf 'mutation complete\\n'\n",
     );
-    fs::write(root.join("stages/010-seed/verify-up"), "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKSPACE/verifier-started\"\nwhile [ ! -e \"$CONTROL_TOWER_WORKSPACE/release\" ]; do sleep 0.02; done\nprintf 'verified\\n'\n").unwrap();
+    fs::write(root.join("stages/010-seed/verify-up"), "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKFLOW/verifier-started\"\nwhile [ ! -e \"$CONTROL_TOWER_WORKFLOW/release\" ]; do sleep 0.02; done\nprintf 'verified\\n'\n").unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -378,10 +374,10 @@ async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
         )
         .unwrap();
     }
-    let app = router(context(discover_project(&project).unwrap()));
+    let app = router(context(discover_workspace(&workspace).unwrap()));
     let mut events = app
         .clone()
-        .oneshot(request("GET", "/api/workspaces/fixture/events", None))
+        .oneshot(request("GET", "/api/workflows/fixture/events", None))
         .await
         .unwrap()
         .into_body();
@@ -404,7 +400,7 @@ async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
         movement_app
             .oneshot(request(
                 "POST",
-                "/api/workspaces/fixture/movements",
+                "/api/workflows/fixture/movements",
                 Some(body),
             ))
             .await
@@ -447,19 +443,19 @@ async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
 }
 
 #[tokio::test]
-async fn an_empty_or_missing_workspace_inventory_is_a_valid_project() {
+async fn an_empty_or_missing_workflow_inventory_is_a_valid_workspace() {
     let temp = TempDir::new();
-    let project = temp.path().join("demo");
-    fs::create_dir_all(&project).unwrap();
-    let project_context = discover_project(&project).unwrap();
-    assert!(project_context.workspaces.is_empty());
-    let app = router(context(project_context));
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    let workspace_context = discover_workspace(&workspace).unwrap();
+    assert!(workspace_context.workflows.is_empty());
+    let app = router(context(workspace_context));
     let (status, inventory) = json(
-        app.oneshot(request("GET", "/api/project", None))
+        app.oneshot(request("GET", "/api/workspace", None))
             .await
             .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(inventory["workspaces"], serde_json::json!([]));
+    assert_eq!(inventory["workflows"], serde_json::json!([]));
 }

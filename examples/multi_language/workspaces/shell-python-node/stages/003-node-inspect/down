@@ -1,5 +1,0 @@
-#!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const data = path.join(process.env.CONTROL_TOWER_WORKSPACE, "data");
-fs.rmSync(path.join(data, "node_inspection.json"), {force: true});

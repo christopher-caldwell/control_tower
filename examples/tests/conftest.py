@@ -15,7 +15,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     for family in ("simple", "multi_language", "py_capsule"):
-        config.addinivalue_line("markers", f"family_{family}: {family} workspaces")
+        config.addinivalue_line("markers", f"family_{family}: {family} workflows")
     config.addinivalue_line("markers", "postgres: requires explicit --postgres")
     if config.getoption("--postgres"):
         missing = [tool for tool in ("initdb", "pg_ctl", "psql") if not shutil.which(tool)]

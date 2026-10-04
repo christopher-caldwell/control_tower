@@ -1,4 +1,4 @@
-"""Test-only CLI helpers; no workspace depends on this module."""
+"""Test-only CLI helpers; no workflow depends on this module."""
 from __future__ import annotations
 
 import json
@@ -34,10 +34,10 @@ def run(command, *, cwd, env, expected=0, input_text=None):
 def require_tools(*executables):
     missing = [executable for executable in executables if not shutil.which(executable)]
     if missing:
-        pytest.skip("optional workspace prerequisites unavailable: " + ", ".join(missing))
+        pytest.skip("optional workflow prerequisites unavailable: " + ", ".join(missing))
 
 
-def materialize_workspace(tmp_path, family, name):
+def materialize_workflow(tmp_path, family, name):
     # The portable unit is the complete example, including sibling scenarios.
     sandbox = tmp_path / "copy with spaces and 'quotes'" / family
     assert not sandbox.resolve().is_relative_to(REPOSITORY.resolve()), (
@@ -47,12 +47,12 @@ def materialize_workspace(tmp_path, family, name):
         ".venv", "__pycache__", "*.egg-info", ".control_tower", "data", "node_modules", "target",
     )
     shutil.copytree(EXAMPLES / family, sandbox, ignore=ignore)
-    return sandbox, sandbox / "workspaces" / name
+    return sandbox, sandbox / "workflows" / name
 
 
-def prepare_workspace(sandbox, workspace, env):
+def prepare_workflow(sandbox, workflow, env):
     """Install only the selected scenario's runtimes using documented setup."""
-    name = workspace.name
+    name = workflow.name
     python = name in (
         "python-dependencies", "python-isolated-stage", "postgres", "shell-python-node",
         "tool-only", "node-and-tool", "full-stack",
@@ -70,7 +70,7 @@ def prepare_workspace(sandbox, workspace, env):
     if python:
         run(["uv", "sync", "--locked", "--project", str(sandbox)], cwd=sandbox, env=env)
         if name == "python-isolated-stage":
-            run(["uv", "sync", "--locked", "--project", str(workspace / "stages/003-inspect")],
+            run(["uv", "sync", "--locked", "--project", str(workflow / "stages/003-inspect")],
                 cwd=sandbox, env=env)
         if sandbox.name == "py_capsule":
             run(["uv", "sync", "--locked", "--project", str(sandbox / "tools/example_tool")],
@@ -80,20 +80,20 @@ def prepare_workspace(sandbox, workspace, env):
     assert lock_contents(sandbox) == locks
 
 
-def initialize(sandbox, workspace, env):
+def initialize(sandbox, workflow, env):
     for operation in ("bootstrap-local", "migrate-local", "verify-local"):
-        run(["control-tower-db", operation, str(workspace)], cwd=sandbox, env=env)
+        run(["control-tower-db", operation, str(workflow)], cwd=sandbox, env=env)
 
 
-def move(sandbox, workspace, env, direction, stage, *, expected=0):
+def move(sandbox, workflow, env, direction, stage, *, expected=0):
     return run(
-        ["control-tower", direction, "--workspace", str(workspace), "--stage", str(stage)],
+        ["control-tower", direction, "--workflow", str(workflow), "--stage", str(stage)],
         cwd=sandbox, env=env, expected=expected,
     )
 
 
-def status(sandbox, workspace, env, completed, pending=None):
-    text = run(["control-tower", "status", "--workspace", str(workspace)], cwd=sandbox, env=env).stdout
+def status(sandbox, workflow, env, completed, pending=None):
+    text = run(["control-tower", "status", "--workflow", str(workflow)], cwd=sandbox, env=env).stdout
     assert f"Completed stage: {completed if completed else 'baseline (0)'}" in text
     if pending:
         assert f"Pending verification: {pending}" in text

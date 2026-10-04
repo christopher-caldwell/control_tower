@@ -1,9 +1,9 @@
-# All operations require an explicit local workspace. There is no live database.
-db-bootstrap-local workspace:
-    cargo run -p control-tower-database --bin control-tower-db -- bootstrap-local '{{workspace}}'
+# All operations require an explicit local workflow. There is no live database.
+db-bootstrap-local workflow:
+    cargo run -p control-tower-database --bin control-tower-db -- bootstrap-local '{{workflow}}'
 
-db-migrate-local workspace:
-    cargo run -p control-tower-database --bin control-tower-db -- migrate-local '{{workspace}}'
+db-migrate-local workflow:
+    cargo run -p control-tower-database --bin control-tower-db -- migrate-local '{{workflow}}'
 
-db-verify-local workspace:
-    cargo run -p control-tower-database --bin control-tower-db -- verify-local '{{workspace}}'
+db-verify-local workflow:
+    cargo run -p control-tower-database --bin control-tower-db -- verify-local '{{workflow}}'

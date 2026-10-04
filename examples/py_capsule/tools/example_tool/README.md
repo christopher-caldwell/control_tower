@@ -1,6 +1,6 @@
 # example-tool
 
-The shared [PyCapsule example project](../../README.md) installs this typed editable
+The [PyCapsule example](../../README.md)'s caller Python project installs this typed editable
 API for ordinary stages:
 
 ```python

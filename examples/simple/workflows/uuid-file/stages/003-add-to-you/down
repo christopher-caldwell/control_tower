@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+file="$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID"
+content=$(cat "$file")
+case "$content" in
+    *" to you") content=${content% to you} ;;
+    *) printf 'expected a trailing " to you" suffix\n' >&2; exit 1 ;;
+esac
+printf '%s' "$content" > "$file"
+printf 'removed stage 3 suffix\n'

@@ -1,9 +1,9 @@
 use super::{
     dto::*,
     runtime::{
-        MovementPermit, RoleObservationInput, WorkspaceRuntime, new_observation, stage_identity,
+        MovementPermit, RoleObservationInput, WorkflowRuntime, new_observation, stage_identity,
     },
-    workspace::WorkspaceContext,
+    workspace::WorkflowContext,
 };
 use axum::http::StatusCode;
 use control_tower_application::{
@@ -15,34 +15,34 @@ pub(super) struct WorkerResult {
     pub(super) error: Option<(StatusCode, &'static str, String)>,
 }
 pub(super) struct MovementTask {
-    pub(super) project_name: String,
-    pub(super) workspace: WorkspaceContext,
+    pub(super) workspace_name: String,
+    pub(super) workflow: WorkflowContext,
     pub(super) direction: Direction,
     pub(super) target_stage: u32,
     pub(super) expected: WorkbenchState,
-    pub(super) runtime: Arc<WorkspaceRuntime>,
+    pub(super) runtime: Arc<WorkflowRuntime>,
     pub(super) permit: MovementPermit,
 }
 
 pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
     let MovementTask {
-        project_name,
-        workspace,
+        workspace_name,
+        workflow,
         direction,
         target_stage,
         expected,
         runtime,
         mut permit,
     } = task;
-    let workbench = match crate::deps::workbench(&workspace.root) {
+    let workbench = match crate::deps::workbench(&workflow.root) {
         Ok(workbench) => workbench,
         Err(error) => {
-            runtime.rejected(&project_name, &workspace, Err(error.to_string()));
+            runtime.rejected(&workspace_name, &workflow, Err(error.to_string()));
             permit.complete();
             return WorkerResult {
                 error: Some((
                     StatusCode::SERVICE_UNAVAILABLE,
-                    "workspace_unavailable",
+                    "workflow_unavailable",
                     error.to_string(),
                 )),
             };
@@ -51,15 +51,15 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
     let mut attempt_started = false;
     let outcome = workbench.move_to_observed(
         MoveToInput {
-            workspace_root: &workspace.root,
+            workflow_root: &workflow.root,
             direction,
             target_stage,
             expected_checkpoint: Some(&expected),
         },
         &mut |progress| {
             runtime.observe(RoleObservationInput {
-                project_name: &project_name,
-                workspace: &workspace,
+                workspace_name: &workspace_name,
+                workflow: &workflow,
                 workbench: &workbench,
                 direction,
                 target_stage,
@@ -77,10 +77,10 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
                 MoveToError::StageDiscovery(_)
                 | MoveToError::Persistence(_)
                 | MoveToError::InvalidState(_) => {
-                    (StatusCode::SERVICE_UNAVAILABLE, "workspace_unavailable")
+                    (StatusCode::SERVICE_UNAVAILABLE, "workflow_unavailable")
                 }
             };
-            runtime.rejected(&project_name, &workspace, Ok(&workbench));
+            runtime.rejected(&workspace_name, &workflow, Ok(&workbench));
             permit.complete();
             return WorkerResult {
                 error: Some((status, code, error.to_string())),
@@ -137,7 +137,7 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
             });
         }
     }
-    runtime.finish(&project_name, &workspace, &workbench, observation);
+    runtime.finish(&workspace_name, &workflow, &workbench, observation);
     permit.complete();
     WorkerResult { error: None }
 }

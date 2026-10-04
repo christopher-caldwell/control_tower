@@ -1,9 +1,0 @@
-#!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const data = path.join(process.env.CONTROL_TOWER_WORKSPACE, "data");
-const dayjs = require("dayjs");
-dayjs.extend(require("dayjs/plugin/utc"));
-const record = JSON.parse(fs.readFileSync(path.join(data, "record.json"), "utf8"));
-const inspection = {runtime: "node", recordId: String(record.id), label: record.label.trim().toUpperCase(), createdDate: dayjs.utc(record.created_at).format("YYYY-MM-DD")};
-fs.writeFileSync(path.join(data, "node_inspection.json"), JSON.stringify(inspection, null, 2) + "\n");

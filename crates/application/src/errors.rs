@@ -50,7 +50,7 @@ pub enum MoveToError {
     InvalidState(String),
     #[error("invalid target: {0}")]
     InvalidTarget(String),
-    #[error("the workspace checkpoint changed; refresh before submitting this movement")]
+    #[error("the workflow checkpoint changed; refresh before submitting this movement")]
     StaleCheckpoint,
 }
 
@@ -68,7 +68,7 @@ impl From<StatusError> for MoveToError {
 pub enum StageDefinitionsError {
     #[error("stage discovery failed: {0}")]
     StageDiscovery(#[from] StageDiscoveryError),
-    #[error("stage {0} was not found in this Workspace")]
+    #[error("stage {0} was not found in this Workflow")]
     UnknownStage(u32),
 }
 

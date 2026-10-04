@@ -23,28 +23,28 @@ enum Command {
         #[arg(value_enum)]
         action: Option<guides::GuideAction>,
     },
-    /// Validate the workspace in the current directory without running roles.
+    /// Validate the workflow in the current directory without running roles.
     Validate,
-    /// Open the local browser workbench for the current project.
+    /// Open the local browser workbench for the current workspace.
     Ui,
     /// Apply stages through the requested stage number.
     Up {
         #[arg(long)]
-        workspace: PathBuf,
+        workflow: PathBuf,
         #[arg(long)]
         stage: u32,
     },
     /// Revert stages until the requested completed stage (0 means the baseline).
     Down {
         #[arg(long)]
-        workspace: PathBuf,
+        workflow: PathBuf,
         #[arg(long)]
         stage: u32,
     },
-    /// Show the saved stage position and UUID for a workspace.
+    /// Show the saved stage position and UUID for a workflow.
     Status {
         #[arg(long)]
-        workspace: PathBuf,
+        workflow: PathBuf,
     },
 }
 
@@ -64,7 +64,7 @@ fn main() -> ExitCode {
         },
         _ => {}
     }
-    let workspace_root = match &cli.command {
+    let workflow_root = match &cli.command {
         Command::Validate => match std::env::current_dir() {
             Ok(path) => path,
             Err(error) => {
@@ -72,9 +72,9 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
-        Command::Up { workspace, .. }
-        | Command::Down { workspace, .. }
-        | Command::Status { workspace } => match resolve_workspace(workspace) {
+        Command::Up { workflow, .. }
+        | Command::Down { workflow, .. }
+        | Command::Status { workflow } => match resolve_workflow(workflow) {
             Ok(path) => path,
             Err(message) => {
                 eprintln!("error: {message}");
@@ -83,7 +83,7 @@ fn main() -> ExitCode {
         },
         Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
     };
-    let workbench = match deps::workbench(&workspace_root) {
+    let workbench = match deps::workbench(&workflow_root) {
         Ok(service) => service,
         Err(error) => {
             eprintln!("error: {error}. Run explicit local database setup; see README.md");
@@ -92,22 +92,20 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
-        Command::Validate => run_validate(&workbench, &workspace_root),
-        Command::Up { stage, .. } => run_move(&workbench, &workspace_root, Direction::Up, stage),
-        Command::Down { stage, .. } => {
-            run_move(&workbench, &workspace_root, Direction::Down, stage)
-        }
-        Command::Status { .. } => run_status(&workbench, &workspace_root),
+        Command::Validate => run_validate(&workbench, &workflow_root),
+        Command::Up { stage, .. } => run_move(&workbench, &workflow_root, Direction::Up, stage),
+        Command::Down { stage, .. } => run_move(&workbench, &workflow_root, Direction::Down, stage),
+        Command::Status { .. } => run_status(&workbench, &workflow_root),
         Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
     }
 }
 
-fn resolve_workspace(workspace: &Path) -> Result<PathBuf, String> {
-    let path = workspace
+fn resolve_workflow(workflow: &Path) -> Result<PathBuf, String> {
+    let path = workflow
         .canonicalize()
-        .map_err(|error| format!("cannot open workspace {}: {error}", workspace.display()))?;
+        .map_err(|error| format!("cannot open workflow {}: {error}", workflow.display()))?;
     if !path.is_dir() {
-        return Err(format!("workspace {} is not a directory", path.display()));
+        return Err(format!("workflow {} is not a directory", path.display()));
     }
     Ok(path)
 }

@@ -1,0 +1,21 @@
+#!/usr/bin/env -S uv run python
+import json
+import os
+from pathlib import Path
+import psycopg
+
+workflow = Path(os.environ["CONTROL_TOWER_WORKFLOW"])
+run_id = os.environ["CONTROL_TOWER_UUID"]
+receipt = json.loads((workflow / "data/postgres_receipt.json").read_text())
+if receipt["run_id"] != run_id:
+    raise SystemExit("receipt belongs to another run")
+with psycopg.connect(os.environ["GALLERY_POSTGRES_DSN"], connect_timeout=5) as connection:
+    connection.read_only = True
+    row = connection.execute(
+        "SELECT record_id, label FROM public.gallery_records WHERE run_id = %s", (run_id,)
+    ).fetchone()
+if row != (receipt["record_id"], receipt["label"]):
+    raise SystemExit("database record differs from saved receipt")
+(workflow / "data/postgres_inspection.json").write_text(
+    json.dumps({"run_id": run_id, "record_id": row[0], "label": row[1]}, indent=2) + "\n"
+)

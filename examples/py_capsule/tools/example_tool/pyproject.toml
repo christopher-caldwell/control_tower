@@ -1,7 +1,7 @@
 [project]
 name = "example-tool"
 version = "0.1.0"
-description = "Typed facade around the PyCapsule example used by Control Tower pattern workspaces"
+description = "Typed facade around the PyCapsule example used by Control Tower pattern workflows"
 requires-python = ">=3.11"
 dependencies = ["capsule-runner==0.0.1"]
 

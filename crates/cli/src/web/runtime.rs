@@ -1,6 +1,6 @@
 use super::{
     dto::*,
-    workspace::{WorkspaceContext, unavailable_workspace_view, workspace_snapshot},
+    workspace::{WorkflowContext, unavailable_workflow_view, workflow_snapshot},
 };
 use axum::response::sse::Event as SseEvent;
 use control_tower_application::{Direction, ExecutionProgress, Stage, Workbench};
@@ -12,23 +12,23 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) struct ObservationStore {
-    workspaces: Mutex<HashMap<String, Arc<WorkspaceRuntime>>>,
+    workflows: Mutex<HashMap<String, Arc<WorkflowRuntime>>>,
 }
-pub(super) struct WorkspaceRuntime {
-    record: Mutex<WorkspaceRecord>,
-    snapshots: watch::Sender<WorkspaceView>,
+pub(super) struct WorkflowRuntime {
+    record: Mutex<WorkflowRecord>,
+    snapshots: watch::Sender<WorkflowView>,
 }
-pub(super) struct WorkspaceRecord {
+pub(super) struct WorkflowRecord {
     pub(super) busy: bool,
     pub(super) observation: Option<MovementObservation>,
 }
 pub(super) struct MovementPermit {
-    runtime: Arc<WorkspaceRuntime>,
+    runtime: Arc<WorkflowRuntime>,
     completed: bool,
 }
 pub(super) struct RoleObservationInput<'a> {
-    pub(super) project_name: &'a str,
-    pub(super) workspace: &'a WorkspaceContext,
+    pub(super) workspace_name: &'a str,
+    pub(super) workflow: &'a WorkflowContext,
     pub(super) workbench: &'a Workbench,
     pub(super) direction: Direction,
     pub(super) target_stage: u32,
@@ -39,35 +39,35 @@ pub(super) struct RoleObservationInput<'a> {
 impl ObservationStore {
     pub(super) fn new() -> Self {
         Self {
-            workspaces: Mutex::new(HashMap::new()),
+            workflows: Mutex::new(HashMap::new()),
         }
     }
 
-    pub(super) fn workspace_state(
+    pub(super) fn workflow_state(
         &self,
-        project_name: &str,
-        workspace: &WorkspaceContext,
-    ) -> Arc<WorkspaceRuntime> {
-        let mut workspaces = lock(&self.workspaces);
-        workspaces
-            .entry(workspace.id.clone())
-            .or_insert_with(|| WorkspaceRuntime::new(project_name, workspace))
+        workspace_name: &str,
+        workflow: &WorkflowContext,
+    ) -> Arc<WorkflowRuntime> {
+        let mut workflows = lock(&self.workflows);
+        workflows
+            .entry(workflow.id.clone())
+            .or_insert_with(|| WorkflowRuntime::new(workspace_name, workflow))
             .clone()
     }
 }
 
-impl WorkspaceRuntime {
-    fn new(project_name: &str, workspace: &WorkspaceContext) -> Arc<Self> {
-        let snapshot = unavailable_workspace_view(
-            project_name,
-            workspace,
+impl WorkflowRuntime {
+    fn new(workspace_name: &str, workflow: &WorkflowContext) -> Arc<Self> {
+        let snapshot = unavailable_workflow_view(
+            workspace_name,
+            workflow,
             "Current status has not been read yet.".to_owned(),
             None,
             false,
         );
         let (snapshots, _) = watch::channel(snapshot);
         Arc::new(Self {
-            record: Mutex::new(WorkspaceRecord {
+            record: Mutex::new(WorkflowRecord {
                 busy: false,
                 observation: None,
             }),
@@ -75,18 +75,18 @@ impl WorkspaceRuntime {
         })
     }
 
-    pub(super) fn subscribe(&self) -> watch::Receiver<WorkspaceView> {
+    pub(super) fn subscribe(&self) -> watch::Receiver<WorkflowView> {
         self.snapshots.subscribe()
     }
 
     pub(super) fn current_snapshot(
         &self,
-        project_name: &str,
-        workspace: &WorkspaceContext,
+        workspace_name: &str,
+        workflow: &WorkflowContext,
         workbench: Result<&Workbench, String>,
-    ) -> WorkspaceView {
+    ) -> WorkflowView {
         let record = lock(&self.record);
-        self.publish(project_name, workspace, workbench, &record)
+        self.publish(workspace_name, workflow, workbench, &record)
     }
 
     pub(super) fn try_admit(self: &Arc<Self>) -> Option<MovementPermit> {
@@ -103,19 +103,19 @@ impl WorkspaceRuntime {
 
     pub(super) fn rejected(
         &self,
-        project_name: &str,
-        workspace: &WorkspaceContext,
+        workspace_name: &str,
+        workflow: &WorkflowContext,
         workbench: Result<&Workbench, String>,
     ) {
         let mut record = lock(&self.record);
         record.busy = false;
-        self.publish(project_name, workspace, workbench, &record);
+        self.publish(workspace_name, workflow, workbench, &record);
     }
 
     pub(super) fn observe(&self, input: RoleObservationInput<'_>) {
         let RoleObservationInput {
-            project_name,
-            workspace,
+            workspace_name,
+            workflow,
             workbench,
             direction,
             target_stage,
@@ -183,20 +183,20 @@ impl WorkspaceRuntime {
                 }
             }
         }
-        self.publish(project_name, workspace, Ok(workbench), &record);
+        self.publish(workspace_name, workflow, Ok(workbench), &record);
     }
 
     pub(super) fn finish(
         &self,
-        project_name: &str,
-        workspace: &WorkspaceContext,
+        workspace_name: &str,
+        workflow: &WorkflowContext,
         workbench: &Workbench,
         observation: MovementObservation,
     ) {
         let mut record = lock(&self.record);
         record.observation = Some(observation);
         record.busy = false;
-        self.publish(project_name, workspace, Ok(workbench), &record);
+        self.publish(workspace_name, workflow, Ok(workbench), &record);
     }
 
     pub(super) fn current_observation(&self) -> Option<MovementObservation> {
@@ -205,22 +205,22 @@ impl WorkspaceRuntime {
 
     fn publish(
         &self,
-        project_name: &str,
-        workspace: &WorkspaceContext,
+        workspace_name: &str,
+        workflow: &WorkflowContext,
         workbench: Result<&Workbench, String>,
-        record: &WorkspaceRecord,
-    ) -> WorkspaceView {
+        record: &WorkflowRecord,
+    ) -> WorkflowView {
         let snapshot = match workbench {
-            Ok(workbench) => workspace_snapshot(
-                project_name,
-                workspace,
+            Ok(workbench) => workflow_snapshot(
+                workspace_name,
+                workflow,
                 workbench,
                 record.observation.clone(),
                 record.busy,
             ),
-            Err(issue) => unavailable_workspace_view(
-                project_name,
-                workspace,
+            Err(issue) => unavailable_workflow_view(
+                workspace_name,
+                workflow,
                 issue,
                 record.observation.clone(),
                 record.busy,

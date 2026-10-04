@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const inspection = JSON.parse(
+  fs.readFileSync(path.join(process.env.CONTROL_TOWER_WORKFLOW, "data", "node_inspection.json"), "utf8")
+);
+if (inspection.runId !== process.env.CONTROL_TOWER_UUID || inspection.runtime !== "node" || inspection.recordId !== "123" || inspection.label !== "EXAMPLE RECORD" || inspection.createdDate !== "2026-01-02") {
+  process.exit(1);
+}

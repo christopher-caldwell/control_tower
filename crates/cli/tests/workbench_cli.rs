@@ -7,31 +7,31 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-static NEXT_WORKSPACE: AtomicU64 = AtomicU64::new(0);
+static NEXT_WORKFLOW: AtomicU64 = AtomicU64::new(0);
 
-struct Workspace(PathBuf);
+struct Workflow(PathBuf);
 
-impl Workspace {
+impl Workflow {
     fn from_fixture() -> Self {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after the Unix epoch")
             .as_nanos();
-        let workspace = std::env::temp_dir().join(format!(
+        let workflow = std::env::temp_dir().join(format!(
             "control-tower-{}-{nonce}-{}",
             std::process::id(),
-            NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed)
+            NEXT_WORKFLOW.fetch_add(1, Ordering::Relaxed)
         ));
         copy_directory(
             &Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/simple/workspaces/uuid-file"),
-            &workspace,
+                .join("../../examples/simple/workflows/uuid-file"),
+            &workflow,
         );
-        let database = workspace.join(".control_tower/state.sqlite3");
+        let database = workflow.join(".control_tower/state.sqlite3");
         control_tower_database::operations::bootstrap(&database)
             .expect("bootstrap fixture database");
         control_tower_database::operations::migrate(&database).expect("migrate fixture database");
-        Self(workspace)
+        Self(workflow)
     }
 
     fn path(&self) -> &Path {
@@ -39,7 +39,7 @@ impl Workspace {
     }
 }
 
-impl Drop for Workspace {
+impl Drop for Workflow {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
@@ -61,22 +61,22 @@ fn copy_directory(source: &Path, destination: &Path) {
     }
 }
 
-fn move_to(workspace: &Workspace, direction: &str, target: u32) -> Output {
+fn move_to(workflow: &Workflow, direction: &str, target: u32) -> Output {
     Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg(direction)
-        .arg("--workspace")
-        .arg(workspace.path())
+        .arg("--workflow")
+        .arg(workflow.path())
         .arg("--stage")
         .arg(target.to_string())
         .output()
         .expect("run Control Tower CLI")
 }
 
-fn status(workspace: &Workspace) -> Output {
+fn status(workflow: &Workflow) -> Output {
     Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("status")
-        .arg("--workspace")
-        .arg(workspace.path())
+        .arg("--workflow")
+        .arg(workflow.path())
         .output()
         .expect("run Control Tower status")
 }
@@ -89,8 +89,8 @@ fn output_text(output: &Output) -> String {
     )
 }
 
-fn uuid_file(workspace: &Workspace) -> Option<PathBuf> {
-    let data = workspace.path().join("data");
+fn uuid_file(workflow: &Workflow) -> Option<PathBuf> {
+    let data = workflow.path().join("data");
     let mut entries = match fs::read_dir(data) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
@@ -112,12 +112,12 @@ fn write_executable(path: &Path, contents: &str) {
 
 #[test]
 fn walks_fixture_forward_and_backward_across_cli_processes() {
-    let workspace = Workspace::from_fixture();
-    observe_roles(&workspace);
+    let workflow = Workflow::from_fixture();
+    observe_roles(&workflow);
 
-    let first_up = move_to(&workspace, "up", 1);
+    let first_up = move_to(&workflow, "up", 1);
     assert!(first_up.status.success(), "{}", output_text(&first_up));
-    let first_uuid_file = uuid_file(&workspace).expect("stage 1 creates the UUID file");
+    let first_uuid_file = uuid_file(&workflow).expect("stage 1 creates the UUID file");
     assert_eq!(fs::read(&first_uuid_file).unwrap(), b"");
     let uuid = first_uuid_file
         .file_name()
@@ -125,17 +125,17 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
         .to_string_lossy()
         .to_string();
 
-    let up_to_three = move_to(&workspace, "up", 3);
+    let up_to_three = move_to(&workflow, "up", 3);
     assert!(
         up_to_three.status.success(),
         "{}",
         output_text(&up_to_three)
     );
-    let third_uuid_file = uuid_file(&workspace).expect("UUID file remains present");
+    let third_uuid_file = uuid_file(&workflow).expect("UUID file remains present");
     assert_eq!(third_uuid_file.file_name().unwrap().to_string_lossy(), uuid);
     assert_eq!(fs::read(&third_uuid_file).unwrap(), b"hello to you");
 
-    let down_to_two = move_to(&workspace, "down", 2);
+    let down_to_two = move_to(&workflow, "down", 2);
     assert!(
         down_to_two.status.success(),
         "{}",
@@ -143,7 +143,7 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
     );
     assert_eq!(fs::read(&third_uuid_file).unwrap(), b"hello");
 
-    let down_to_one = move_to(&workspace, "down", 1);
+    let down_to_one = move_to(&workflow, "down", 1);
     assert!(
         down_to_one.status.success(),
         "{}",
@@ -151,14 +151,14 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
     );
     assert_eq!(fs::read(&third_uuid_file).unwrap(), b"");
 
-    let down_to_zero = move_to(&workspace, "down", 0);
+    let down_to_zero = move_to(&workflow, "down", 0);
     assert!(
         down_to_zero.status.success(),
         "{}",
         output_text(&down_to_zero)
     );
-    assert!(uuid_file(&workspace).is_none());
-    let final_status = status(&workspace);
+    assert!(uuid_file(&workflow).is_none());
+    let final_status = status(&workflow);
     assert!(
         final_status.status.success(),
         "{}",
@@ -166,11 +166,11 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
     );
     assert!(String::from_utf8_lossy(&final_status.stdout).contains("UUID: not created"));
     assert_eq!(
-        checkpoint(&workspace),
+        checkpoint(&workflow),
         control_tower_application::WorkbenchState::default()
     );
     assert_calls_and_uuid(
-        &workspace,
+        &workflow,
         &[
             "1 up",
             "1 verify-up",
@@ -191,131 +191,131 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
 
 #[test]
 fn retries_failed_up_verification_without_replaying_mutation() {
-    let workspace = Workspace::from_fixture();
-    let stage_two = workspace.path().join("stages/002-write-hello");
+    let workflow = Workflow::from_fixture();
+    let stage_two = workflow.path().join("stages/002-write-hello");
     write_executable(
         &stage_two.join("up"),
-        "#!/bin/sh\nset -eu\nprintf 'up\\n' >> \"$CONTROL_TOWER_WORKSPACE/stage-2-up.log\"\nprintf 'hello' > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\"\n",
+        "#!/bin/sh\nset -eu\nprintf 'up\\n' >> \"$CONTROL_TOWER_WORKFLOW/stage-2-up.log\"\nprintf 'hello' > \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\"\n",
     );
     write_executable(
         &stage_two.join("verify-up"),
-        "#!/bin/sh\nset -eu\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKSPACE/stage-2-verify-up.log\"\nmarker=\"$CONTROL_TOWER_WORKSPACE/verify-up-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 23; fi\ntest \"$(cat \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\")\" = hello\n",
+        "#!/bin/sh\nset -eu\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKFLOW/stage-2-verify-up.log\"\nmarker=\"$CONTROL_TOWER_WORKFLOW/verify-up-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 23; fi\ntest \"$(cat \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\")\" = hello\n",
     );
 
-    let first = move_to(&workspace, "up", 2);
+    let first = move_to(&workflow, "up", 2);
     assert!(!first.status.success(), "verification should fail once");
     assert!(output_text(&first).contains("verify-up exited with status 23"));
-    let pending_status = status(&workspace);
+    let pending_status = status(&workflow);
     assert!(String::from_utf8_lossy(&pending_status.stdout).contains("Pending verification: up 2"));
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-2-up.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-2-up.log")).unwrap(),
         "up\n"
     );
 
-    let retry = move_to(&workspace, "up", 2);
+    let retry = move_to(&workflow, "up", 2);
     assert!(retry.status.success(), "{}", output_text(&retry));
     assert!(String::from_utf8_lossy(&retry.stdout).contains("stage 2 verify-up"));
     assert!(!String::from_utf8_lossy(&retry.stdout).contains("stage 2 up"));
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-2-up.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-2-up.log")).unwrap(),
         "up\n"
     );
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-2-verify-up.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-2-verify-up.log")).unwrap(),
         "verify\nverify\n"
     );
 }
 
 #[test]
 fn retries_failed_down_verification_without_replaying_mutation() {
-    let workspace = Workspace::from_fixture();
-    let stage_three = workspace.path().join("stages/003-add-to-you");
+    let workflow = Workflow::from_fixture();
+    let stage_three = workflow.path().join("stages/003-add-to-you");
     write_executable(
         &stage_three.join("down"),
-        "#!/bin/sh\nset -eu\nprintf 'down\\n' >> \"$CONTROL_TOWER_WORKSPACE/stage-3-down.log\"\ntest \"$(cat \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\")\" = 'hello to you'\nprintf hello > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\"\n",
+        "#!/bin/sh\nset -eu\nprintf 'down\\n' >> \"$CONTROL_TOWER_WORKFLOW/stage-3-down.log\"\ntest \"$(cat \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\")\" = 'hello to you'\nprintf hello > \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\"\n",
     );
     write_executable(
         &stage_three.join("verify-down"),
-        "#!/bin/sh\nset -eu\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKSPACE/stage-3-verify-down.log\"\nmarker=\"$CONTROL_TOWER_WORKSPACE/verify-down-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 24; fi\ntest \"$(cat \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\")\" = hello\n",
+        "#!/bin/sh\nset -eu\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKFLOW/stage-3-verify-down.log\"\nmarker=\"$CONTROL_TOWER_WORKFLOW/verify-down-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 24; fi\ntest \"$(cat \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\")\" = hello\n",
     );
 
-    let up = move_to(&workspace, "up", 3);
+    let up = move_to(&workflow, "up", 3);
     assert!(up.status.success(), "{}", output_text(&up));
-    let first_down = move_to(&workspace, "down", 2);
+    let first_down = move_to(&workflow, "down", 2);
     assert!(
         !first_down.status.success(),
         "verification should fail once"
     );
     assert!(output_text(&first_down).contains("verify-down exited with status 24"));
-    let pending_status = status(&workspace);
+    let pending_status = status(&workflow);
     assert!(
         String::from_utf8_lossy(&pending_status.stdout).contains("Pending verification: down 3")
     );
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-3-down.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-3-down.log")).unwrap(),
         "down\n"
     );
 
-    let retry = move_to(&workspace, "down", 2);
+    let retry = move_to(&workflow, "down", 2);
     assert!(retry.status.success(), "{}", output_text(&retry));
     assert!(String::from_utf8_lossy(&retry.stdout).contains("stage 3 verify-down"));
     assert!(!String::from_utf8_lossy(&retry.stdout).contains("stage 3 down"));
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-3-down.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-3-down.log")).unwrap(),
         "down\n"
     );
     assert_eq!(
-        fs::read_to_string(workspace.path().join("stage-3-verify-down.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("stage-3-verify-down.log")).unwrap(),
         "verify\nverify\n"
     );
-    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"hello");
+    assert_eq!(fs::read(uuid_file(&workflow).unwrap()).unwrap(), b"hello");
 }
 
 #[test]
 fn omitted_directional_verifiers_do_not_block_movement() {
-    let workspace = Workspace::from_fixture();
-    let stage_two = workspace.path().join("stages/002-write-hello");
+    let workflow = Workflow::from_fixture();
+    let stage_two = workflow.path().join("stages/002-write-hello");
     fs::remove_file(stage_two.join("verify-up")).unwrap();
     fs::remove_file(stage_two.join("verify-down")).unwrap();
 
-    let up = move_to(&workspace, "up", 2);
+    let up = move_to(&workflow, "up", 2);
     assert!(up.status.success(), "{}", output_text(&up));
-    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"hello");
+    assert_eq!(fs::read(uuid_file(&workflow).unwrap()).unwrap(), b"hello");
 
-    let down = move_to(&workspace, "down", 1);
+    let down = move_to(&workflow, "down", 1);
     assert!(down.status.success(), "{}", output_text(&down));
-    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"");
+    assert_eq!(fs::read(uuid_file(&workflow).unwrap()).unwrap(), b"");
 }
 
 #[test]
 fn failed_mutation_stops_before_its_verifier_and_later_stages() {
-    let workspace = Workspace::from_fixture();
-    let stage_two = workspace.path().join("stages/002-write-hello");
-    let stage_three = workspace.path().join("stages/003-add-to-you");
+    let workflow = Workflow::from_fixture();
+    let stage_two = workflow.path().join("stages/002-write-hello");
+    let stage_three = workflow.path().join("stages/003-add-to-you");
     write_executable(
         &stage_two.join("up"),
-        "#!/bin/sh\nprintf 'mutation\\n' >> \"$CONTROL_TOWER_WORKSPACE/mutation.log\"\nexit 17\n",
+        "#!/bin/sh\nprintf 'mutation\\n' >> \"$CONTROL_TOWER_WORKFLOW/mutation.log\"\nexit 17\n",
     );
     write_executable(
         &stage_two.join("verify-up"),
-        "#!/bin/sh\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKSPACE/verifier.log\"\n",
+        "#!/bin/sh\nprintf 'verify\\n' >> \"$CONTROL_TOWER_WORKFLOW/verifier.log\"\n",
     );
     write_executable(
         &stage_three.join("up"),
-        "#!/bin/sh\nprintf 'stage 3\\n' >> \"$CONTROL_TOWER_WORKSPACE/later-stage.log\"\n",
+        "#!/bin/sh\nprintf 'stage 3\\n' >> \"$CONTROL_TOWER_WORKFLOW/later-stage.log\"\n",
     );
 
-    let failed_move = move_to(&workspace, "up", 3);
+    let failed_move = move_to(&workflow, "up", 3);
     assert!(!failed_move.status.success(), "mutation should fail");
     assert!(output_text(&failed_move).contains("stage 2 up exited with status 17"));
     assert_eq!(
-        fs::read_to_string(workspace.path().join("mutation.log")).unwrap(),
+        fs::read_to_string(workflow.path().join("mutation.log")).unwrap(),
         "mutation\n"
     );
-    assert!(!workspace.path().join("verifier.log").exists());
-    assert!(!workspace.path().join("later-stage.log").exists());
+    assert!(!workflow.path().join("verifier.log").exists());
+    assert!(!workflow.path().join("later-stage.log").exists());
 
-    let final_status = status(&workspace);
+    let final_status = status(&workflow);
     let status_text = String::from_utf8_lossy(&final_status.stdout);
     assert!(status_text.contains("Completed stage: 1"));
     assert!(!status_text.contains("Pending verification:"));
@@ -323,25 +323,25 @@ fn failed_mutation_stops_before_its_verifier_and_later_stages() {
 
 #[test]
 fn ordinary_cli_does_not_bootstrap_or_migrate() {
-    let workspace = Workspace::from_fixture();
-    fs::remove_dir_all(workspace.path().join(".control_tower")).unwrap();
-    let output = status(&workspace);
+    let workflow = Workflow::from_fixture();
+    fs::remove_dir_all(workflow.path().join(".control_tower")).unwrap();
+    let output = status(&workflow);
     assert!(!output.status.success());
     assert!(output_text(&output).contains("explicit local database setup"));
-    assert!(!workspace.path().join(".control_tower").exists());
-    let database = workspace.path().join(".control_tower/state.sqlite3");
+    assert!(!workflow.path().join(".control_tower").exists());
+    let database = workflow.path().join(".control_tower/state.sqlite3");
     control_tower_database::operations::bootstrap(&database).unwrap();
-    let output = move_to(&workspace, "up", 1);
+    let output = move_to(&workflow, "up", 1);
     assert!(!output.status.success());
     assert!(output_text(&output).contains("schema is not initialized"));
-    assert!(uuid_file(&workspace).is_none());
+    assert!(uuid_file(&workflow).is_none());
     assert!(control_tower_database::operations::verify(&database).is_err());
 }
 
 // Keep the author's scripts as the external semantic authority, adding only
 // call/UUID observation and a first-attempt verifier failure for these tests.
-fn observe_roles(workspace: &Workspace) {
-    for directory in fs::read_dir(workspace.path().join("stages")).unwrap() {
+fn observe_roles(workflow: &Workflow) {
+    for directory in fs::read_dir(workflow.path().join("stages")).unwrap() {
         let directory = directory.unwrap().path();
         for role in ["up", "down", "verify-up", "verify-down"] {
             let path = directory.join(role);
@@ -350,30 +350,30 @@ fn observe_roles(workspace: &Workspace) {
             write_executable(
                 &path,
                 &format!(
-                    "{shebang}\nprintf '%s %s %s\\n' \"$CONTROL_TOWER_STAGE\" \"$CONTROL_TOWER_ROLE\" \"$CONTROL_TOWER_UUID\" >> \"$CONTROL_TOWER_WORKSPACE/calls.log\"\n{body}"
+                    "{shebang}\nprintf '%s %s %s\\n' \"$CONTROL_TOWER_STAGE\" \"$CONTROL_TOWER_ROLE\" \"$CONTROL_TOWER_UUID\" >> \"$CONTROL_TOWER_WORKFLOW/calls.log\"\n{body}"
                 ),
             );
         }
     }
 }
 
-fn fail_verifier_once(workspace: &Workspace, stage: &str, role: &str) {
-    let path = workspace.path().join("stages").join(stage).join(role);
+fn fail_verifier_once(workflow: &Workflow, stage: &str, role: &str) {
+    let path = workflow.path().join("stages").join(stage).join(role);
     let script = fs::read_to_string(&path).unwrap();
     // Insert after the observation so even the intentionally failed check is logged.
     let (prefix, body) = script.split_once("set -eu\n").unwrap();
     write_executable(
         &path,
         &format!(
-            "{prefix}set -eu\nmarker=\"$CONTROL_TOWER_WORKSPACE/{stage}-{role}-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 23; fi\n{body}"
+            "{prefix}set -eu\nmarker=\"$CONTROL_TOWER_WORKFLOW/{stage}-{role}-attempted\"\nif [ ! -e \"$marker\" ]; then touch \"$marker\"; exit 23; fi\n{body}"
         ),
     );
 }
 
-fn checkpoint(workspace: &Workspace) -> control_tower_application::WorkbenchState {
+fn checkpoint(workflow: &Workflow) -> control_tower_application::WorkbenchState {
     use control_tower_application::WorkbenchQueries;
     control_tower_database::workbench::SqliteWorkbenchQueries::open(
-        &workspace.path().join(".control_tower/state.sqlite3"),
+        &workflow.path().join(".control_tower/state.sqlite3"),
     )
     .unwrap()
     .read_checkpoint()
@@ -381,8 +381,8 @@ fn checkpoint(workspace: &Workspace) -> control_tower_application::WorkbenchStat
     .unwrap()
 }
 
-fn assert_checkpoint(workspace: &Workspace, completed: usize, pending: Option<(&str, usize)>) {
-    let state = checkpoint(workspace);
+fn assert_checkpoint(workflow: &Workflow, completed: usize, pending: Option<(&str, usize)>) {
+    let state = checkpoint(workflow);
     assert_eq!(state.completed_stage_count, completed);
     assert_eq!(
         state
@@ -390,7 +390,7 @@ fn assert_checkpoint(workspace: &Workspace, completed: usize, pending: Option<(&
             .map(|p| (p.direction.as_str(), p.stage_index + 1)),
         pending
     );
-    let output = status(workspace);
+    let output = status(workflow);
     assert!(output.status.success(), "{}", output_text(&output));
     let text = output_text(&output);
     assert!(text.contains(&format!("Completed stage: {completed}")));
@@ -401,8 +401,8 @@ fn assert_checkpoint(workspace: &Workspace, completed: usize, pending: Option<(&
     }
 }
 
-fn assert_calls_and_uuid(workspace: &Workspace, expected: &[&str], uuid: &str) {
-    let text = fs::read_to_string(workspace.path().join("calls.log")).unwrap();
+fn assert_calls_and_uuid(workflow: &Workflow, expected: &[&str], uuid: &str) {
+    let text = fs::read_to_string(workflow.path().join("calls.log")).unwrap();
     let calls: Vec<_> = text
         .lines()
         .map(|line| {
@@ -417,25 +417,25 @@ fn assert_calls_and_uuid(workspace: &Workspace, expected: &[&str], uuid: &str) {
 #[test]
 fn failed_verify_up_backs_out_same_stage_or_farther_across_cli_processes() {
     for target in [2, 1] {
-        let workspace = Workspace::from_fixture();
-        observe_roles(&workspace);
-        fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
-        let first = move_to(&workspace, "up", 3);
+        let workflow = Workflow::from_fixture();
+        observe_roles(&workflow);
+        fail_verifier_once(&workflow, "003-add-to-you", "verify-up");
+        let first = move_to(&workflow, "up", 3);
         assert!(!first.status.success(), "{}", output_text(&first));
         assert!(output_text(&first).contains("verify-up exited with status 23"));
-        assert_checkpoint(&workspace, 2, Some(("up", 3)));
-        let uuid = checkpoint(&workspace).uuid.unwrap();
+        assert_checkpoint(&workflow, 2, Some(("up", 3)));
+        let uuid = checkpoint(&workflow).uuid.unwrap();
         assert_eq!(
-            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            fs::read(uuid_file(&workflow).unwrap()).unwrap(),
             b"hello to you"
         );
 
-        let reverse = move_to(&workspace, "down", target);
+        let reverse = move_to(&workflow, "down", target);
         assert!(reverse.status.success(), "{}", output_text(&reverse));
-        assert_checkpoint(&workspace, target as usize, None);
-        assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
+        assert_checkpoint(&workflow, target as usize, None);
+        assert_eq!(checkpoint(&workflow).uuid.as_deref(), Some(uuid.as_str()));
         assert_eq!(
-            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            fs::read(uuid_file(&workflow).unwrap()).unwrap(),
             if target == 2 { &b"hello"[..] } else { &b""[..] }
         );
         let mut expected = vec![
@@ -451,32 +451,32 @@ fn failed_verify_up_backs_out_same_stage_or_farther_across_cli_processes() {
         if target == 1 {
             expected.extend(["2 down", "2 verify-down"]);
         }
-        assert_calls_and_uuid(&workspace, &expected, &uuid);
+        assert_calls_and_uuid(&workflow, &expected, &uuid);
     }
 }
 
 #[test]
 fn rollback_verifier_failure_persists_and_retries_only_check_before_walking_farther() {
-    let workspace = Workspace::from_fixture();
-    observe_roles(&workspace);
-    fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
-    fail_verifier_once(&workspace, "003-add-to-you", "verify-down");
-    assert!(!move_to(&workspace, "up", 3).status.success());
-    assert_checkpoint(&workspace, 2, Some(("up", 3)));
-    let uuid = checkpoint(&workspace).uuid.unwrap();
-    let reverse = move_to(&workspace, "down", 1);
+    let workflow = Workflow::from_fixture();
+    observe_roles(&workflow);
+    fail_verifier_once(&workflow, "003-add-to-you", "verify-up");
+    fail_verifier_once(&workflow, "003-add-to-you", "verify-down");
+    assert!(!move_to(&workflow, "up", 3).status.success());
+    assert_checkpoint(&workflow, 2, Some(("up", 3)));
+    let uuid = checkpoint(&workflow).uuid.unwrap();
+    let reverse = move_to(&workflow, "down", 1);
     assert!(!reverse.status.success(), "{}", output_text(&reverse));
     assert!(output_text(&reverse).contains("verify-down exited with status 23"));
-    assert_checkpoint(&workspace, 2, Some(("down", 3)));
-    assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
-    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"hello");
+    assert_checkpoint(&workflow, 2, Some(("down", 3)));
+    assert_eq!(checkpoint(&workflow).uuid.as_deref(), Some(uuid.as_str()));
+    assert_eq!(fs::read(uuid_file(&workflow).unwrap()).unwrap(), b"hello");
 
-    let retry = move_to(&workspace, "down", 1);
+    let retry = move_to(&workflow, "down", 1);
     assert!(retry.status.success(), "{}", output_text(&retry));
-    assert_checkpoint(&workspace, 1, None);
-    assert_eq!(fs::read(uuid_file(&workspace).unwrap()).unwrap(), b"");
+    assert_checkpoint(&workflow, 1, None);
+    assert_eq!(fs::read(uuid_file(&workflow).unwrap()).unwrap(), b"");
     assert_calls_and_uuid(
-        &workspace,
+        &workflow,
         &[
             "1 up",
             "1 verify-up",
@@ -497,19 +497,19 @@ fn rollback_verifier_failure_persists_and_retries_only_check_before_walking_fart
 #[test]
 fn pending_down_reverses_up_and_reverse_verification_is_resumable_across_processes() {
     for fail_reverse_verifier in [false, true] {
-        let workspace = Workspace::from_fixture();
-        observe_roles(&workspace);
-        let up = move_to(&workspace, "up", 3);
+        let workflow = Workflow::from_fixture();
+        observe_roles(&workflow);
+        let up = move_to(&workflow, "up", 3);
         assert!(up.status.success(), "{}", output_text(&up));
-        let uuid = checkpoint(&workspace).uuid.unwrap();
-        fail_verifier_once(&workspace, "003-add-to-you", "verify-down");
-        let down = move_to(&workspace, "down", 2);
+        let uuid = checkpoint(&workflow).uuid.unwrap();
+        fail_verifier_once(&workflow, "003-add-to-you", "verify-down");
+        let down = move_to(&workflow, "down", 2);
         assert!(!down.status.success(), "{}", output_text(&down));
-        assert_checkpoint(&workspace, 3, Some(("down", 3)));
+        assert_checkpoint(&workflow, 3, Some(("down", 3)));
         if fail_reverse_verifier {
-            fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
+            fail_verifier_once(&workflow, "003-add-to-you", "verify-up");
         }
-        let reverse = move_to(&workspace, "up", 3);
+        let reverse = move_to(&workflow, "up", 3);
         assert_eq!(
             reverse.status.success(),
             !fail_reverse_verifier,
@@ -529,18 +529,18 @@ fn pending_down_reverses_up_and_reverse_verification_is_resumable_across_process
             "3 verify-up",
         ];
         if fail_reverse_verifier {
-            assert_checkpoint(&workspace, 3, Some(("up", 3)));
-            let retry = move_to(&workspace, "up", 3);
+            assert_checkpoint(&workflow, 3, Some(("up", 3)));
+            let retry = move_to(&workflow, "up", 3);
             assert!(retry.status.success(), "{}", output_text(&retry));
             expected.push("3 verify-up");
         }
-        assert_checkpoint(&workspace, 3, None);
-        assert_eq!(checkpoint(&workspace).uuid.as_deref(), Some(uuid.as_str()));
+        assert_checkpoint(&workflow, 3, None);
+        assert_eq!(checkpoint(&workflow).uuid.as_deref(), Some(uuid.as_str()));
         assert_eq!(
-            fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+            fs::read(uuid_file(&workflow).unwrap()).unwrap(),
             b"hello to you"
         );
-        assert_calls_and_uuid(&workspace, &expected, &uuid);
+        assert_calls_and_uuid(&workflow, &expected, &uuid);
     }
 }
 
@@ -552,35 +552,35 @@ fn role_feedback_arrives_while_roles_wait_and_output_is_not_replayed() {
     use std::time::{Duration, Instant};
     struct Running {
         child: Child,
-        workspace: PathBuf,
+        workflow: PathBuf,
     }
     impl Drop for Running {
         fn drop(&mut self) {
             for n in [1, 2] {
-                let _ = fs::write(self.workspace.join(format!("release-{n}")), b"");
+                let _ = fs::write(self.workflow.join(format!("release-{n}")), b"");
             }
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
     }
-    let workspace = Workspace::from_fixture();
+    let workflow = Workflow::from_fixture();
     for (n, name) in [(1, "001-create-file"), (2, "002-write-hello")] {
-        fs::remove_file(workspace.path().join("stages").join(name).join("verify-up")).unwrap();
+        fs::remove_file(workflow.path().join("stages").join(name).join("verify-up")).unwrap();
         let mutation = if n == 1 {
-            "mkdir -p \"$CONTROL_TOWER_WORKSPACE/data\"\n: > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\""
+            "mkdir -p \"$CONTROL_TOWER_WORKFLOW/data\"\n: > \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\""
         } else {
-            "printf hello > \"$CONTROL_TOWER_WORKSPACE/data/$CONTROL_TOWER_UUID\""
+            "printf hello > \"$CONTROL_TOWER_WORKFLOW/data/$CONTROL_TOWER_UUID\""
         };
         write_executable(
-            &workspace.path().join("stages").join(name).join("up"),
+            &workflow.path().join("stages").join(name).join("up"),
             &format!(
-                "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKSPACE/waiting-{n}\"\nattempt=0\nwhile [ ! -e \"$CONTROL_TOWER_WORKSPACE/release-{n}\" ]; do attempt=$((attempt+1)); test \"$attempt\" -lt 400; sleep 0.05; done\n{mutation}\nprintf 'role-{n}-bytes'\nprintf 'role-{n}-stderr' >&2\n"
+                "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKFLOW/waiting-{n}\"\nattempt=0\nwhile [ ! -e \"$CONTROL_TOWER_WORKFLOW/release-{n}\" ]; do attempt=$((attempt+1)); test \"$attempt\" -lt 400; sleep 0.05; done\n{mutation}\nprintf 'role-{n}-bytes'\nprintf 'role-{n}-stderr' >&2\n"
             ),
         );
     }
     let child = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["up", "--workspace"])
-        .arg(workspace.path())
+        .args(["up", "--workflow"])
+        .arg(workflow.path())
         .args(["--stage", "2"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -588,7 +588,7 @@ fn role_feedback_arrives_while_roles_wait_and_output_is_not_replayed() {
         .unwrap();
     let mut running = Running {
         child,
-        workspace: workspace.path().to_owned(),
+        workflow: workflow.path().to_owned(),
     };
     let stdout = running.child.stdout.take().unwrap();
     let mut stderr = running.child.stderr.take().unwrap();
@@ -615,16 +615,16 @@ fn role_feedback_arrives_while_roles_wait_and_output_is_not_replayed() {
     };
     until("[stage 1 up (create-file)] starting");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !workspace.path().join("waiting-1").exists() {
+    while !workflow.path().join("waiting-1").exists() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(running.child.try_wait().unwrap().is_none());
-    fs::write(workspace.path().join("release-1"), b"").unwrap();
+    fs::write(workflow.path().join("release-1"), b"").unwrap();
     until("[stage 1 up (create-file)] succeeded");
     until("[stage 2 up (write-hello)] starting");
     assert!(running.child.try_wait().unwrap().is_none());
-    fs::write(workspace.path().join("release-2"), b"").unwrap();
+    fs::write(workflow.path().join("release-2"), b"").unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(exit) = running.child.try_wait().unwrap() {
@@ -664,27 +664,27 @@ fn suggested_command(text: &str, heading: &str) -> String {
 
 #[test]
 fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_stage() {
-    let mut workspace = Workspace::from_fixture();
-    let quoted = workspace.path().with_file_name(format!(
+    let mut workflow = Workflow::from_fixture();
+    let quoted = workflow.path().with_file_name(format!(
         "{} user's fixture",
-        workspace.path().file_name().unwrap().to_string_lossy()
+        workflow.path().file_name().unwrap().to_string_lossy()
     ));
-    fs::rename(workspace.path(), &quoted).unwrap();
-    workspace.0 = quoted;
+    fs::rename(workflow.path(), &quoted).unwrap();
+    workflow.0 = quoted;
     for (old, new) in [
         ("001-create-file", "010-create-file"),
         ("002-write-hello", "200-write-hello"),
         ("003-add-to-you", "900-add-to-you"),
     ] {
         fs::rename(
-            workspace.path().join("stages").join(old),
-            workspace.path().join("stages").join(new),
+            workflow.path().join("stages").join(old),
+            workflow.path().join("stages").join(new),
         )
         .unwrap();
     }
-    observe_roles(&workspace);
-    fail_verifier_once(&workspace, "200-write-hello", "verify-up");
-    let failed = move_to(&workspace, "up", 900);
+    observe_roles(&workflow);
+    fail_verifier_once(&workflow, "200-write-hello", "verify-up");
+    let failed = move_to(&workflow, "up", 900);
     assert!(!failed.status.success());
     let text = output_text(&failed);
     assert!(text.contains("Completed stage: 10 (create-file)"));
@@ -704,15 +704,15 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
         "{}",
         output_text(&retry_output)
     );
-    assert_eq!(checkpoint(&workspace).completed_stage_count, 2);
+    assert_eq!(checkpoint(&workflow).completed_stage_count, 2);
     let retry_text = output_text(&retry_output);
     assert!(retry_text.contains("stage 200 verify-up"));
     assert!(!retry_text.contains("stage 200 up"));
     assert!(!retry_text.contains("stage 900"));
-    assert!(output_text(&move_to(&workspace, "up", 200)).contains("No roles ran"));
-    assert!(move_to(&workspace, "up", 900).status.success());
-    fail_verifier_once(&workspace, "900-add-to-you", "verify-down");
-    let failed = move_to(&workspace, "down", 0);
+    assert!(output_text(&move_to(&workflow, "up", 200)).contains("No roles ran"));
+    assert!(move_to(&workflow, "up", 900).status.success());
+    fail_verifier_once(&workflow, "900-add-to-you", "verify-down");
+    let failed = move_to(&workflow, "down", 0);
     let text = output_text(&failed);
     let reverse = suggested_command(&text, "Reverse the active stage:");
     assert!(reverse.ends_with("--stage 900"));
@@ -724,30 +724,30 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
     assert!(reversed.status.success(), "{}", output_text(&reversed));
     assert!(!output_text(&reversed).contains("No roles ran"));
     assert_eq!(
-        fs::read(uuid_file(&workspace).unwrap()).unwrap(),
+        fs::read(uuid_file(&workflow).unwrap()).unwrap(),
         b"hello to you"
     );
-    let failed = move_to(&workspace, "down", 0); // Once-failing check now passes, so the whole walk settles.
+    let failed = move_to(&workflow, "down", 0); // Once-failing check now passes, so the whole walk settles.
     assert!(failed.status.success());
     assert_eq!(
-        checkpoint(&workspace),
+        checkpoint(&workflow),
         control_tower_application::WorkbenchState::default()
     );
 }
 
 #[test]
 fn failure_choices_do_not_advertise_missing_reverse_or_misclassify_failed_reverse_mutation() {
-    let workspace = Workspace::from_fixture();
-    fail_verifier_once(&workspace, "003-add-to-you", "verify-up");
-    let stage = workspace.path().join("stages/003-add-to-you");
+    let workflow = Workflow::from_fixture();
+    fail_verifier_once(&workflow, "003-add-to-you", "verify-up");
+    let stage = workflow.path().join("stages/003-add-to-you");
     fs::remove_file(stage.join("down")).unwrap();
     fs::remove_file(stage.join("verify-down")).unwrap();
-    let failed = move_to(&workspace, "up", 3);
+    let failed = move_to(&workflow, "up", 3);
     let text = output_text(&failed);
     assert!(text.contains("Retry this check only:"));
     assert!(!text.contains("Reverse the active stage:"));
     write_executable(&stage.join("down"), "#!/bin/sh\nexit 17\n");
-    let failed = move_to(&workspace, "down", 2);
+    let failed = move_to(&workflow, "down", 2);
     let text = output_text(&failed);
     assert!(text.contains("Pending verification: up 3"));
     assert!(text.contains("Inspect author-owned effects"));
@@ -756,9 +756,9 @@ fn failure_choices_do_not_advertise_missing_reverse_or_misclassify_failed_revers
 }
 
 #[test]
-fn guide_index_and_exact_embedded_actions_work_without_a_workspace() {
-    let workspace = Workspace::from_fixture();
-    let cwd = workspace.path().join("not-a-workspace");
+fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
+    let workflow = Workflow::from_fixture();
+    let cwd = workflow.path().join("not-a-workflow");
     fs::create_dir(&cwd).unwrap();
     let index = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("guide")
@@ -778,23 +778,23 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workspace() {
     assert_eq!(
         actions,
         [
-            "create_workspace",
-            "edit_workspace",
-            "workspace_contract",
-            "operate_workspace",
-            "recover_workspace",
+            "create_workflow",
+            "edit_workflow",
+            "workflow_contract",
+            "operate_workflow",
+            "recover_workflow",
         ]
     );
     assert!(!cwd.join(".control_tower").exists());
 
     for (action, heading) in [
-        ("create_workspace", "# Create a workspace"),
-        ("edit_workspace", "# Edit an existing workspace"),
-        ("workspace_contract", "# Workspace and executable contract"),
-        ("operate_workspace", "# Operate an existing workspace"),
+        ("create_workflow", "# Create a workflow"),
+        ("edit_workflow", "# Edit an existing workflow"),
+        ("workflow_contract", "# Workflow and executable contract"),
+        ("operate_workflow", "# Operate an existing workflow"),
         (
-            "recover_workspace",
-            "# Recover a failed, pending, or uncertain workspace",
+            "recover_workflow",
+            "# Recover a failed, pending, or uncertain workflow",
         ),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
@@ -811,21 +811,21 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workspace() {
     }
 
     let create = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["guide", "create_workspace"])
+        .args(["guide", "create_workflow"])
         .current_dir(&cwd)
         .output()
         .unwrap();
     let create = String::from_utf8(create.stdout).unwrap();
     assert!(create.contains("control-tower validate"));
-    assert!(!create.contains("status --workspace"));
+    assert!(!create.contains("status --workflow"));
     let edit = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["guide", "edit_workspace"])
+        .args(["guide", "edit_workflow"])
         .current_dir(&cwd)
         .output()
         .unwrap();
     let edit = String::from_utf8(edit.stdout).unwrap();
     assert!(edit.contains("control-tower validate"));
-    assert!(edit.contains("status --workspace PATH"));
+    assert!(edit.contains("status --workflow PATH"));
     assert!(!edit.contains("1. Choose a new directory"));
 
     let extra_action = Command::new(env!("CARGO_BIN_EXE_control-tower"))
@@ -838,42 +838,42 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workspace() {
 
 #[test]
 fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() {
-    let workspace = Workspace::from_fixture();
-    let role_marker = workspace.path().join("validate-ran-a-role");
-    for entry in fs::read_dir(workspace.path().join("stages")).unwrap() {
+    let workflow = Workflow::from_fixture();
+    let role_marker = workflow.path().join("validate-ran-a-role");
+    for entry in fs::read_dir(workflow.path().join("stages")).unwrap() {
         let directory = entry.unwrap().path();
         for role in ["up", "down", "verify-up", "verify-down"] {
             let path = directory.join(role);
             if path.is_file() {
                 write_executable(
                     &path,
-                    "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKSPACE/validate-ran-a-role\"\n",
+                    "#!/bin/sh\nset -eu\ntouch \"$CONTROL_TOWER_WORKFLOW/validate-ran-a-role\"\n",
                 );
             }
         }
     }
-    let database = workspace.path().join(".control_tower/state.sqlite3");
+    let database = workflow.path().join(".control_tower/state.sqlite3");
     let before = fs::read(&database).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("validate")
-        .current_dir(workspace.path())
+        .current_dir(workflow.path())
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", output_text(&output));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Workspace loaded successfully:"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Workflow loaded successfully:"));
     assert!(String::from_utf8_lossy(&output.stdout).contains("Discovered stages: 3"));
     assert!(!role_marker.exists(), "validation must not execute a role");
     assert_eq!(fs::read(&database).unwrap(), before);
 
     let path_option = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["validate", "--workspace"])
-        .arg(workspace.path())
-        .current_dir(workspace.path())
+        .args(["validate", "--workflow"])
+        .arg(workflow.path())
+        .current_dir(workflow.path())
         .output()
         .unwrap();
     assert!(!path_option.status.success());
 
-    let invalid = workspace.path().join("not-a-workspace");
+    let invalid = workflow.path().join("not-a-workflow");
     fs::create_dir(&invalid).unwrap();
     let failed = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("validate")
@@ -899,12 +899,12 @@ fn conditional_sqlite_save_failures_report_confirmed_checkpoint_and_retain_role_
             vec!["1 up", "1 verify-up"],
         ),
     ] {
-        let workspace = Workspace::from_fixture();
-        observe_roles(&workspace);
-        let database = workspace.path().join(".control_tower/state.sqlite3");
+        let workflow = Workflow::from_fixture();
+        observe_roles(&workflow);
+        let database = workflow.path().join(".control_tower/state.sqlite3");
         let connection = rusqlite::Connection::open(database).unwrap();
         connection.execute_batch(&format!("CREATE TRIGGER reject_checkpoint BEFORE INSERT ON workbench_state WHEN {condition} BEGIN SELECT RAISE(FAIL, 'injected {name} failure'); END;")).unwrap();
-        let failed = move_to(&workspace, "up", 3);
+        let failed = move_to(&workflow, "up", 3);
         assert!(!failed.status.success());
         let text = String::from_utf8_lossy(&failed.stdout);
         assert!(text.contains("created "));
@@ -917,7 +917,7 @@ fn conditional_sqlite_save_failures_report_confirmed_checkpoint_and_retain_role_
             .1
             .split_once("Unconfirmed checkpoint update:\n")
             .unwrap();
-        let status = status(&workspace);
+        let status = status(&workflow);
         assert!(status.status.success());
         assert_eq!(confirmed, String::from_utf8_lossy(&status.stdout));
         assert!(confirmed.contains("Completed stage: baseline (0)"));
@@ -932,18 +932,18 @@ fn conditional_sqlite_save_failures_report_confirmed_checkpoint_and_retain_role_
             assert!(attempted.contains("Completed stage: 1 (create-file)"));
             assert!(text.contains("UUID file exists"));
         }
-        let uuid = checkpoint(&workspace).uuid.unwrap();
-        assert_calls_and_uuid(&workspace, &expected_calls, &uuid);
+        let uuid = checkpoint(&workflow).uuid.unwrap();
+        assert_calls_and_uuid(&workflow, &expected_calls, &uuid);
         connection
             .execute_batch("DROP TRIGGER reject_checkpoint")
             .unwrap();
-        let retry = move_to(&workspace, "up", 1);
+        let retry = move_to(&workflow, "up", 1);
         assert!(retry.status.success());
         let text = output_text(&retry);
         assert_eq!(
             text.contains("[stage 1 up (create-file)] starting"),
             name == "pending"
         );
-        assert_eq!(checkpoint(&workspace).completed_stage_count, 1);
+        assert_eq!(checkpoint(&workflow).completed_stage_count, 1);
     }
 }

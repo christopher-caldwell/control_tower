@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./workbench";
-import type { MovementObservation, ProjectView, RoleObservation, WorkspaceView } from "./types";
+import type { MovementObservation, WorkspaceView, RoleObservation, WorkflowView } from "./types";
 
 const stage = { number: 10, name: "seed" };
 const laterStage = { number: 20, name: "finish" };
@@ -14,7 +14,7 @@ class ControlledEventSource extends EventTarget {
     ControlledEventSource.instances.push(this);
   }
   close() {}
-  snapshot(value: WorkspaceView) {
+  snapshot(value: WorkflowView) {
     this.dispatchEvent(new MessageEvent("snapshot", { data: JSON.stringify(value) }));
   }
 }
@@ -44,10 +44,10 @@ function observation(roleResults: RoleObservation[] = [result()], state: Movemen
   };
 }
 
-function workspace(id: string, overrides: Partial<WorkspaceView> = {}): WorkspaceView {
+function workflow(id: string, overrides: Partial<WorkflowView> = {}): WorkflowView {
   return {
-    project_name: "preview-fixture",
-    workspace: { id, name: id },
+    workspace_name: "preview-fixture",
+    workflow: { id, name: id },
     current_status: "available",
     status_issue: null,
     checkpoint: {
@@ -66,15 +66,15 @@ function workspace(id: string, overrides: Partial<WorkspaceView> = {}): Workspac
   };
 }
 
-function projectFor(ids: string[]): ProjectView {
-  return { name: "preview-fixture", workspaces: ids.map((id) => ({ id, name: id })) };
+function workspaceFor(ids: string[]): WorkspaceView {
+  return { name: "preview-fixture", workflows: ids.map((id) => ({ id, name: id })) };
 }
 
-function installWorkbench(snapshots: Record<string, WorkspaceView>) {
+function installWorkbench(snapshots: Record<string, WorkflowView>) {
   ControlledEventSource.instances = [];
   const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/project") return Promise.resolve(Response.json(projectFor(Object.keys(snapshots))));
+    if (url === "/api/workspace") return Promise.resolve(Response.json(workspaceFor(Object.keys(snapshots))));
     const stageNumber = url.match(/\/stages\/(\d+)$/)?.[1];
     if (stageNumber) return Promise.resolve(Response.json({ stage: Number(stageNumber) === 20 ? laterStage : stage, definitions: [] }));
     return Promise.resolve(Response.json({}, { status: 404 }));
@@ -85,9 +85,9 @@ function installWorkbench(snapshots: Record<string, WorkspaceView>) {
   return fetchMock;
 }
 
-async function emitSnapshot(id: string, snapshot: WorkspaceView) {
-  await waitFor(() => expect(ControlledEventSource.instances.some((source) => source.url.includes("/api/workspaces/" + id + "/events"))).toBe(true));
-  const source = ControlledEventSource.instances.find((item) => item.url.includes("/api/workspaces/" + id + "/events"));
+async function emitSnapshot(id: string, snapshot: WorkflowView) {
+  await waitFor(() => expect(ControlledEventSource.instances.some((source) => source.url.includes("/api/workflows/" + id + "/events"))).toBe(true));
+  const source = ControlledEventSource.instances.find((item) => item.url.includes("/api/workflows/" + id + "/events"));
   if (!source) throw new Error("No event source for " + id);
   act(() => source.snapshot(snapshot));
   await screen.findByRole("heading", { name: "Stage inspector" });
@@ -99,10 +99,10 @@ afterEach(() => {
   ControlledEventSource.instances = [];
 });
 
-describe("workspace browser adapter", () => {
-  it("lists directory identities without claiming every workspace is ready", async () => {
-    const healthy = workspace("healthy");
-    const unprepared = workspace("unprepared", { current_status: "unavailable", status_issue: "no such table: checkpoint", checkpoint: null, movement_choices: [], stages: [], observation: null });
+describe("workflow browser adapter", () => {
+  it("lists directory identities without claiming every workflow is ready", async () => {
+    const healthy = workflow("healthy");
+    const unprepared = workflow("unprepared", { current_status: "unavailable", status_issue: "no such table: checkpoint", checkpoint: null, movement_choices: [], stages: [], observation: null });
     installWorkbench({ healthy, unprepared });
     expect(await screen.findByRole("button", { name: /healthy/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /unprepared/ })).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("workspace browser adapter", () => {
   });
 
   it("keeps the last observed role output readable while current status is unavailable", async () => {
-    const snapshot = workspace("workspace-a", {
+    const snapshot = workflow("workflow-a", {
       current_status: "unavailable",
       status_issue: "unable to open database file",
       checkpoint: null,
@@ -124,24 +124,24 @@ describe("workspace browser adapter", () => {
         result({ role: "verify-up", stdout: "verifier out", stderr: "verifier err" }),
       ]),
     });
-    installWorkbench({ "workspace-a": snapshot });
-    await emitSnapshot("workspace-a", snapshot);
+    installWorkbench({ "workflow-a": snapshot });
+    await emitSnapshot("workflow-a", snapshot);
 
     expect(screen.getByRole("alert")).toHaveTextContent("unable to open database file");
     expect(screen.getAllByLabelText("stdout").map((element) => element.textContent)).toEqual(["mutation out", "verifier out"]);
     expect(screen.getAllByLabelText("stderr").map((element) => element.textContent)).toEqual(["mutation err", "verifier err"]);
     expect(screen.queryByText("Select a stage")).not.toBeInTheDocument();
     expect(screen.queryByText("CURRENT CHECKPOINT")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Workspace unavailable/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Workflow unavailable/ })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Advance|Back out/ })).not.toBeInTheDocument();
   });
 
-  it("renders buffered stdout and stderr as inert text from the selected workspace snapshot", async () => {
-    const snapshot = workspace("workspace-a", {
+  it("renders buffered stdout and stderr as inert text from the selected workflow snapshot", async () => {
+    const snapshot = workflow("workflow-a", {
       observation: observation([result({ stdout: "<script>window.fixture=true</script>", stderr: "separate error text" })]),
     });
-    const fetchMock = installWorkbench({ "workspace-a": snapshot });
-    await emitSnapshot("workspace-a", snapshot);
+    const fetchMock = installWorkbench({ "workflow-a": snapshot });
+    await emitSnapshot("workflow-a", snapshot);
 
     const stdout = screen.getByLabelText("stdout");
     const stderr = screen.getByLabelText("stderr");
@@ -152,7 +152,7 @@ describe("workspace browser adapter", () => {
   });
 
   it("keeps an accepted checkpoint separate from unrecorded role results", async () => {
-    const snapshot = workspace("workspace-a", {
+    const snapshot = workflow("workflow-a", {
       stages: [
         {
           number: 10,
@@ -169,8 +169,8 @@ describe("workspace browser adapter", () => {
       ],
       observation: observation([result({ role: "verify-up" })]),
     });
-    installWorkbench({ "workspace-a": snapshot });
-    await emitSnapshot("workspace-a", snapshot);
+    installWorkbench({ "workflow-a": snapshot });
+    await emitSnapshot("workflow-a", snapshot);
 
     expect(screen.getByText("Applied", { selector: ".status-pill" })).toBeInTheDocument();
     const roleStatus = (role: string) => {
@@ -185,9 +185,9 @@ describe("workspace browser adapter", () => {
 
   it("lets stage selection inspect a future definition without submitting movement", async () => {
     const user = userEvent.setup();
-    const snapshot = workspace("workspace-a");
-    const fetchMock = installWorkbench({ "workspace-a": snapshot });
-    await emitSnapshot("workspace-a", snapshot);
+    const snapshot = workflow("workflow-a");
+    const fetchMock = installWorkbench({ "workflow-a": snapshot });
+    await emitSnapshot("workflow-a", snapshot);
 
     await user.click(screen.getByRole("button", { name: /STAGE 020.*finish/i }));
     expect(await screen.findByRole("heading", { name: "finish" })).toBeInTheDocument();
@@ -196,17 +196,17 @@ describe("workspace browser adapter", () => {
   });
 
   it("distinguishes output still buffered during a role from an executable launch error", async () => {
-    const snapshot = workspace("workspace-a", {
+    const snapshot = workflow("workflow-a", {
       observation: observation([result({ state: "in_progress", exit_code: null, stdout: null, stderr: null })], "running"),
     });
-    installWorkbench({ "workspace-a": snapshot });
-    await emitSnapshot("workspace-a", snapshot);
+    installWorkbench({ "workflow-a": snapshot });
+    await emitSnapshot("workflow-a", snapshot);
     expect(screen.getByText("Output will be available when the role returns.")).toBeInTheDocument();
 
-    const failed = workspace("workspace-a", {
+    const failed = workflow("workflow-a", {
       observation: observation([result({ state: "launch_failed", exit_code: null, message: "permission denied by fixture", stdout: null, stderr: null })], "stopped"),
     });
-    await emitSnapshot("workspace-a", failed);
+    await emitSnapshot("workflow-a", failed);
     expect(screen.getAllByText("permission denied by fixture").length).toBeGreaterThan(0);
     expect(screen.queryByText("Output will be available when the role returns.")).not.toBeInTheDocument();
   });

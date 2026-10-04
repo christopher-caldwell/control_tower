@@ -1,8 +1,0 @@
-#!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const data = path.join(process.env.CONTROL_TOWER_WORKSPACE, "data");
-const record = JSON.parse(fs.readFileSync(path.join(data, "record.json"), "utf8"));
-if (record.id !== 123 || record.label !== "  example record  " || record.created_at !== "2026-01-02T03:04:05+00:00") {
-  throw new Error("unexpected seed record");
-}

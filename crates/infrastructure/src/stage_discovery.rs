@@ -6,8 +6,8 @@ use control_tower_application::{Stage, StageDiscovery, StageDiscoveryError};
 pub struct FilesystemStageDiscovery;
 
 impl StageDiscovery for FilesystemStageDiscovery {
-    fn discover(&self, workspace_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
-        let stages_root = workspace_root.join("stages");
+    fn discover(&self, workflow_root: &Path) -> Result<Vec<Stage>, StageDiscoveryError> {
+        let stages_root = workflow_root.join("stages");
         let entries = fs::read_dir(&stages_root).map_err(|error| {
             StageDiscoveryError::new(ContextError::new(
                 format!("cannot read {}", stages_root.display()),

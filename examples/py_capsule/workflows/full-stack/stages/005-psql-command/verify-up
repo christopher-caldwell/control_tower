@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+actual=$(PGCONNECT_TIMEOUT=5 PGOPTIONS="-c default_transaction_read_only=on -c gallery.run_id=$CONTROL_TOWER_UUID" \
+  psql -X --no-password "$GALLERY_POSTGRES_DSN" --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align \
+  --command "SELECT json_build_object('run_id', run_id, 'label_length', char_length(label))
+             FROM public.gallery_records
+             WHERE run_id = current_setting('gallery.run_id')::uuid;")
+saved=$(cat "$CONTROL_TOWER_WORKFLOW/data/psql_command.json")
+if [ -z "$actual" ] || [ "$actual" != "$saved" ]; then
+  printf '%s\n' 'Saved psql command output does not match this run database row.' >&2
+  exit 1
+fi

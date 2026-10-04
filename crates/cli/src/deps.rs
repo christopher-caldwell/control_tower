@@ -7,8 +7,8 @@ use control_tower_infrastructure::{
 };
 use std::path::Path;
 
-pub(super) fn workbench(workspace: &Path) -> Result<Workbench, PersistenceError> {
-    let database = workspace.join(".control_tower/state.sqlite3");
+pub(super) fn workbench(workflow: &Path) -> Result<Workbench, PersistenceError> {
+    let database = workflow.join(".control_tower/state.sqlite3");
     let queries = SqliteWorkbenchQueries::open(&database)?;
     let writes = SqliteWorkbenchWrites::open(&database)?;
     Ok(Workbench::new(
