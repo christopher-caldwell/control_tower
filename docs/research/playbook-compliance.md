@@ -177,9 +177,14 @@ definition path. It is not a rule-by-rule audit and it records no test counts.
   Application stays synchronous; Tokio and axum exist only in the CLI Entry, with
   Workbench calls isolated by `spawn_blocking`.
 - `GET /api/project` returns the project name and workspace directory identities. It
-  does no status reads, so there is no cross-workspace aggregation and no H3
-  exception to claim. Each remaining endpoint calls one Workbench use case
-  (`status`, `move_to_observed`, `stage_definitions`).
+  does no status reads, so there is no cross-workspace aggregation. The definitions
+  endpoint calls `stage_definitions`, and the events endpoint calls `status`. The
+  movement endpoint calls `move_to_observed` and also reads `Workbench::status`
+  (through `WorkspaceRuntime::publish`) after each role event and at the end, so the
+  published snapshot carries the current checkpoint and movement choices beside the
+  role observations. This departs from the H3 DEFAULT of one use case per endpoint.
+  The reason is that presentation need; the extra calls are reads, and Application
+  still owns movement legality.
 - Movement requests carry the complete expected checkpoint; Application compares it
   with the freshly read state and returns `StaleCheckpoint` before any role runs or
   checkpoint is written. The movement handler maps typed `MoveToError` variants.
