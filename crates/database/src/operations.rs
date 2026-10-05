@@ -53,7 +53,7 @@ pub(crate) fn verify_schema(connection: &Connection) -> Result<(), PersistenceEr
         .map_err(PersistenceError::new)?;
     if version != 1 {
         return Err(PersistenceError::message(
-            "SQLite schema is not initialized; run the explicit db-bootstrap-local and db-migrate-local operations",
+            "SQLite schema is not initialized; bootstrap and migrate the workflow database first",
         ));
     }
     let name: String = connection
