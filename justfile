@@ -20,6 +20,10 @@ lint:
 build:
     cargo build --locked --workspace
 
+# Develop the UI with hot reload and a prepared sample workspace.
+dev-ui:
+    pnpm --dir ui dev
+
 # Install the CLI and skills into ~/.agents/skills (or ~/.claude/skills).
 [positional-arguments]
 install-cli skills-dir="agents":

@@ -1,0 +1,36 @@
+.rail {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--mantine-other-navigation);
+  border-right: 1px solid var(--mantine-color-dark-5);
+}
+.heading {
+  height: 72px;
+  flex: 0 0 72px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--mantine-color-dark-5);
+}
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.workflow {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--mantine-radius-sm);
+  overflow-wrap: anywhere;
+}
+.workflow:hover {
+  background: #2b2443;
+}
+.workflow[data-selected='true'] {
+  background: var(--mantine-other-selection);
+  color: var(--mantine-other-navigation);
+}
+.workflow:focus-visible {
+  outline: 2px solid var(--mantine-other-selection);
+  outline-offset: 2px;
+}

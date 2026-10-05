@@ -8,6 +8,14 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 Run `control-tower ui` from a Workspace directory to print a local URL, then open it in your browser. A **Workspace** is a directory with a `workflows/` folder; each **Workflow** inside it owns a `stages/` folder and its own checkpoint database. The [browser workbench reference](docs/reference/browser-workbench.md) explains workflow inventory and use.
 
+## UI development
+
+For UI development, run `pnpm --dir ui install --frozen-lockfile`, then
+`just dev-ui` (or `pnpm --dir ui dev`). Open the printed Vite URL. This starts
+hot reload and the real Rust API with a prepared, reusable sample workspace.
+See the [UI development guide](ui/README.md#develop-against-a-real-workspace)
+for custom workspaces and sample reset instructions.
+
 ## Agent guidance
 
 Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From a workflow directory, `control-tower validate` checks that its current layout and prepared checkpoint state load without running stage roles.

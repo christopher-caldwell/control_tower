@@ -4,17 +4,24 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "dev": "vite",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "typescript": "7.0.2",
-    "vite": "8.3.2"
+    "vite": "8.3.2",
+    "@mantine/core": "^8.3.0",
+    "@mantine/hooks": "^8.3.0",
+    "@tanstack/react-query": "^5.90.0",
+    "@tabler/icons-react": "^3.35.0"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
@@ -24,6 +31,17 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "jsdom": "26.1.0",
-    "vitest": "5.0.3"
-  }
+    "vitest": "5.0.3",
+    "eslint": "^9.39.0",
+    "@eslint/js": "^9.39.0",
+    "typescript-eslint": "^8.46.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "prettier": "^3.6.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@types/node": "^22.14.0"
+  },
+  "packageManager": "pnpm@10.7.1"
 }

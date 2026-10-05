@@ -1,0 +1,9 @@
+dist
+.dev/
+/output/playwright/
+/.playwright-cli/
+node_modules/
+coverage/
+test-results/
+playwright-report/
+tsconfig.tsbuildinfo

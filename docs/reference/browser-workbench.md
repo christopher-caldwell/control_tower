@@ -4,19 +4,32 @@ title: Browser workbench
 type: reference
 status: maintained
 created: '2026-10-02'
-updated: '2026-10-04'
+updated: '2026-10-05'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
 - ../../crates/cli/src/web.rs
 - ../../crates/cli/src/web/http.rs
-- ../../ui/src/workbench.tsx
+- ../../ui/src/app/components/workbench/workbench.tsx
 - ../decisions/0006-loopback-web-ui.md
 - ../decisions/0007-desktop-ui-shell.md
 - ../research/2026-10-02-ui-reference-review.md
 ---
 
 # Browser workbench
+
+## UI architecture
+
+The browser workbench composes the workspace workflow rail, workflow execution view, and stage inspector as independently consumable features. Their public `index.ts` files expose a headless hook, standard UI, and intentional public types; the app shell connects those models. The accepted feature facade and presentation rules are recorded in the installed React Playbook UI-DEC-0001.
+
+## UI development
+
+Run `pnpm --dir ui install --frozen-lockfile` once, then `just dev-ui` from the
+checkout root, or `pnpm dev` from `ui/`. The Vite development server owns the Rust
+API process, prepares a persistent shell-only sample workspace, and proxies the
+API and SSE connections. Open Vite's URL for hot reload. See the
+[UI development guide](../../ui/README.md#develop-against-a-real-workspace)
+for prerequisites, lifecycle, sample reset, and existing workspace selection.
 
 ## Build the packaged UI
 
@@ -28,17 +41,21 @@ From a Control Tower checkout, rebuild the React assets and Rust executable with
 
 ```sh
 cd ui
-npm ci
-npm run build
-npm test
-npm run test:browser
+pnpm install --frozen-lockfile
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm test:browser
 cd ..
 cargo build --locked --workspace
 ```
 
 The committed `ui/dist/` is embedded by Rust builds. Rebuild it after changing UI
 source. Browser tests use the existing Playwright setup; they are test-time tooling
-only.
+only. Install the pinned browser with `pnpm exec playwright install chromium`
+before the first browser-test run. The package manager is pinned in `ui/package.json`.
 
 ## Start the UI
 
@@ -82,7 +99,8 @@ The desktop shell shows the launch Workspace, a manually collapsible workflow ra
 an ordered stage narrative, a persistent selected-stage inspector, and a progression
 action region. It has no mobile or tablet layout. The inspector has a fixed CSS
 width. Both rails can be collapsed and reopened while the UI is running;
-collapse state resets when the page reloads.
+collapse state resets when the page reloads. Workflow and stage selection remain
+in-memory inspection state rather than URL navigation.
 
 Selecting a workflow opens its live view. Selecting any stage changes inspection
 only: it does not execute a script or write a checkpoint. Selection is primarily
@@ -136,6 +154,14 @@ stored state before it launches a role or writes a checkpoint. A mismatch return
 `workflow_busy`. Both use `{ "error": { "code": string, "message": string } }`.
 A completed request returns 204. HTTP does not decide legal movement targets or call
 persistence directly.
+
+The UI uses TanStack Query for inventory, stage definitions, and workflow snapshots.
+Only the selected workflow has an SSE subscription. Movement controls require a
+fresh snapshot after selection, reconnect, or a movement response. Retry/Refresh
+controls perform inspection reads; queries and movement requests never retry
+automatically. Native SSE reconnects retain the last useful content with movement
+disabled until fresh state arrives. Movement delivery errors remain visible near
+the action dock until another explicit submission or workflow selection.
 
 SSE begins with the current selected-workflow snapshot; reconnecting observes state
 without replaying commands. The snapshot carries status, movement choices, busy
