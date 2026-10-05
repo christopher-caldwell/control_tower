@@ -129,6 +129,16 @@ This is optional. From the repository root:
 cargo install --locked --path crates/cli --bin control-tower
 ```
 
+To install the CLI and copy the shipped skills together, use `just` from the repository root:
+
+```sh
+just install-cli        # Copies skills to ~/.agents/skills (default)
+just install-cli agents # Explicitly selects ~/.agents/skills
+just install-cli claude # Copies skills to ~/.claude/skills
+```
+
+The recipe creates the selected skills directory and updates existing skill files when rerun.
+
 Ensure Cargo's install directory is on your `PATH` (normally `~/.cargo/bin`, as described in the [Rust installation notes](https://rust-lang.org/tools/install/)). Only `control-tower` needs to be installed; database preparation remains explicit through its `db` subcommands.
 
 You can then use an absolute workflow path from any directory:

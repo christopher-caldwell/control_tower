@@ -20,6 +20,15 @@ lint:
 build:
     cargo build --locked --workspace
 
-# Install the Control Tower command-line interface.
-install-cli:
+# Install the CLI and skills into ~/.agents/skills (or ~/.claude/skills).
+[positional-arguments]
+install-cli skills-dir="agents":
+    #!/usr/bin/env sh
+    set -eu
+    case "$1" in
+        agents|claude) destination="$HOME/.$1/skills" ;;
+        *) echo "error: skills-dir must be agents or claude" >&2; exit 1 ;;
+    esac
     cargo install --locked --path crates/cli --bin control-tower
+    mkdir -p "$destination"
+    cp -R skills/. "$destination/"
