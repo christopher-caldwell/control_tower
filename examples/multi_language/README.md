@@ -38,9 +38,9 @@ This example has no reusable `tools/` layer.
 
 ```sh
 workflow=workflows/shell-python-node
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow/data/node_inspection.json"
 control-tower down --workflow "$workflow" --stage 0

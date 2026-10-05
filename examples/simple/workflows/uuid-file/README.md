@@ -27,9 +27,9 @@ Follow [simple example setup](../../README.md#setup-and-run), then run from the 
 workflow=workflows/uuid-file
 printf 'Example workflow: %s\n' "$workflow"
 
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 ```
 
 Use this terminal for the remaining steps. In a later terminal, return to the copied simple example root and set `workflow=workflows/uuid-file` again.

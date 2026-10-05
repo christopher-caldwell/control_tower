@@ -28,9 +28,9 @@ Follow [example setup](../../README.md#setup-and-run), then run from the copied 
 workflow=workflows/go-rust
 # No third-party language dependencies; Cargo.lock is checked in.
 # The first up command compiles using your installed toolchains.
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 1
 cat "$workflow/data/number.txt"
 control-tower up --workflow "$workflow" --stage 2

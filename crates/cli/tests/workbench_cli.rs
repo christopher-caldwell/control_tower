@@ -150,6 +150,10 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
 
     let first_up = move_to(&workflow, "up", 1);
     assert!(first_up.status.success(), "{}", output_text(&first_up));
+    assert!(
+        output_text(&first_up)
+            .contains("Result: complete; requested up to 1; position 1 (create-file)")
+    );
     let first_uuid_file = uuid_file(&workflow).expect("stage 1 creates the UUID file");
     assert_eq!(fs::read(&first_uuid_file).unwrap(), b"");
     let uuid = first_uuid_file
@@ -157,6 +161,14 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
         .unwrap()
         .to_string_lossy()
         .to_string();
+
+    let no_op = move_to(&workflow, "up", 1);
+    assert!(no_op.status.success(), "{}", output_text(&no_op));
+    assert!(
+        output_text(&no_op)
+            .contains("Result: complete; requested up to 1; position 1 (create-file)")
+    );
+    assert!(output_text(&no_op).contains("No roles ran."));
 
     let up_to_three = move_to(&workflow, "up", 3);
     assert!(
@@ -376,6 +388,7 @@ fn ordinary_cli_does_not_bootstrap_or_migrate() {
     assert!(!workflow.path().join(".control_tower").exists());
     let bootstrap = database_operation(&workflow, "bootstrap-local");
     assert!(bootstrap.status.success(), "{}", output_text(&bootstrap));
+    assert!(output_text(&bootstrap).contains("Local database bootstrapped:"));
     let database = workflow.path().join(".control_tower/state.sqlite3");
     let output = move_to(&workflow, "up", 1);
     assert!(!output.status.success());
@@ -414,19 +427,50 @@ fn explicit_database_operations_are_available_through_the_cli() {
 
     let migrate = database_operation(&workflow, "migrate-local");
     assert!(migrate.status.success(), "{}", output_text(&migrate));
+    assert!(output_text(&migrate).contains("Local database migrations applied:"));
     let verify = database_operation(&workflow, "verify-local");
     assert!(verify.status.success(), "{}", output_text(&verify));
+    assert!(output_text(&verify).contains("Local database verified:"));
     let rerun_migrate = database_operation(&workflow, "migrate-local");
     assert!(
         rerun_migrate.status.success(),
         "{}",
         output_text(&rerun_migrate)
     );
+    assert!(output_text(&rerun_migrate).contains("Local database migrations applied:"));
     let rerun_verify = database_operation(&workflow, "verify-local");
     assert!(
         rerun_verify.status.success(),
         "{}",
         output_text(&rerun_verify)
+    );
+    assert!(output_text(&rerun_verify).contains("Local database verified:"));
+}
+
+#[test]
+fn old_positional_database_path_is_a_usage_error() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["db", "bootstrap-local"])
+        .arg(workflow.path())
+        .current_dir(workflow.workspace())
+        .output()
+        .expect("run Control Tower CLI");
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn verifier_start_failure_is_operational_exit_one() {
+    let workflow = Workflow::from_fixture();
+    let verifier = workflow.path().join("stages/001-create-file/verify-up");
+    fs::set_permissions(&verifier, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let output = move_to(&workflow, "up", 1);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output_text(&output).contains("could not start stage 1 verify-up"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Failed role: stage 1 verify-up; executable did not start")
     );
 }
 
@@ -588,7 +632,12 @@ fn failed_verify_up_backs_out_same_stage_or_farther_across_cli_processes() {
         fail_verifier_once(&workflow, "003-add-to-you", "verify-up");
         let first = move_to(&workflow, "up", 3);
         assert!(!first.status.success(), "{}", output_text(&first));
+        assert_eq!(first.status.code(), Some(3));
         assert!(output_text(&first).contains("verify-up exited with status 23"));
+        let summary = String::from_utf8_lossy(&first.stdout);
+        assert!(summary.contains("Result: stopped; requested up to 3; position 2 (write-hello)"));
+        assert!(summary.contains("Pending verification: up 3 (add-to-you)"));
+        assert!(summary.contains("Failed role: stage 3 verify-up; child exit status 23"));
         assert_checkpoint(&workflow, 2, Some(("up", 3)));
         let uuid = checkpoint(&workflow).uuid.unwrap();
         assert_eq!(
@@ -992,7 +1041,7 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
         .unwrap();
     let edit = String::from_utf8(edit.stdout).unwrap();
     assert!(edit.contains("control-tower validate"));
-    assert!(edit.contains("status --workflow PATH"));
+    assert!(edit.contains("status --workflow workflows/NAME"));
     assert!(!edit.contains("1. Choose a new directory"));
 
     let extra_action = Command::new(env!("CARGO_BIN_EXE_control-tower"))
@@ -1004,7 +1053,7 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
 }
 
 #[test]
-fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() {
+fn validate_uses_selected_workflow_without_running_roles_or_changing_storage() {
     let workflow = Workflow::from_fixture();
     let role_marker = workflow.path().join("validate-ran-a-role");
     for entry in fs::read_dir(workflow.path().join("stages")).unwrap() {

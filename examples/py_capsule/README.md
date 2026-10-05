@@ -44,9 +44,9 @@ From the copied example root:
 
 ```sh
 workflow=workflows/tool-only
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow/data/tool_result.json"
 cat "$workflow/data/runtime_context.json"

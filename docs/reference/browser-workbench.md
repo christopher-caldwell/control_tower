@@ -71,10 +71,12 @@ cd /path/to/workspace
 /path/to/control_tower/target/debug/control-tower ui
 ```
 
-The launch inventory is the directory names directly under `workflows/`. The UI
-lists directories without opening their databases, reading their stages, or running
-scripts. A missing or empty inventory produces an empty state. The list is fixed at
-startup; restart the UI to pick up added or removed workflows.
+The invocation current directory is the Workspace root. It must contain a valid
+`control-tower.toml` with a nonempty `[workspace].label` and a `workflows/`
+directory. The UI uses the configured label and lists directory names directly
+under `workflows/`. It does not fall back to the directory name or treat a missing
+inventory as empty, and it does not create or repair Workspace structure. The list
+is fixed at startup; restart the UI to pick up added or removed workflows.
 
 Selecting a workflow reads that workflow's current state and stages. An
 unprepared or malformed workflow reports its ordinary error when selected; it does
@@ -83,9 +85,9 @@ migrate, repair, or verify storage. Prepare each workflow explicitly before usin
 its movement controls:
 
 ```sh
-control-tower db bootstrap-local workflows/my-workflow
-control-tower db migrate-local workflows/my-workflow
-control-tower db verify-local workflows/my-workflow
+control-tower db bootstrap-local --workflow workflows/my-workflow
+control-tower db migrate-local --workflow workflows/my-workflow
+control-tower db verify-local --workflow workflows/my-workflow
 ```
 
 Each workflow uses the existing `stages/<number>-<name>/` layout and its own

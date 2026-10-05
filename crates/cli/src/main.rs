@@ -25,7 +25,7 @@ enum Command {
         #[arg(value_enum)]
         action: Option<guides::GuideAction>,
     },
-    /// Validate a workflow in the current Workspace without running roles.
+    /// Validate a selected workflow in the current Workspace without running roles.
     Validate {
         #[arg(long)]
         workflow: PathBuf,
@@ -170,7 +170,15 @@ fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
         DatabaseOperation::Verify { .. } => operations::verify(&database),
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            let operation = match operation {
+                DatabaseOperation::Bootstrap { .. } => "bootstrapped",
+                DatabaseOperation::Migrate { .. } => "migrations applied",
+                DatabaseOperation::Verify { .. } => "verified",
+            };
+            println!("Local database {operation}: {}", database.display());
+            ExitCode::SUCCESS
+        }
         Err(error) => {
             eprintln!("database operation failed: {error}");
             ExitCode::FAILURE

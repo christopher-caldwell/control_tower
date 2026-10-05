@@ -16,7 +16,7 @@ sources:
 
 # Create a workflow
 
-A workflow is a directory containing ordered executable stages and its own Control Tower database. You edit the scripts with your normal editor; Control Tower runs them. The CLI accepts any workflow directory path. To list a workflow in the browser UI, place it under `workflows/` in a Workspace directory and launch `control-tower ui` from that Workspace.
+A workflow is a directory containing ordered executable stages and its own Control Tower database. You edit the scripts with your normal editor; Control Tower runs them. The invocation current directory is the Workspace root, identified by `control-tower.toml` with a nonempty `[workspace].label` and a required `workflows/` directory. All workflow-scoped commands require `--workflow`; relative paths resolve from the Workspace root.
 
 First [build the CLI](getting-started.md#get-the-source-and-build). Run the commands below from the repository root in one terminal.
 
@@ -25,7 +25,14 @@ First [build the CLI](getting-started.md#get-the-source-and-build). Run the comm
 This new disposable workflow creates a marker, checks it, then removes it. It does not need a UUID or any application-specific adapter.
 
 ```sh
-workflow="$(mktemp -d)"
+binary="$PWD/target/debug/control-tower"
+workspace="$(mktemp -d)"
+mkdir -p "$workspace/workflows"
+cat > "$workspace/control-tower.toml" <<'TOML'
+[workspace]
+label = "Disposable example"
+TOML
+workflow="$workspace/workflows/marker"
 stage="$workflow/stages/001-marker"
 mkdir -p "$stage"
 printf 'New workflow: %s\n' "$workflow"
@@ -64,18 +71,31 @@ Both verifiers only observe the result. `up` and `down` perform the changes. The
 ## Prepare storage and try it
 
 ```sh
-./target/debug/control-tower db bootstrap-local "$workflow"
-./target/debug/control-tower db migrate-local "$workflow"
-./target/debug/control-tower db verify-local "$workflow"
+(
+  cd "$workspace"
+  "$binary" db bootstrap-local --workflow workflows/marker
+  "$binary" db migrate-local --workflow workflows/marker
+  "$binary" db verify-local --workflow workflows/marker
 
-./target/debug/control-tower up --workflow "$workflow" --stage 1
+  "$binary" validate --workflow workflows/marker
+  "$binary" up --workflow workflows/marker --stage 1
+)
 cat "$workflow/marker"
 printf '\n'
-./target/debug/control-tower status --workflow "$workflow"
+(
+  cd "$workspace"
+  "$binary" status --workflow workflows/marker
+)
 
-./target/debug/control-tower down --workflow "$workflow" --stage 0
+(
+  cd "$workspace"
+  "$binary" down --workflow workflows/marker --stage 0
+)
 test ! -e "$workflow/marker"
-./target/debug/control-tower status --workflow "$workflow"
+(
+  cd "$workspace"
+  "$binary" status --workflow workflows/marker
+)
 ```
 
 You should see `ready` after `up`, then baseline 0 after `down`. The application still allocates a run UUID, but your scripts do not have to use it. It is cleared after successful return to baseline.

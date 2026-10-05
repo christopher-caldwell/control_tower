@@ -69,6 +69,7 @@ Copy the complete simple example so its workflows and dependency metadata stay t
 example="$(mktemp -d)/simple"
 cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
+binary="$PWD/target/debug/control-tower"
 printf 'Example workflow: %s\n' "$workflow"
 ```
 
@@ -81,9 +82,9 @@ The supplied stage scripts are committed with executable permissions. The [workf
 The workflow directory must already exist. Run all three operations:
 
 ```sh
-./target/debug/control-tower db bootstrap-local "$workflow"
-./target/debug/control-tower db migrate-local "$workflow"
-./target/debug/control-tower db verify-local "$workflow"
+(cd "$example" && "$binary" db bootstrap-local --workflow workflows/uuid-file)
+(cd "$example" && "$binary" db migrate-local --workflow workflows/uuid-file)
+(cd "$example" && "$binary" db verify-local --workflow workflows/uuid-file)
 ```
 
 Bootstrap provisions `.control_tower/state.sqlite3`; migrate applies its schema; verify checks the supported schema version/history. These operations do not run stage scripts. Ordinary `up`, `down`, and `status` open an already prepared database; they do not bootstrap or migrate it.
@@ -105,9 +106,10 @@ Run them from the repository root. They invoke the same Database-owned operation
 ## Run and inspect
 
 ```sh
-./target/debug/control-tower status --workflow "$workflow"
-./target/debug/control-tower up --workflow "$workflow" --stage 3
-./target/debug/control-tower status --workflow "$workflow"
+(cd "$example" && "$binary" validate --workflow workflows/uuid-file)
+(cd "$example" && "$binary" status --workflow workflows/uuid-file)
+(cd "$example" && "$binary" up --workflow workflows/uuid-file --stage 3)
+(cd "$example" && "$binary" status --workflow workflows/uuid-file)
 cat "$workflow"/data/*
 printf '\n'
 ```
@@ -115,8 +117,8 @@ printf '\n'
 The final status should identify stage 3, show one UUID, and show no pending verification. The file should contain `hello to you`. Read the [example walkthrough](../../examples/simple/workflows/uuid-file/README.md) to stop and inspect after each stage rather than running all three at once.
 
 ```sh
-./target/debug/control-tower down --workflow "$workflow" --stage 0
-./target/debug/control-tower status --workflow "$workflow"
+(cd "$example" && "$binary" down --workflow workflows/uuid-file --stage 0)
+(cd "$example" && "$binary" status --workflow workflows/uuid-file)
 ```
 
 All three down operations and their checks run in reverse order. The fixture file disappears, and status reports baseline with `UUID: not created`. The prepared SQLite database remains; another `up` begins a new run.
@@ -141,13 +143,14 @@ The recipe creates the selected skills directory and updates existing skill file
 
 Ensure Cargo's install directory is on your `PATH` (normally `~/.cargo/bin`, as described in the [Rust installation notes](https://rust-lang.org/tools/install/)). Only `control-tower` needs to be installed; database preparation remains explicit through its `db` subcommands.
 
-You can then use an absolute workflow path from any directory:
+You can use an absolute workflow path while the invocation current directory is the Workspace root:
 
 ```sh
-control-tower status --workflow "$workflow"
+cd "$example"
+control-tower status --workflow workflows/uuid-file
 ```
 
-`just` recipes and `cargo run` still require the checkout; the installed executable does not require your current directory to be the repository root.
+`just` recipes and `cargo run` still require the checkout. For any workflow command, set the invocation current directory to that workflow's Workspace root.
 
 ## Updating and checking the checkout
 

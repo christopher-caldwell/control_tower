@@ -23,9 +23,9 @@ outputs. Dependencies belong to the containing example; each workflow owns its s
 
 ```sh
 workflow=workflows/shell-python-node
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 # Use --stage 1, then each successive stage to inspect intermediate files.
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow/data/normalized.json"

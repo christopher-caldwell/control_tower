@@ -6,7 +6,7 @@ You write `up`, `down`, and optional `verify-up` / `verify-down` files. Control 
 
 ## Browser workbench
 
-Run `control-tower ui` from a Workspace directory to print a local URL, then open it in your browser. A **Workspace** is a directory with a `workflows/` folder; each **Workflow** inside it owns a `stages/` folder and its own checkpoint database. The [browser workbench reference](docs/reference/browser-workbench.md) explains workflow inventory and use.
+Run `control-tower ui` from a Workspace root to print a local URL, then open it in your browser. A **Workspace** has a `control-tower.toml` with a nonempty `[workspace].label` and a required `workflows/` folder; each **Workflow** inside it owns a `stages/` folder and its own checkpoint database. CLI workflow commands require `--workflow` and resolve its path from that Workspace root. The [browser workbench reference](docs/reference/browser-workbench.md) explains workflow inventory and use.
 
 ## UI development
 
@@ -18,7 +18,7 @@ for custom workspaces and sample reset instructions.
 
 ## Agent guidance
 
-Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From a workflow directory, `control-tower validate` checks that its current layout and prepared checkpoint state load without running stage roles.
+Coding agents can run `control-tower guide` for the embedded guide index and then request one scoped guide action. The shipped dispatcher Skill is [`skills/control-tower/SKILL.md`](skills/control-tower/SKILL.md). From the Workspace root, `control-tower validate --workflow workflows/NAME` checks that the selected layout and prepared checkpoint state load without running stage roles. The Workspace-root `.env` supplies default stage-executable values; shell values take precedence, followed by authoritative Control Tower variables.
 
 Run `just install-cli` to install the CLI and copy skills to `~/.agents/skills`. Use `just install-cli claude` to copy them to `~/.claude/skills` instead.
 
@@ -38,12 +38,13 @@ cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
 printf 'Example workflow: %s\n' "$workflow"
 
-./target/debug/control-tower db bootstrap-local "$workflow"
-./target/debug/control-tower db migrate-local "$workflow"
-./target/debug/control-tower db verify-local "$workflow"
+binary="$PWD/target/debug/control-tower"
+(cd "$example" && "$binary" db bootstrap-local --workflow workflows/uuid-file)
+(cd "$example" && "$binary" db migrate-local --workflow workflows/uuid-file)
+(cd "$example" && "$binary" db verify-local --workflow workflows/uuid-file)
 
-./target/debug/control-tower up --workflow "$workflow" --stage 3
-./target/debug/control-tower status --workflow "$workflow"
+(cd "$example" && "$binary" up --workflow workflows/uuid-file --stage 3)
+(cd "$example" && "$binary" status --workflow workflows/uuid-file)
 cat "$workflow"/data/*
 printf '\n'
 ```
@@ -60,8 +61,8 @@ The file should contain **`hello to you`**, and status should report completed s
 Back out the example:
 
 ```sh
-./target/debug/control-tower down --workflow "$workflow" --stage 0
-./target/debug/control-tower status --workflow "$workflow"
+(cd "$example" && "$binary" down --workflow workflows/uuid-file --stage 0)
+(cd "$example" && "$binary" status --workflow workflows/uuid-file)
 ```
 
 The example file is now absent; status reports baseline 0 and no UUID. The temporary workflow and its SQLite file remain available for another run. Each command is a separate process. Database setup is explicit and does not run during `up`, `down`, or `status`.

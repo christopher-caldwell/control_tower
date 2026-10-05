@@ -39,7 +39,7 @@ pub(super) fn run_move(
         }
     };
     let choices = outcome.verification_choices();
-    match &outcome.status {
+    let exit_code = match &outcome.status {
         MoveStatus::Complete(state) => {
             println!("{direction} complete.");
             if outcome.executions.is_empty() {
@@ -79,7 +79,68 @@ pub(super) fn run_move(
             ) {
                 println!("Inspect author-owned effects before choosing further movement.");
             }
-            ExitCode::FAILURE
+            if matches!(
+                failure,
+                TransitionFailure::ExecutableFailed {
+                    role: control_tower_application::ExecutableRole::VerifyUp
+                        | control_tower_application::ExecutableRole::VerifyDown,
+                    ..
+                }
+            ) {
+                ExitCode::from(3)
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+    };
+    render_movement_summary(direction, target, &outcome.status, &outcome.stages);
+    exit_code
+}
+
+fn render_movement_summary(
+    direction: Direction,
+    target: u32,
+    status: &MoveStatus,
+    stages: &[Stage],
+) {
+    let (label, state, failure) = match status {
+        MoveStatus::Complete(state) => ("complete", state, None),
+        MoveStatus::Stopped { state, failure } => ("stopped", state, Some(failure)),
+    };
+    let position = match state.completed_stage_count {
+        0 => "baseline (0)".to_owned(),
+        count => {
+            let stage = &stages[count - 1];
+            format!("{} ({})", stage.number, stage.name)
+        }
+    };
+    println!("Result: {label}; requested {direction} to {target}; position {position}");
+    if let Some(pending) = state.pending {
+        let stage = &stages[pending.stage_index];
+        println!(
+            "  Pending verification: {} {} ({})",
+            pending.direction, stage.number, stage.name
+        );
+    }
+    if let Some(failure) = failure {
+        match failure {
+            TransitionFailure::ExecutableFailed {
+                stage_number,
+                role,
+                exit_code,
+            } => {
+                let child_status =
+                    exit_code.map_or_else(|| "signal/unknown".to_owned(), |code| code.to_string());
+                println!(
+                    "  Failed role: stage {stage_number} {role}; child exit status {child_status}"
+                );
+            }
+            TransitionFailure::ExecutableCouldNotStart {
+                stage_number, role, ..
+            } => {
+                println!("  Failed role: stage {stage_number} {role}; executable did not start");
+            }
+            _ => println!("  Failure: {failure}"),
         }
     }
 }
