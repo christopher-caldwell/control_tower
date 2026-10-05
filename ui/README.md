@@ -1,6 +1,6 @@
 # Control Tower workbench UI
 
-This React client follows the installed `playbook react_app` guidance. The Rust CLI serves the committed `dist/` assets on the same loopback origin as its API.
+This React client follows the installed `playbook react_app` guidance. The Rust CLI embeds the generated `dist/` assets at build time and serves them on the same loopback origin as its API.
 
 ## Project declarations
 
@@ -22,6 +22,8 @@ This React client follows the installed `playbook react_app` guidance. The Rust 
 | `workflows/stage_inspection` | `useStageInspection({ workflowId, stage, checkpoint, observation })` | `StageInspector`    |
 
 The app calls each facade once, passes its model to the standard UI, connects workflow selection to execution, and passes the selected stage context to inspection. Each feature root contains only `index.ts`; hooks, API, and components live under responsibility folders. Query keys, cache handling, transport calls, and request coordination stay private. This follows the accepted facade and presentation decision UI-DEC-0001 in the installed React Playbook.
+
+Execution's private `model/` owns movement action construction used by its headless facade. Checkpoint display formatting remains in `components/`; headless behavior does not depend on presentation modules.
 
 ## Commands
 
@@ -75,6 +77,6 @@ pnpm test:browser
 pnpm build
 ```
 
-Use `pnpm format` to format source. Rebuild and commit `dist/` after UI changes, then build the Rust workspace.
+Use `pnpm format` to format source. Rebuild the ignored `dist/` assets after UI changes, then build the Rust workspace with `cargo build --locked --workspace` from the repository root. A fresh checkout also needs the UI build before its first Rust build; generated assets are not committed.
 
 TypeScript 7 remains the build/typecheck compiler. ESLint currently requires the TypeScript 6 programmatic API, so `typescript` aliases `@typescript/typescript6`, while `@typescript/native` aliases the pinned TypeScript 7 package. This follows [Microsoft's side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0).

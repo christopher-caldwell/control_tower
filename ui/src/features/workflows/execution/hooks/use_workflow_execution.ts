@@ -9,8 +9,8 @@ import {
   workflowSnapshotOptions,
 } from '@/features/workflows/execution/api/options'
 import { parseSnapshot } from '@/features/workflows/execution/api/snapshot'
-import type { Action } from '@/features/workflows/execution/components/movement_actions'
-import { forwardActions, movementActions } from '@/features/workflows/execution/components/movement_actions'
+import type { Action } from '@/features/workflows/execution/model/movement_actions'
+import { forwardActions, movementActions } from '@/features/workflows/execution/model/movement_actions'
 
 export type UseWorkflowExecutionOptions = { workflowId: string | null }
 export type WorkflowExecutionModel = ReturnType<typeof useWorkflowExecution>
@@ -43,13 +43,11 @@ const inspectionIsValid = (
   workflow: WorkflowView | undefined,
   workflowId: string | null,
   inspection: InspectionSelection | null,
-) =>
-  Boolean(
-    workflow &&
-    workflowId &&
-    inspection?.workflowId === workflowId &&
-    workflow.stages.some((stage) => stage.number === inspection.stageNumber),
-  )
+) => {
+  if (!workflow || !workflowId || !inspection) return false
+  if (inspection.workflowId !== workflowId) return false
+  return workflow.stages.some((stage) => stage.number === inspection.stageNumber)
+}
 
 type InspectionSelection = { workflowId: string; stageNumber: number }
 
@@ -115,9 +113,11 @@ export const useWorkflowExecution = ({ workflowId }: UseWorkflowExecutionOptions
         const next = parseSnapshot((event as MessageEvent<string>).data, workflowId)
         queryClient.setQueryData(workflowKey(workflowId), next)
         setInspection((previous) => {
+          const isSelectedWorkflow = previous?.workflowId === workflowId
           const inspectedStageExists =
-            previous?.workflowId === workflowId && next.stages.some((stage) => stage.number === previous.stageNumber)
-          return previous?.workflowId === workflowId && !inspectedStageExists ? null : previous
+            isSelectedWorkflow && next.stages.some((stage) => stage.number === previous.stageNumber)
+          const shouldClearInspection = isSelectedWorkflow && !inspectedStageExists
+          return shouldClearInspection ? null : previous
         })
         setConnection({ workflowId, isReady: true, label: 'Live updates connected' })
         if (movementPhase.current !== 'posting') {
@@ -160,6 +160,8 @@ export const useWorkflowExecution = ({ workflowId }: UseWorkflowExecutionOptions
     if (!canSubmitMovement || !workflowId || !workflow?.checkpoint || movementAdmitted.current) return
     const requestWorkflowId = workflowId
     const requestToken = ++requestNumber.current
+    const isCurrentRequest = () =>
+      currentWorkflowId.current === requestWorkflowId && requestNumber.current === requestToken
     movementAdmitted.current = true
     movementPhase.current = 'posting'
     setPending({ workflowId: requestWorkflowId, label: action.label })
@@ -171,7 +173,7 @@ export const useWorkflowExecution = ({ workflowId }: UseWorkflowExecutionOptions
         checkpoint: workflow.checkpoint.state,
       })
     } catch (error) {
-      if (currentWorkflowId.current === requestWorkflowId && requestNumber.current === requestToken) {
+      if (isCurrentRequest()) {
         const staleCheckpoint = error instanceof ApiFailure && error.code === 'stale_checkpoint'
         const issueMessage = staleCheckpoint
           ? 'Checkpoint changed before the movement. Refreshing the live view; review it before submitting again.'
@@ -182,7 +184,7 @@ export const useWorkflowExecution = ({ workflowId }: UseWorkflowExecutionOptions
         setPending(null)
       }
     } finally {
-      if (currentWorkflowId.current === requestWorkflowId && requestNumber.current === requestToken) {
+      if (isCurrentRequest()) {
         movementPhase.current = 'reconciling'
         refresh()
       }

@@ -26,8 +26,10 @@ export type WorkflowRailProps = {
 export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggleCollapsed }) => {
   const workflows = model.workspace?.workflows ?? []
   const shouldShowLoading = model.isLoading && !collapsed
-  const shouldShowEmpty = !collapsed && workflows.length === 0 && !model.isLoading
+  const hasEmptyInventory = model.workspace !== undefined && workflows.length === 0 && model.issue === null
+  const shouldShowEmpty = !collapsed && hasEmptyInventory
   const shouldShowIssue = !collapsed && model.issue !== null
+  const issueTitle = model.workspace === undefined ? 'Workspace unavailable' : 'Workspace refresh failed'
   return (
     <aside className={styles.rail} aria-label="Workspace workflows">
       <Group justify={collapsed ? 'center' : 'space-between'} className={styles.heading} wrap="nowrap">
@@ -71,7 +73,7 @@ export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggle
           </Text>
         ) : null}
         {shouldShowIssue ? (
-          <Alert color="red" title="Workspace unavailable">
+          <Alert color="red" title={issueTitle}>
             <Text size="sm">{model.issue}</Text>
             <Button size="compact-sm" variant="light" mt="xs" onClick={model.retry}>
               Retry workspace

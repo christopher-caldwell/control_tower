@@ -3,10 +3,10 @@ import { Button, Group, Stack, Tooltip } from '@mantine/core'
 import { IconArrowBackUp, IconArrowRight } from '@tabler/icons-react'
 import type { FC } from 'react'
 
-import type { Action } from '@/features/workflows/execution/components/movement_actions'
 import { MovementFeedback } from '@/features/workflows/execution/components/movement_feedback'
 import styles from '@/features/workflows/execution/components/workflow_execution.module.css'
 import type { WorkflowExecutionModel } from '@/features/workflows/execution/hooks/use_workflow_execution'
+import type { Action } from '@/features/workflows/execution/model/movement_actions'
 
 type MovementDockProps = { model: WorkflowExecutionModel; unavailableLabel: string }
 

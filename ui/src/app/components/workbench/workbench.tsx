@@ -20,7 +20,7 @@ export const Workbench: FC = () => {
   const [isWorkflowRailCollapsed, setWorkflowRailCollapsed] = useState(false)
   const [isInspectorCollapsed, setInspectorCollapsed] = useState(false)
   const shouldShowEmptyState =
-    !workflows.isLoading && !workflows.issue && (workflows.workspace?.workflows.length ?? 0) === 0
+    workflows.workspace !== undefined && workflows.issue === null && workflows.workspace.workflows.length === 0
   const emptyStateMessage = shouldShowEmptyState
     ? 'Add a workflow directory under workflows/ and restart the UI.'
     : null

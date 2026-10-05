@@ -109,9 +109,3 @@ export const forwardActions = (workflow: WorkflowView, selectedStageNumber: numb
   }
   return { next, to: runTo, all: runAll }
 }
-
-export const checkpointPosition = (checkpoint: CheckpointView | null): string => {
-  const stage = checkpoint?.accepted_stage
-  if (stage) return 'Stage ' + stage.number + ' · ' + stage.name
-  return 'Baseline · no accepted stages'
-}

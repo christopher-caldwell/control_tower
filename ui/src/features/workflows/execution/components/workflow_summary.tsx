@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Group, Loader, Stack, Text, Title } from '@mantin
 import type { FC } from 'react'
 
 import type { WorkflowIdentity } from '@/api/types'
-import { checkpointPosition } from '@/features/workflows/execution/components/movement_actions'
+import { checkpointPosition } from '@/features/workflows/execution/components/checkpoint_position'
 import styles from '@/features/workflows/execution/components/workflow_execution.module.css'
 import type { WorkflowExecutionModel } from '@/features/workflows/execution/hooks/use_workflow_execution'
 

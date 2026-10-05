@@ -140,6 +140,53 @@ afterEach(() => {
 })
 
 describe('workflow browser adapter', () => {
+  it('waits for established inventory before showing an empty workspace', async () => {
+    const response = deferred<Response>()
+    installWorkbench({}, (url) => (url === '/api/workspace' ? response.promise : undefined))
+
+    expect(screen.getByText('Discovering workflows…')).toBeInTheDocument()
+    expect(screen.queryByText(/No workflow directories were found/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No workflows found' })).not.toBeInTheDocument()
+
+    await act(async () => response.resolve(Response.json(workspaceFor([]))))
+    expect(await screen.findByRole('heading', { name: 'No workflows found' })).toBeInTheDocument()
+    expect(screen.getByText(/No workflow directories were found/)).toBeInTheDocument()
+    expect(screen.queryByText('Discovering workflows…')).not.toBeInTheDocument()
+  })
+
+  it.each([{ ids: [] }, { ids: ['healthy'] }])(
+    'reports initial inventory failure and retries to $ids',
+    async ({ ids }) => {
+      let inventoryRequests = 0
+      installWorkbench({}, (url) => {
+        if (url !== '/api/workspace') return undefined
+        inventoryRequests += 1
+        const response =
+          inventoryRequests === 1
+            ? Response.json({ error: { code: 'workspace_failed', message: 'Cannot read workspace' } }, { status: 503 })
+            : Response.json(workspaceFor(ids))
+        return Promise.resolve(response)
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Cannot read workspace')
+      expect(screen.queryByText(/No workflow directories were found/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'No workflows found' })).not.toBeInTheDocument()
+      expect(inventoryRequests).toBe(1)
+
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Retry workspace' }))
+      if (ids.length === 0) {
+        expect(await screen.findByRole('heading', { name: 'No workflows found' })).toBeInTheDocument()
+        expect(screen.getByText(/No workflow directories were found/)).toBeInTheDocument()
+      } else {
+        expect(await screen.findByRole('button', { name: 'healthy' })).toBeInTheDocument()
+        expect(screen.queryByText(/No workflow directories were found/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'No workflows found' })).not.toBeInTheDocument()
+      }
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(inventoryRequests).toBe(2)
+    },
+  )
+
   it('lists directory identities without claiming every workflow is ready', async () => {
     const healthy = workflow('healthy')
     const unprepared = workflow('unprepared', {

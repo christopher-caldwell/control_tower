@@ -2,7 +2,7 @@ import { Accordion } from '@mantine/core'
 import type { FC } from 'react'
 
 import type { MovementObservation, RoleObservation, StageView } from '@/api/types'
-import { RolePreview } from '@/features/workflows/stage_inspection/components/role_output'
+import { RolePreview } from '@/features/workflows/stage_inspection/components/role_preview'
 
 type RoleStatusSectionProps = {
   kind: 'mutation' | 'verification'
