@@ -12,7 +12,6 @@ sources:
 - ../../crates/cli/src/commands.rs
 - ../../crates/cli/src/deps.rs
 - ../../crates/cli/src/web.rs
-- ../../crates/database/src/bin/control-tower-db.rs
 - ../../crates/database/src/operations.rs
 - ../../justfile
 ---
@@ -23,7 +22,7 @@ This page describes the implemented CLI, not proposed command spellings from dis
 
 ## Invocation forms
 
-Commands below use installed binaries. From the repository root, you can instead use `./target/debug/control-tower` after building, or invoke the same command through Cargo:
+Commands below use the installed binary. From the repository root, you can instead use `./target/debug/control-tower` after building, or invoke the same command through Cargo:
 
 ```sh
 cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
@@ -32,7 +31,7 @@ cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
 The package is `control-tower-cli`; its executable is `control-tower`. For database operations:
 
 ```sh
-cargo run --locked -p control-tower-database --bin control-tower-db -- verify-local "$workflow"
+cargo run --locked -p control-tower-cli -- db verify-local "$workflow"
 ```
 
 An installed binary can run from any directory. Relative workflow paths are resolved against the directory from which you invoke the command. Use an absolute path when changing directories between invocations.
@@ -46,6 +45,9 @@ control-tower ui
 control-tower up --workflow PATH --stage NUMBER
 control-tower down --workflow PATH --stage NUMBER
 control-tower status --workflow PATH
+control-tower db bootstrap-local PATH
+control-tower db migrate-local PATH
+control-tower db verify-local PATH
 ```
 
 ### Agent guidance and validation
@@ -101,6 +103,10 @@ control-tower up --help
 control-tower down --help
 control-tower status --help
 control-tower ui --help
+control-tower db --help
+control-tower db bootstrap-local --help
+control-tower db migrate-local --help
+control-tower db verify-local --help
 ```
 
 A completed/no-op movement, successful status or validation, successful guide request, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.
@@ -116,9 +122,9 @@ If a checkpoint write fails, output distinguishes the **last confirmed checkpoin
 ## Database operations
 
 ```text
-control-tower-db bootstrap-local PATH
-control-tower-db migrate-local PATH
-control-tower-db verify-local PATH
+control-tower db bootstrap-local PATH
+control-tower db migrate-local PATH
+control-tower db verify-local PATH
 ```
 
 These use a positional workflow path, **not** `--workflow`. The path must already be a directory. All operate on `PATH/.control_tower/state.sqlite3`.
@@ -129,7 +135,7 @@ These use a positional workflow path, **not** `--workflow`. The path must alread
 | `migrate-local` | Open an existing file and apply the supported versioned schema. The current version-1 migration can adopt the earlier unversioned v0 table without discarding its rows. An already supported version is checked, not reset. |
 | `verify-local` | Open read-only and check the supported schema version/history. It does not verify user-authored stages. |
 
-Ordinary workbench commands never run these operations. A successful database operation exits 0; usage/setup failures exit nonzero. `control-tower-db` has a minimal positional interface, not the workbench's Clap help interface; running it without the two arguments prints usage and exits nonzero.
+These commands use the same Clap interface as the rest of `control-tower`; each operation requires its positional workflow path. A successful operation exits 0; path, usage, or database failures exit nonzero. Ordinary workbench commands never run these operations.
 
 `verify-local` checks version/history, not comprehensive schema readiness. A missing/malformed checkpoint table or unsuitable upsert key can still fail ordinary commands even after version/history verification succeeds. No schema repair is inferred from this operation.
 
@@ -151,4 +157,4 @@ A successful return to baseline clears the active run UUID but leaves the databa
 
 ## Implementation references
 
-[Workbench parser](../../crates/cli/src/main.rs), [delivery/output](../../crates/cli/src/commands.rs), [Application movement](../../crates/application/src/lib.rs), [database operations](../../crates/database/src/operations.rs), and [operational parser](../../crates/database/src/bin/control-tower-db.rs) define the current behavior. Accepted navigation intent remains in [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).
+[CLI parser and database dispatch](../../crates/cli/src/main.rs), [delivery/output](../../crates/cli/src/commands.rs), [Application movement](../../crates/application/src/lib.rs), and [database operations](../../crates/database/src/operations.rs) define the current behavior. Accepted navigation intent remains in [ADR-0002](../decisions/0002-stage-navigation-and-verification.md).

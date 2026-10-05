@@ -66,9 +66,9 @@ migrate, repair, or verify storage. Prepare each workflow explicitly before usin
 its movement controls:
 
 ```sh
-control-tower-db bootstrap-local workflows/my-workflow
-control-tower-db migrate-local workflows/my-workflow
-control-tower-db verify-local workflows/my-workflow
+control-tower db bootstrap-local workflows/my-workflow
+control-tower db migrate-local workflows/my-workflow
+control-tower db verify-local workflows/my-workflow
 ```
 
 Each workflow uses the existing `stages/<number>-<name>/` layout and its own

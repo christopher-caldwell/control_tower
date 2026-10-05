@@ -14,9 +14,9 @@ python3 --version
 workflow=workflows/generated-id
 printf 'Example workflow: %s\n' "$workflow"
 
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower status --workflow "$workflow"
 ```
 
@@ -73,9 +73,9 @@ Prepare another fresh copy of the complete simple example using its README, then
 
 ```sh
 workflow=workflows/generated-id
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 
 stage="$workflow/stages/002-change-record"
 cp "$stage/up" "$workflow/up.original"

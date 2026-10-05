@@ -20,7 +20,7 @@ Each immediate child directory under `stages/` is parsed as a stage. The part be
 
 The only recognized role filenames are `up`, `down`, `verify-up`, and `verify-down`. Each stage needs at least one mutation (`up` or `down`). A verifier requires its matching mutation. Either verifier may be absent. Role paths must be regular files; execute permission is needed when a role is launched, not during discovery or status.
 
-The workflow database must already exist and have a supported schema. Setup is explicit and separate: `control-tower-db bootstrap-local PATH`, `migrate-local PATH`, and `verify-local PATH`. `control-tower validate` does not run these operations, create storage, or repair state.
+The workflow database must already exist and have a supported schema. Setup is explicit and separate: `control-tower db bootstrap-local PATH`, `migrate-local PATH`, and `verify-local PATH`. `control-tower validate` does not run these operations, create storage, or repair state.
 
 ## Running roles
 

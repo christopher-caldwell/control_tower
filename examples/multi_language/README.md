@@ -11,7 +11,7 @@ explicit files. Runtime boundaries are visible in the executable stage files.
 
 ## Setup and run
 
-Install or build `control-tower` and `control-tower-db` and put both on PATH.
+Build or install `control-tower` and put it on PATH.
 See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
 From the Control Tower checkout:
 
@@ -38,9 +38,9 @@ This example has no reusable `tools/` layer.
 
 ```sh
 workflow=workflows/shell-python-node
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow/data/node_inspection.json"
 control-tower down --workflow "$workflow" --stage 0

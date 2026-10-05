@@ -101,7 +101,7 @@ services, shared Workbench requirements, or persistence model.
 
 Application offers synchronous observations before and after each actual role attempt. CLI renders captured output/results before the next role is attempted. The UI maps those observations to SSE and keeps the latest in-process attempt for the selected workflow. It converts each completed role's captured stdout/stderr to separate displayable text in the snapshot, so completed mutation output remains available while a later verifier runs. The Application outcome and Infrastructure runner retain their existing raw bytes. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
 
-The separate `control-tower-db` binary performs operational database setup. It is not a second workbench UI or an additional application transport.
+The `control-tower db` subcommands perform explicit operational database setup through the primary CLI. They call Database-owned operations before workbench composition; ordinary workbench commands do not bootstrap or migrate storage.
 
 ## Selected UI shell: desktop workspace -> workflow -> stage workbench
 

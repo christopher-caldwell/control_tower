@@ -19,9 +19,9 @@ control-tower down --workflow PATH --stage NUMBER
 The workflow must already have its prepared database. Database setup stays explicit and separate:
 
 ```text
-control-tower-db bootstrap-local PATH
-control-tower-db migrate-local PATH
-control-tower-db verify-local PATH
+control-tower db bootstrap-local PATH
+control-tower db migrate-local PATH
+control-tower db verify-local PATH
 ```
 
 `control-tower validate` checks the workflow in the current directory, so change into the workflow before running it. It reads the same stage and status information without executing roles or changing checkpoint state.

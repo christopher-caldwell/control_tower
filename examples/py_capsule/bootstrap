@@ -7,4 +7,4 @@ export PYTHONDONTWRITEBYTECODE=1
 uv sync --locked --project "$GALLERY_ROOT"
 uv sync --locked --project "$GALLERY_ROOT/tools/example_tool"
 npm ci --prefix "$GALLERY_ROOT" --ignore-scripts --no-audit --no-fund
-printf 'Ready. Run a workflow with control-tower and control-tower-db on PATH.\n'
+printf 'Ready. Run a workflow with control-tower on PATH.\n'

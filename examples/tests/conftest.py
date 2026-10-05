@@ -39,8 +39,9 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture
 def cli_environment():
-    for executable in ("control-tower", "control-tower-db"):
-        assert os.access(REPOSITORY / "target/debug" / executable, os.X_OK), "run cargo build --locked --workspace first"
+    assert os.access(REPOSITORY / "target/debug/control-tower", os.X_OK), (
+        "run cargo build --locked --workspace first"
+    )
     env = dict(os.environ)
     for variable in (
         "PYTHONPATH", "UV_PROJECT", "UV_PROJECT_ENVIRONMENT", "UV_NO_SYNC", "NODE_PATH",

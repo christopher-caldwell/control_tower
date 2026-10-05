@@ -3,7 +3,7 @@
 set -eu
 EXAMPLES_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPOSITORY_ROOT=$(CDPATH= cd -- "$EXAMPLES_ROOT/.." && pwd)
-for executable in control-tower control-tower-db; do
+for executable in control-tower; do
   if [ ! -x "$REPOSITORY_ROOT/target/debug/$executable" ]; then
     printf 'Build Control Tower first: cargo build --locked --workspace (repository root).\n' >&2
     exit 1

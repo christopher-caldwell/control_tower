@@ -7,7 +7,7 @@ The final ordinary Python stage observes the value and runtime export.
 
 ## Prerequisites and progression
 
-Use built Control Tower binaries, Unix tools, uv / Python 3.12 and access to the pinned PyCapsule Git repository.
+Use the built `control-tower` CLI, Unix tools, uv / Python 3.12 and access to the pinned PyCapsule Git repository.
 Follow [example setup](../../README.md#setup-and-run). This workflow intentionally
 uses the example-owned Python project and shared `tools/example_tool`.
 
@@ -23,9 +23,9 @@ From the copied example root after setup:
 
 ```sh
 workflow=workflows/tool-only
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower up --workflow "$workflow" --stage 1
 cat "$workflow/data/record.json"
 control-tower up --workflow "$workflow" --stage 2

@@ -28,9 +28,9 @@ cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
 printf 'Example workflow: %s\n' "$workflow"
 
-./target/debug/control-tower-db bootstrap-local "$workflow"
-./target/debug/control-tower-db migrate-local "$workflow"
-./target/debug/control-tower-db verify-local "$workflow"
+./target/debug/control-tower db bootstrap-local "$workflow"
+./target/debug/control-tower db migrate-local "$workflow"
+./target/debug/control-tower db verify-local "$workflow"
 
 ./target/debug/control-tower up --workflow "$workflow" --stage 3
 ./target/debug/control-tower status --workflow "$workflow"
