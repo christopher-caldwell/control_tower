@@ -504,23 +504,103 @@ fn workspace_dotenv_defaults_reach_roles_with_shell_and_control_tower_precedence
 #[test]
 fn invalid_workspace_dotenv_blocks_validation_and_movement_before_roles_run() {
     let workflow = Workflow::from_fixture();
-    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
     let marker = workflow.path().join("dotenv-role-ran");
+    let up = workflow.path().join("stages/001-create-file/up");
+    let original_up = fs::read_to_string(&up).unwrap();
     write_executable(
-        &workflow.path().join("stages/001-create-file/up"),
-        "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKFLOW/dotenv-role-ran\"\n",
+        &up,
+        &format!("{original_up}\ntouch \"$CONTROL_TOWER_WORKFLOW/dotenv-role-ran\"\n"),
     );
-    for args in [vec!["validate", "--workflow"], vec!["up", "--workflow"]] {
+    let initial = move_to(&workflow, "up", 1);
+    assert!(initial.status.success(), "{}", output_text(&initial));
+    assert!(marker.exists());
+    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
+
+    for args in [vec!["validate", "--workflow"], vec!["down", "--workflow"]] {
+        let is_down = args[0] == "down";
         let mut command = Command::new(env!("CARGO_BIN_EXE_control-tower"));
         command.args(args).arg(workflow.path());
-        if command.get_args().next() == Some(std::ffi::OsStr::new("up")) {
-            command.args(["--stage", "1"]);
+        if is_down {
+            command.args(["--stage", "0"]);
         }
         let output = command.current_dir(workflow.workspace()).output().unwrap();
         assert!(!output.status.success());
         assert!(output_text(&output).contains("Workspace .env"));
-        assert!(!marker.exists());
+        if is_down {
+            assert_eq!(output.status.code(), Some(1));
+            assert!(String::from_utf8_lossy(&output.stdout).contains(
+                "Result: stopped before movement; requested down to 0; position 1 (create-file)"
+            ));
+            assert!(String::from_utf8_lossy(&output.stdout).contains("No roles ran."));
+        }
+        assert!(marker.exists());
     }
+    let saved = checkpoint(&workflow);
+    assert_eq!(saved.completed_stage_count, 1);
+    assert!(saved.pending.is_none());
+}
+
+#[test]
+fn parsed_movement_failures_always_report_target_and_known_or_unavailable_position() {
+    let invalid_target_workflow = Workflow::from_fixture();
+    let invalid_target = move_to(&invalid_target_workflow, "up", 999);
+    assert_eq!(invalid_target.status.code(), Some(1));
+    let invalid_target_output = output_text(&invalid_target);
+    assert!(
+        invalid_target_output.contains(
+            "Result: stopped before movement; requested up to 999; position baseline (0)"
+        )
+    );
+    assert!(invalid_target_output.contains("No roles ran."));
+    assert!(!invalid_target_workflow.path().join("calls.log").exists());
+    let database = rusqlite::Connection::open(
+        invalid_target_workflow
+            .path()
+            .join(".control_tower/state.sqlite3"),
+    )
+    .unwrap();
+    let checkpoint_rows: i64 = database
+        .query_row("SELECT count(*) FROM workbench_state", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(checkpoint_rows, 0);
+
+    let invalid_workspace = Workflow::from_fixture();
+    fs::remove_file(invalid_workspace.workspace().join("control-tower.toml")).unwrap();
+    let startup_failure = move_to(&invalid_workspace, "down", 0);
+    assert_eq!(startup_failure.status.code(), Some(1));
+    assert!(
+        output_text(&startup_failure)
+            .contains("Result: stopped before movement; requested down to 0; position unavailable")
+    );
+    assert!(output_text(&startup_failure).contains("No roles ran."));
+
+    let discovery_workflow = Workflow::from_fixture();
+    fs::remove_dir_all(discovery_workflow.path().join("stages")).unwrap();
+    let discovery_failure = move_to(&discovery_workflow, "down", 0);
+    assert_eq!(discovery_failure.status.code(), Some(1));
+    let discovery_output = output_text(&discovery_failure);
+    assert!(
+        discovery_output
+            .contains("Result: stopped before movement; requested down to 0; position unavailable")
+    );
+    assert!(discovery_output.contains("No roles ran."));
+
+    let state_workflow = Workflow::from_fixture();
+    fs::remove_file(state_workflow.path().join(".control_tower/state.sqlite3")).unwrap();
+    let state_failure = move_to(&state_workflow, "up", 1);
+    assert_eq!(state_failure.status.code(), Some(1));
+    let state_output = output_text(&state_failure);
+    assert!(
+        state_output
+            .contains("Result: stopped before movement; requested up to 1; position unavailable")
+    );
+    assert!(state_output.contains("No roles ran."));
+    assert!(
+        !state_workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .exists()
+    );
 }
 
 #[test]

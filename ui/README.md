@@ -54,8 +54,10 @@ To use an existing workspace instead, provide an absolute path:
 CONTROL_TOWER_DEV_WORKSPACE=/absolute/path/to/workspace pnpm --dir ui dev
 ```
 
-That directory must contain `workflows/`. Its workflows must already have their
-databases and dependencies prepared; the dev server only prepares its own sample.
+That directory must contain a parseable `control-tower.toml` with a nonempty
+`[workspace].label`, alongside the required `workflows/` directory. Its workflows
+must already have their databases and dependencies prepared; the dev server only
+prepares its own sample.
 Movement controls execute the selected workspace's real roles. Restart to change
 workspaces or refresh the workflow inventory.
 

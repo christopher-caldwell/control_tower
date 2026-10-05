@@ -1,6 +1,6 @@
 use control_tower_application::{
     Direction, ExecutionEvent, ExecutionProgress, MoveStatus, MoveToInput, MovementChoice, Stage,
-    TransitionFailure, Workbench, WorkbenchState,
+    TransitionFailure, Workbench, WorkbenchState, WorkbenchStatus,
 };
 use std::io::{self, Write};
 use std::path::Path;
@@ -34,8 +34,13 @@ pub(super) fn run_move(
     ) {
         Ok(outcome) => outcome,
         Err(error) => {
-            eprintln!("error: {error}");
-            return ExitCode::FAILURE;
+            let checkpoint = workbench.status(workflow).ok();
+            return report_movement_preflight_failure(
+                direction,
+                target,
+                &error.to_string(),
+                checkpoint.as_ref(),
+            );
         }
     };
     let choices = outcome.verification_choices();
@@ -97,6 +102,43 @@ pub(super) fn run_move(
     exit_code
 }
 
+pub(super) fn report_movement_preflight_failure(
+    direction: Direction,
+    target: u32,
+    error: &str,
+    checkpoint: Option<&WorkbenchStatus>,
+) -> ExitCode {
+    eprintln!("error: {error}");
+    match checkpoint {
+        Some(checkpoint) => {
+            render_movement_position(
+                "stopped before movement",
+                direction,
+                target,
+                &checkpoint.state,
+                &checkpoint.stages,
+            );
+            if let Some(pending) = checkpoint.state.pending {
+                let stage = &checkpoint.stages[pending.stage_index];
+                println!(
+                    "  Pending verification: {} {} ({})",
+                    pending.direction, stage.number, stage.name
+                );
+            }
+            println!("  No roles ran.");
+            println!("  Failure: {error}");
+        }
+        None => {
+            println!(
+                "Result: stopped before movement; requested {direction} to {target}; position unavailable"
+            );
+            println!("  No roles ran.");
+            println!("  Failure: {error}");
+        }
+    }
+    ExitCode::FAILURE
+}
+
 fn render_movement_summary(
     direction: Direction,
     target: u32,
@@ -107,14 +149,7 @@ fn render_movement_summary(
         MoveStatus::Complete(state) => ("complete", state, None),
         MoveStatus::Stopped { state, failure } => ("stopped", state, Some(failure)),
     };
-    let position = match state.completed_stage_count {
-        0 => "baseline (0)".to_owned(),
-        count => {
-            let stage = &stages[count - 1];
-            format!("{} ({})", stage.number, stage.name)
-        }
-    };
-    println!("Result: {label}; requested {direction} to {target}; position {position}");
+    render_movement_position(label, direction, target, state, stages);
     if let Some(pending) = state.pending {
         let stage = &stages[pending.stage_index];
         println!(
@@ -143,6 +178,23 @@ fn render_movement_summary(
             _ => println!("  Failure: {failure}"),
         }
     }
+}
+
+fn render_movement_position(
+    result: &str,
+    direction: Direction,
+    target: u32,
+    state: &WorkbenchState,
+    stages: &[Stage],
+) {
+    let position = match state.completed_stage_count {
+        0 => "baseline (0)".to_owned(),
+        count => {
+            let stage = &stages[count - 1];
+            format!("{} ({})", stage.number, stage.name)
+        }
+    };
+    println!("Result: {result}; requested {direction} to {target}; position {position}");
 }
 
 pub(super) fn run_status(workbench: &Workbench, workflow: &Path) -> ExitCode {

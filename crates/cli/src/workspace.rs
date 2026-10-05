@@ -13,6 +13,25 @@ pub(super) struct Workspace {
 }
 
 pub(super) fn load(root: &Path) -> Result<Workspace, String> {
+    let (root, label) = load_contract(root)?;
+    let env_overrides = read_env_overrides(&root)?;
+    Ok(Workspace {
+        root,
+        label,
+        env_overrides,
+    })
+}
+
+pub(super) fn load_without_dotenv(root: &Path) -> Result<Workspace, String> {
+    let (root, label) = load_contract(root)?;
+    Ok(Workspace {
+        root,
+        label,
+        env_overrides: HashMap::new(),
+    })
+}
+
+fn load_contract(root: &Path) -> Result<(PathBuf, String), String> {
     let root = root
         .canonicalize()
         .map_err(|error| format!("cannot open Workspace {}: {error}", root.display()))?;
@@ -43,12 +62,7 @@ pub(super) fn load(root: &Path) -> Result<Workspace, String> {
     if !metadata.is_dir() {
         return Err("Workspace workflows/ is not a directory".to_owned());
     }
-    let env_overrides = read_env_overrides(&root)?;
-    Ok(Workspace {
-        root,
-        label,
-        env_overrides,
-    })
+    Ok((root, label))
 }
 
 pub(super) fn read_env_overrides(root: &Path) -> Result<HashMap<String, String>, String> {

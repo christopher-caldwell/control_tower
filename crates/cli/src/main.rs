@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use commands::{run_move, run_status, run_validate};
-use control_tower_application::Direction;
+use control_tower_application::{Direction, WorkbenchStatus};
 use control_tower_database::operations;
 mod commands;
 mod deps;
@@ -106,28 +106,30 @@ fn main() -> ExitCode {
         | Command::Status { workflow } => workflow,
         Command::Guide { .. } | Command::Ui | Command::Db { .. } => unreachable!("handled above"),
     };
-    let workspace = match std::env::current_dir()
-        .map_err(|e| e.to_string())
-        .and_then(|path| workspace::load(&path))
-    {
+    let invocation_root = match std::env::current_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            return report_command_failure(&cli.command, &error.to_string(), None);
+        }
+    };
+    let workspace = match workspace::load(&invocation_root) {
         Ok(workspace) => workspace,
         Err(message) => {
-            eprintln!("error: {message}");
-            return ExitCode::FAILURE;
+            let checkpoint = best_effort_movement_checkpoint(&invocation_root, workflow_arg);
+            return report_command_failure(&cli.command, &message, checkpoint.as_ref());
         }
     };
     let workflow_root = match resolve_workflow(&workspace.root, workflow_arg) {
         Ok(path) => path,
         Err(message) => {
-            eprintln!("error: {message}");
-            return ExitCode::FAILURE;
+            return report_command_failure(&cli.command, &message, None);
         }
     };
     let workbench = match deps::workbench(&workflow_root, workspace.env_overrides) {
         Ok(service) => service,
         Err(error) => {
-            eprintln!("error: {error}. Run explicit local database setup; see README.md");
-            return ExitCode::FAILURE;
+            let message = format!("{error}. Run explicit local database setup; see README.md");
+            return report_command_failure(&cli.command, &message, None);
         }
     };
 
@@ -137,6 +139,35 @@ fn main() -> ExitCode {
         Command::Down { stage, .. } => run_move(&workbench, &workflow_root, Direction::Down, stage),
         Command::Status { .. } => run_status(&workbench, &workflow_root),
         Command::Guide { .. } | Command::Ui | Command::Db { .. } => unreachable!("handled above"),
+    }
+}
+
+fn best_effort_movement_checkpoint(root: &Path, workflow_arg: &Path) -> Option<WorkbenchStatus> {
+    let workspace = workspace::load_without_dotenv(root).ok()?;
+    let workflow = resolve_workflow(&workspace.root, workflow_arg).ok()?;
+    let workbench = deps::workbench(&workflow, workspace.env_overrides).ok()?;
+    workbench.status(&workflow).ok()
+}
+
+fn report_command_failure(
+    command: &Command,
+    message: &str,
+    checkpoint: Option<&WorkbenchStatus>,
+) -> ExitCode {
+    match command {
+        Command::Up { stage, .. } => {
+            commands::report_movement_preflight_failure(Direction::Up, *stage, message, checkpoint)
+        }
+        Command::Down { stage, .. } => commands::report_movement_preflight_failure(
+            Direction::Down,
+            *stage,
+            message,
+            checkpoint,
+        ),
+        _ => {
+            eprintln!("error: {message}");
+            ExitCode::FAILURE
+        }
     }
 }
 
