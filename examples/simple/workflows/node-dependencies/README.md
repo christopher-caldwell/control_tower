@@ -6,7 +6,7 @@ installs packages. The timestamp is normalized to UTC before downstream inspecti
 
 ## Prerequisites and progression
 
-Use a Unix shell, built Control Tower binaries, and Node and npm.
+Use a Unix shell, the built `control-tower` CLI, and Node and npm.
 Follow [example setup](../../README.md#setup-and-run), then run these commands from the copied example root.
 
 ```text
@@ -22,9 +22,9 @@ outputs. Dependencies belong to the containing example; each workflow owns its s
 
 ```sh
 workflow=workflows/node-dependencies
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 # Use --stage 1, then each successive stage to inspect intermediate files.
 control-tower up --workflow "$workflow" --stage 2
 cat "$workflow/data/node_inspection.json"

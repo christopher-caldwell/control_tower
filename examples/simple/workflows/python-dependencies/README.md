@@ -6,7 +6,7 @@ parses the input timestamp during seed and normalization.
 
 ## Prerequisites and progression
 
-Use a Unix shell, built Control Tower binaries, and uv and Python 3.12.
+Use a Unix shell, the built `control-tower` CLI, and uv and Python 3.12.
 Follow [example setup](../../README.md#setup-and-run), then run these commands from the copied example root.
 
 ```text
@@ -22,9 +22,9 @@ outputs. Dependencies belong to the containing example; each workflow owns its s
 
 ```sh
 workflow=workflows/python-dependencies
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 # Use --stage 1, then each successive stage to inspect intermediate files.
 control-tower up --workflow "$workflow" --stage 2
 cat "$workflow/data/normalized.json"

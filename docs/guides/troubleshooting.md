@@ -23,13 +23,13 @@ Start with the [setup guide](getting-started.md). Run repository-relative comman
 
 Check `cargo --version`. Install Rust through the [official rustup instructions](https://rust-lang.org/tools/install/) and reopen the terminal if Cargo is not yet on `PATH`.
 
-Build both executables:
+Build the CLI:
 
 ```sh
 cargo build --locked --workspace
 ```
 
-Use `./target/debug/control-tower` and `./target/debug/control-tower-db` with Cargo's default target directory. A custom target directory changes those paths. A missing native compiler/linker is a Rust/bundled-SQLite build prerequisite, not a reason to install a SQLite server.
+Use `./target/debug/control-tower` for all commands with Cargo's default target directory. A custom target directory changes that path. A missing native compiler/linker is a Rust/bundled-SQLite build prerequisite, not a reason to install a SQLite server.
 
 The Cargo package is **`control-tower-cli`**, not `control-tower`:
 
@@ -37,7 +37,7 @@ The Cargo package is **`control-tower-cli`**, not `control-tower`:
 cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
 ```
 
-`just: command not found` is not a blocker. Use the three `control-tower-db` commands from the setup guide instead.
+`just: command not found` is not a blocker. Use the three `control-tower db` commands from the setup guide instead.
 
 ## The database is missing or not initialized
 
@@ -51,9 +51,9 @@ ls -ld "$workflow"
 For a new workflow, run:
 
 ```sh
-./target/debug/control-tower-db bootstrap-local "$workflow"
-./target/debug/control-tower-db migrate-local "$workflow"
-./target/debug/control-tower-db verify-local "$workflow"
+./target/debug/control-tower db bootstrap-local "$workflow"
+./target/debug/control-tower db migrate-local "$workflow"
+./target/debug/control-tower db verify-local "$workflow"
 ```
 
 Normal commands intentionally refuse an unprepared database. Bootstrap does not migrate, and ordinary `status` does not create storage. The CLI's startup message suggests setup for database-opening failures in general; if setup/verification already succeeds, inspect the underlying message and filesystem permissions rather than assuming another migration fixes it.

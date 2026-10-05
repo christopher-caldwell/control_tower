@@ -18,7 +18,7 @@ impl Database {
         Self(
             std::env::temp_dir()
                 .join(format!(
-                    "control-tower-db-test-{}-{}",
+                    "control-tower-sqlite-test-{}-{}",
                     std::process::id(),
                     NEXT.fetch_add(1, Ordering::Relaxed)
                 ))

@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use commands::{run_move, run_status, run_validate};
 use control_tower_application::Direction;
+use control_tower_database::operations;
 mod commands;
 mod deps;
 mod guides;
@@ -46,10 +47,31 @@ enum Command {
         #[arg(long)]
         workflow: PathBuf,
     },
+    /// Prepare or inspect a workflow's local database explicitly.
+    Db {
+        #[command(subcommand)]
+        operation: DatabaseOperation,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum DatabaseOperation {
+    /// Create the local state directory and SQLite file if necessary.
+    #[command(name = "bootstrap-local")]
+    Bootstrap { path: PathBuf },
+    /// Apply the supported versioned schema to an existing SQLite file.
+    #[command(name = "migrate-local")]
+    Migrate { path: PathBuf },
+    /// Verify the supported schema version and migration history read-only.
+    #[command(name = "verify-local")]
+    Verify { path: PathBuf },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Command::Db { operation } = &cli.command {
+        return run_database_operation(operation);
+    }
     match &cli.command {
         Command::Guide { action } => {
             guides::print(*action);
@@ -81,7 +103,7 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
-        Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
+        Command::Guide { .. } | Command::Ui | Command::Db { .. } => unreachable!("handled above"),
     };
     let workbench = match deps::workbench(&workflow_root) {
         Ok(service) => service,
@@ -96,7 +118,35 @@ fn main() -> ExitCode {
         Command::Up { stage, .. } => run_move(&workbench, &workflow_root, Direction::Up, stage),
         Command::Down { stage, .. } => run_move(&workbench, &workflow_root, Direction::Down, stage),
         Command::Status { .. } => run_status(&workbench, &workflow_root),
-        Command::Guide { .. } | Command::Ui => unreachable!("handled above"),
+        Command::Guide { .. } | Command::Ui | Command::Db { .. } => unreachable!("handled above"),
+    }
+}
+
+fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
+    let path = match operation {
+        DatabaseOperation::Bootstrap { path }
+        | DatabaseOperation::Migrate { path }
+        | DatabaseOperation::Verify { path } => path,
+    };
+    let workflow = match resolve_workflow(path) {
+        Ok(path) => path,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let database = workflow.join(".control_tower/state.sqlite3");
+    let result = match operation {
+        DatabaseOperation::Bootstrap { .. } => operations::bootstrap(&database),
+        DatabaseOperation::Migrate { .. } => operations::migrate(&database),
+        DatabaseOperation::Verify { .. } => operations::verify(&database),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("database operation failed: {error}");
+            ExitCode::FAILURE
+        }
     }
 }
 

@@ -18,7 +18,7 @@ sources:
 
 # Build and run Control Tower
 
-Build both local executables, prepare a disposable workflow, and run the supplied example. Commands below assume a Unix shell and the repository root unless stated otherwise.
+Build the CLI, prepare a disposable workflow, and run the supplied example. Commands below assume a Unix shell and the repository root unless stated otherwise.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ cargo --version
 cc --version
 ```
 
-`just` is optional. The primary instructions use the built executables directly.
+`just` is optional. The primary instructions use the built CLI directly.
 
 ## Get the source and build
 
@@ -49,8 +49,7 @@ An existing checkout only needs the build command from its repository root. With
 
 | Executable | Purpose |
 | --- | --- |
-| `target/debug/control-tower` | User commands: `guide`, `validate`, `up`, `down`, `status`, and `ui`. |
-| `target/debug/control-tower-db` | Explicit local database setup and verification. |
+| `target/debug/control-tower` | All user commands, including explicit local database setup and verification. |
 
 For browser UI preparation and launch requirements, see [Start the UI](../reference/browser-workbench.md#start-the-ui). The packaged interface does not require Node; Node is needed only to rebuild its React assets.
 
@@ -82,9 +81,9 @@ The supplied stage scripts are committed with executable permissions. The [workf
 The workflow directory must already exist. Run all three operations:
 
 ```sh
-./target/debug/control-tower-db bootstrap-local "$workflow"
-./target/debug/control-tower-db migrate-local "$workflow"
-./target/debug/control-tower-db verify-local "$workflow"
+./target/debug/control-tower db bootstrap-local "$workflow"
+./target/debug/control-tower db migrate-local "$workflow"
+./target/debug/control-tower db verify-local "$workflow"
 ```
 
 Bootstrap provisions `.control_tower/state.sqlite3`; migrate applies its schema; verify checks the supported schema version/history. These operations do not run stage scripts. Ordinary `up`, `down`, and `status` open an already prepared database; they do not bootstrap or migrate it.
@@ -101,7 +100,7 @@ just db-migrate-local "$workflow"
 just db-verify-local "$workflow"
 ```
 
-Run them from the repository root. They invoke the same Database-owned operations through Cargo; they are an alternative to the three binary calls above, not additional setup.
+Run them from the repository root. They invoke the same Database-owned operations through the `control-tower` CLI; they are an alternative to the three direct calls above, not additional setup.
 
 ## Run and inspect
 
@@ -122,16 +121,15 @@ The final status should identify stage 3, show one UUID, and show no pending ver
 
 All three down operations and their checks run in reverse order. The fixture file disappears, and status reports baseline with `UUID: not created`. The prepared SQLite database remains; another `up` begins a new run.
 
-## Install the commands on your PATH
+## Install `control-tower` on your PATH
 
 This is optional. From the repository root:
 
 ```sh
 cargo install --locked --path crates/cli --bin control-tower
-cargo install --locked --path crates/database --bin control-tower-db
 ```
 
-Ensure Cargo's install directory is on your `PATH` (normally `~/.cargo/bin`, as described in the [Rust installation notes](https://rust-lang.org/tools/install/)). Install **both** commands: the workbench does not initialize its own database.
+Ensure Cargo's install directory is on your `PATH` (normally `~/.cargo/bin`, as described in the [Rust installation notes](https://rust-lang.org/tools/install/)). Only `control-tower` needs to be installed; database preparation remains explicit through its `db` subcommands.
 
 You can then use an absolute workflow path from any directory:
 
@@ -139,7 +137,7 @@ You can then use an absolute workflow path from any directory:
 control-tower status --workflow "$workflow"
 ```
 
-`just` recipes and `cargo run` still require the checkout; the installed executables do not require your current directory to be the repository root.
+`just` recipes and `cargo run` still require the checkout; the installed executable does not require your current directory to be the repository root.
 
 ## Updating and checking the checkout
 

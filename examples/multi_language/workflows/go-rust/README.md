@@ -9,7 +9,7 @@ only the file produced by that stage.
 
 ## Prerequisites and progression
 
-Use a Unix shell, built Control Tower binaries, and Go 1.23+, Rust / Cargo, and a working linker.
+Use a Unix shell, the built `control-tower` CLI, and Go 1.23+, Rust / Cargo, and a working linker.
 The workflow is independent of Control Tower's Cargo workspace through its own
 `[workspace]` declaration. Go and Rust use their standard libraries; no module
 registry dependencies are needed. Generated Cargo output stays under its ignored
@@ -28,9 +28,9 @@ Follow [example setup](../../README.md#setup-and-run), then run from the copied 
 workflow=workflows/go-rust
 # No third-party language dependencies; Cargo.lock is checked in.
 # The first up command compiles using your installed toolchains.
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower up --workflow "$workflow" --stage 1
 cat "$workflow/data/number.txt"
 control-tower up --workflow "$workflow" --stage 2

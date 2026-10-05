@@ -29,7 +29,7 @@ are not the portability boundary. Only PyCapsule demonstrates a reusable `tools/
 layer. Control Tower gives that directory no special meaning.
 
 The [root quickstart](../README.md#try-the-three-stage-example) uses shell and built
-Control Tower binaries. See [workflow authoring](../docs/guides/creating-a-workflow.md)
+the `control-tower` CLI. See [workflow authoring](../docs/guides/creating-a-workflow.md)
 and the [executable contract](../docs/reference/stage-executables.md) for global semantics.
 
 ## Optional integration tests
@@ -47,7 +47,7 @@ Build this checkout with `cargo build --locked --workspace`, then run:
 ```
 
 The test harness owns its Python dependencies under `tests/`; stages never use
-them. Tests run actual Control Tower binaries against disposable copies, including
+them. Tests run actual the `control-tower` CLI against disposable copies, including
 paths containing spaces and quotes. Complete example copies live in pytest temporary
 directories outside the repository; JUnit reports live in ignored `test-results/`. Core `cargo test --locked --workspace` does not run these suites.
 

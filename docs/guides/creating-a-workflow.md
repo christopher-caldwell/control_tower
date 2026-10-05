@@ -18,7 +18,7 @@ sources:
 
 A workflow is a directory containing ordered executable stages and its own Control Tower database. You edit the scripts with your normal editor; Control Tower runs them. The CLI accepts any workflow directory path. To list a workflow in the browser UI, place it under `workflows/` in a Workspace directory and launch `control-tower ui` from that Workspace.
 
-First [build the two executables](getting-started.md#get-the-source-and-build). Run the commands below from the repository root in one terminal.
+First [build the CLI](getting-started.md#get-the-source-and-build). Run the commands below from the repository root in one terminal.
 
 ## Start with one stage
 
@@ -64,9 +64,9 @@ Both verifiers only observe the result. `up` and `down` perform the changes. The
 ## Prepare storage and try it
 
 ```sh
-./target/debug/control-tower-db bootstrap-local "$workflow"
-./target/debug/control-tower-db migrate-local "$workflow"
-./target/debug/control-tower-db verify-local "$workflow"
+./target/debug/control-tower db bootstrap-local "$workflow"
+./target/debug/control-tower db migrate-local "$workflow"
+./target/debug/control-tower db verify-local "$workflow"
 
 ./target/debug/control-tower up --workflow "$workflow" --stage 1
 cat "$workflow/marker"

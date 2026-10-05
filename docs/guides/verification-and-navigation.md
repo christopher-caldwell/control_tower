@@ -66,15 +66,15 @@ Asking for `down --stage 1` first resolves stage 3's reversal, then reverses sta
 
 ## Try a verification failure
 
-Use a **fresh disposable copy**, not a workflow containing valuable test state. These commands start from the repository root after building the executables:
+Use a **fresh disposable copy**, not a workflow containing valuable test state. These commands start from the repository root after building the CLI:
 
 ```sh
 example="$(mktemp -d)/simple"
 cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
-./target/debug/control-tower-db bootstrap-local "$workflow"
-./target/debug/control-tower-db migrate-local "$workflow"
-./target/debug/control-tower-db verify-local "$workflow"
+./target/debug/control-tower db bootstrap-local "$workflow"
+./target/debug/control-tower db migrate-local "$workflow"
+./target/debug/control-tower db verify-local "$workflow"
 
 check="$workflow/stages/003-add-to-you/verify-up"
 cp "$check" "$workflow/verify-up.original"

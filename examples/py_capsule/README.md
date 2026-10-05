@@ -14,7 +14,7 @@ Python/Node projects and the reusable [example_tool](tools/example_tool/README.m
 
 ## Setup and run
 
-Install or build `control-tower` and `control-tower-db` and put both on PATH.
+Build or install `control-tower` and put it on PATH.
 Use Unix tools, uv, and Python 3.12. Node/npm are needed for `node-and-tool`
 and `full-stack`; PostgreSQL is needed only for `full-stack`. See the repository's
 [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
@@ -44,9 +44,9 @@ From the copied example root:
 
 ```sh
 workflow=workflows/tool-only
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow/data/tool_result.json"
 cat "$workflow/data/runtime_context.json"

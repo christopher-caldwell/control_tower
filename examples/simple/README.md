@@ -15,7 +15,7 @@ application data, and Control Tower checkpoint database.
 
 ## Setup and run
 
-Install or build `control-tower` and `control-tower-db` and put both on PATH.
+Build or install `control-tower` and put it on PATH.
 You need a Unix shell; install the additional tools only for the scenarios you
 choose. See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
 
@@ -59,9 +59,9 @@ Select a workflow from this example root:
 
 ```sh
 workflow=workflows/uuid-file
-control-tower-db bootstrap-local "$workflow"
-control-tower-db migrate-local "$workflow"
-control-tower-db verify-local "$workflow"
+control-tower db bootstrap-local "$workflow"
+control-tower db migrate-local "$workflow"
+control-tower db verify-local "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow"/data/*
 control-tower down --workflow "$workflow" --stage 0

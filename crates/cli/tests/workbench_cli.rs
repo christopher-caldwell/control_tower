@@ -13,6 +13,15 @@ struct Workflow(PathBuf);
 
 impl Workflow {
     fn from_fixture() -> Self {
+        let fixture = Self::from_fixture_unprepared();
+        for operation in ["bootstrap-local", "migrate-local"] {
+            let output = database_operation(&fixture, operation);
+            assert!(output.status.success(), "{}", output_text(&output));
+        }
+        fixture
+    }
+
+    fn from_fixture_unprepared() -> Self {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after the Unix epoch")
@@ -22,15 +31,15 @@ impl Workflow {
             std::process::id(),
             NEXT_WORKFLOW.fetch_add(1, Ordering::Relaxed)
         ));
+        Self::from_fixture_at(workflow)
+    }
+
+    fn from_fixture_at(workflow: PathBuf) -> Self {
         copy_directory(
             &Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../examples/simple/workflows/uuid-file"),
             &workflow,
         );
-        let database = workflow.join(".control_tower/state.sqlite3");
-        control_tower_database::operations::bootstrap(&database)
-            .expect("bootstrap fixture database");
-        control_tower_database::operations::migrate(&database).expect("migrate fixture database");
         Self(workflow)
     }
 
@@ -70,6 +79,15 @@ fn move_to(workflow: &Workflow, direction: &str, target: u32) -> Output {
         .arg(target.to_string())
         .output()
         .expect("run Control Tower CLI")
+}
+
+fn database_operation(workflow: &Workflow, operation: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("db")
+        .arg(operation)
+        .arg(workflow.path())
+        .output()
+        .expect("run Control Tower database operation")
 }
 
 fn status(workflow: &Workflow) -> Output {
@@ -329,13 +347,93 @@ fn ordinary_cli_does_not_bootstrap_or_migrate() {
     assert!(!output.status.success());
     assert!(output_text(&output).contains("explicit local database setup"));
     assert!(!workflow.path().join(".control_tower").exists());
+    let down = move_to(&workflow, "down", 0);
+    assert!(!down.status.success());
+    assert!(!workflow.path().join(".control_tower").exists());
+    let validate = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("validate")
+        .current_dir(workflow.path())
+        .output()
+        .expect("run Control Tower validation");
+    assert!(!validate.status.success());
+    assert!(!workflow.path().join(".control_tower").exists());
+    let bootstrap = database_operation(&workflow, "bootstrap-local");
+    assert!(bootstrap.status.success(), "{}", output_text(&bootstrap));
     let database = workflow.path().join(".control_tower/state.sqlite3");
-    control_tower_database::operations::bootstrap(&database).unwrap();
     let output = move_to(&workflow, "up", 1);
     assert!(!output.status.success());
     assert!(output_text(&output).contains("schema is not initialized"));
     assert!(uuid_file(&workflow).is_none());
-    assert!(control_tower_database::operations::verify(&database).is_err());
+    let verify = database_operation(&workflow, "verify-local");
+    assert!(!verify.status.success());
+    assert!(output_text(&verify).contains("schema is not initialized"));
+    assert!(database.exists());
+}
+
+#[test]
+fn explicit_database_operations_are_available_through_the_cli() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let database = workflow.path().join(".control_tower/state.sqlite3");
+
+    let migrate_before_bootstrap = database_operation(&workflow, "migrate-local");
+    assert!(!migrate_before_bootstrap.status.success());
+    assert!(!database.exists());
+    let verify_before_bootstrap = database_operation(&workflow, "verify-local");
+    assert!(!verify_before_bootstrap.status.success());
+    assert!(!database.exists());
+
+    let bootstrap = database_operation(&workflow, "bootstrap-local");
+    assert!(bootstrap.status.success(), "{}", output_text(&bootstrap));
+    assert!(database.is_file());
+    let table_count: i64 = rusqlite::Connection::open(&database)
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type = 'table'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(table_count, 0, "bootstrap must not create schema tables");
+
+    let migrate = database_operation(&workflow, "migrate-local");
+    assert!(migrate.status.success(), "{}", output_text(&migrate));
+    let verify = database_operation(&workflow, "verify-local");
+    assert!(verify.status.success(), "{}", output_text(&verify));
+    let rerun_migrate = database_operation(&workflow, "migrate-local");
+    assert!(
+        rerun_migrate.status.success(),
+        "{}",
+        output_text(&rerun_migrate)
+    );
+    let rerun_verify = database_operation(&workflow, "verify-local");
+    assert!(
+        rerun_verify.status.success(),
+        "{}",
+        output_text(&rerun_verify)
+    );
+}
+
+#[test]
+fn database_operations_reject_paths_that_are_not_existing_directories() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let missing = workflow.path().join("missing");
+    let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["db", "bootstrap-local"])
+        .arg(missing)
+        .output()
+        .expect("run Control Tower database operation");
+    assert!(!output.status.success());
+    assert!(output_text(&output).contains("cannot open workflow"));
+
+    let file = workflow.path().join("not-a-directory");
+    fs::write(&file, "file").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["db", "bootstrap-local"])
+        .arg(file)
+        .output()
+        .expect("run Control Tower database operation");
+    assert!(!output.status.success());
+    assert!(output_text(&output).contains("is not a directory"));
 }
 
 // Keep the author's scripts as the external semantic authority, adding only
