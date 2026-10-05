@@ -81,6 +81,16 @@ pub(super) async fn start_movement(
             "That Workflow was not found under workflows/ at startup.",
         );
     };
+    let env_overrides = match crate::workspace::read_env_overrides(&context.workspace.root) {
+        Ok(env_overrides) => env_overrides,
+        Err(error) => {
+            return api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "workspace_unavailable",
+                error,
+            );
+        }
+    };
     let runtime = context
         .observations
         .workflow_state(&context.workspace.name, &workflow);
@@ -93,7 +103,7 @@ pub(super) async fn start_movement(
     };
     let task = MovementTask {
         workspace_name: context.workspace.name.clone(),
-        env_defaults: context.workspace.env_defaults.clone(),
+        env_overrides,
         workflow,
         direction,
         target_stage: request.target_stage,
@@ -130,11 +140,10 @@ pub(super) async fn workflow_events(
         .workflow_state(&context.workspace.name, &workflow);
     let mut snapshots = runtime.subscribe();
     let workspace_name = context.workspace.name.clone();
-    let env_defaults = context.workspace.env_defaults.clone();
     let runtime_for_snapshot = runtime.clone();
     let workflow_for_snapshot = workflow.clone();
     match tokio::task::spawn_blocking(move || {
-        let workbench = crate::deps::workbench(&workflow_for_snapshot.root, env_defaults);
+        let workbench = crate::deps::workbench(&workflow_for_snapshot.root, Default::default());
         runtime_for_snapshot.current_snapshot(
             &workspace_name,
             &workflow_for_snapshot,
@@ -204,9 +213,8 @@ pub(super) async fn stage_definition(
         );
     };
     let root = workflow.root.clone();
-    let env_defaults = context.workspace.env_defaults.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let workbench = crate::deps::workbench(&workflow.root, env_defaults)
+        let workbench = crate::deps::workbench(&workflow.root, Default::default())
             .map_err(|error| error.to_string())?;
         workbench
             .stage_definitions(StageDefinitionsInput {

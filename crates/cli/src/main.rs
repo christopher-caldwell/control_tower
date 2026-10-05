@@ -123,7 +123,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let workbench = match deps::workbench(&workflow_root, workspace.env_defaults) {
+    let workbench = match deps::workbench(&workflow_root, workspace.env_overrides) {
         Ok(service) => service,
         Err(error) => {
             eprintln!("error: {error}. Run explicit local database setup; see README.md");

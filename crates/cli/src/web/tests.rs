@@ -193,6 +193,118 @@ async fn inventory_lists_workflow_directories_without_preparing_or_validating_si
 }
 
 #[tokio::test]
+async fn ui_reloads_workspace_dotenv_before_each_movement_and_rejects_invalid_files() {
+    let temp = TempDir::new();
+    let workspace = temp.path().join("demo");
+    let key = format!("CT_UI_VALUE_{}", std::process::id());
+    fs::create_dir_all(&workspace).unwrap();
+    fs::write(workspace.join(".env"), format!("{key}=startup\n")).unwrap();
+    let observed = workspace.join("observed-values");
+    let first_script = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"${{{key}-unset}}\" >> '{}'\n",
+        observed.display()
+    );
+    let root = prepared_workflow(&workspace, "fixture", &first_script);
+    let second = root.join("stages/020-second");
+    fs::create_dir_all(&second).unwrap();
+    let second_script = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"${{{key}-unset}}\" >> '{}'\n",
+        observed.display()
+    );
+    fs::write(second.join("up"), &second_script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(second.join("up"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let app = router(context(configured_workspace(&workspace)));
+
+    fs::write(workspace.join(".env"), format!("{key}=changed\n")).unwrap();
+    let before_first = view(&app, "fixture").await;
+    let response = move_to(
+        &app,
+        "fixture",
+        "up",
+        10,
+        &before_first["checkpoint"]["state"],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(fs::read_to_string(&observed).unwrap().trim(), "changed");
+
+    fs::remove_file(workspace.join(".env")).unwrap();
+    let before_second = view(&app, "fixture").await;
+    let response = move_to(
+        &app,
+        "fixture",
+        "up",
+        20,
+        &before_second["checkpoint"]["state"],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        fs::read_to_string(&observed).unwrap().lines().last(),
+        Some("unset")
+    );
+
+    let before_invalid = view(&app, "fixture").await;
+    fs::write(
+        workspace.join(".env"),
+        format!("{key}=\"synthetic-secret\n"),
+    )
+    .unwrap();
+    let response = move_to(
+        &app,
+        "fixture",
+        "down",
+        0,
+        &before_invalid["checkpoint"]["state"],
+    )
+    .await;
+    let (status, error) = json(response).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!error.to_string().contains("synthetic-secret"));
+    assert_eq!(
+        view(&app, "fixture").await["checkpoint"]["state"],
+        before_invalid["checkpoint"]["state"]
+    );
+
+    fs::remove_file(workspace.join(".env")).unwrap();
+    fs::write(workspace.join(".env"), format!("{key}=hidden\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(workspace.join(".env"), fs::Permissions::from_mode(0o000)).unwrap();
+        let response = move_to(
+            &app,
+            "fixture",
+            "down",
+            0,
+            &before_invalid["checkpoint"]["state"],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        fs::set_permissions(workspace.join(".env"), fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    fs::remove_file(workspace.join(".env")).unwrap();
+    fs::create_dir(workspace.join(".env")).unwrap();
+    let response = move_to(
+        &app,
+        "fixture",
+        "down",
+        0,
+        &before_invalid["checkpoint"]["state"],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        view(&app, "fixture").await["checkpoint"]["state"],
+        before_invalid["checkpoint"]["state"]
+    );
+}
+
+#[tokio::test]
 async fn selected_workflow_can_move_and_reconnect_with_completed_text_output_and_full_definitions()
 {
     let temp = TempDir::new();

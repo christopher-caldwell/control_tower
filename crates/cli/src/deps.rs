@@ -9,7 +9,7 @@ use std::{collections::HashMap, path::Path};
 
 pub(super) fn workbench(
     workflow: &Path,
-    env_defaults: HashMap<String, String>,
+    env_overrides: HashMap<String, String>,
 ) -> Result<Workbench, PersistenceError> {
     let database = workflow.join(".control_tower/state.sqlite3");
     let queries = SqliteWorkbenchQueries::open(&database)?;
@@ -18,7 +18,7 @@ pub(super) fn workbench(
         Box::new(FilesystemStageDiscovery),
         Box::new(queries),
         Box::new(writes),
-        Box::new(SystemExecutableRunner::with_env_defaults(env_defaults)),
+        Box::new(SystemExecutableRunner::with_env_overrides(env_overrides)),
         Box::new(FilesystemStageDefinitionReader),
     ))
 }

@@ -82,7 +82,10 @@ def prepare_workflow(sandbox, workflow, env):
 
 def initialize(sandbox, workflow, env):
     for operation in ("bootstrap-local", "migrate-local", "verify-local"):
-        run(["control-tower", "db", operation, str(workflow)], cwd=sandbox, env=env)
+        run(
+            ["control-tower", "db", operation, "--workflow", str(workflow)],
+            cwd=sandbox, env=env,
+        )
 
 
 def move(sandbox, workflow, env, direction, stage, *, expected=0):

@@ -1,12 +1,30 @@
 # All operations require an explicit local workflow. There is no live database.
 db-bootstrap-local workflow:
-    cargo run --locked -p control-tower-cli -- db bootstrap-local '{{workflow}}'
+    #!/usr/bin/env sh
+    set -eu
+    workflow_path="$(cd "{{workflow}}" && pwd)"
+    workspace="$(dirname "$(dirname "$workflow_path")")"
+    manifest="$(pwd)/Cargo.toml"
+    cd "$workspace"
+    cargo run --locked --manifest-path "$manifest" -p control-tower-cli -- db bootstrap-local --workflow "$workflow_path"
 
 db-migrate-local workflow:
-    cargo run --locked -p control-tower-cli -- db migrate-local '{{workflow}}'
+    #!/usr/bin/env sh
+    set -eu
+    workflow_path="$(cd "{{workflow}}" && pwd)"
+    workspace="$(dirname "$(dirname "$workflow_path")")"
+    manifest="$(pwd)/Cargo.toml"
+    cd "$workspace"
+    cargo run --locked --manifest-path "$manifest" -p control-tower-cli -- db migrate-local --workflow "$workflow_path"
 
 db-verify-local workflow:
-    cargo run --locked -p control-tower-cli -- db verify-local '{{workflow}}'
+    #!/usr/bin/env sh
+    set -eu
+    workflow_path="$(cd "{{workflow}}" && pwd)"
+    workspace="$(dirname "$(dirname "$workflow_path")")"
+    manifest="$(pwd)/Cargo.toml"
+    cd "$workspace"
+    cargo run --locked --manifest-path "$manifest" -p control-tower-cli -- db verify-local --workflow "$workflow_path"
 
 # Format every Rust crate in the workspace.
 format:

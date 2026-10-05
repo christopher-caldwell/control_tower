@@ -1,16 +1,15 @@
 use super::dto::*;
 use control_tower_application::{Stage, Workbench, WorkbenchStatus};
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
 
 #[derive(Clone)]
 pub(super) struct WorkspaceContext {
+    pub(super) root: PathBuf,
     pub(super) name: String,
     pub(super) workflows: Vec<WorkflowContext>,
-    pub(super) env_defaults: HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -44,9 +43,9 @@ pub(super) fn discover_workspace(workspace_root: &Path) -> Result<WorkspaceConte
         })
         .collect();
     Ok(WorkspaceContext {
+        root: contract.root,
         name,
         workflows,
-        env_defaults: contract.env_defaults,
     })
 }
 

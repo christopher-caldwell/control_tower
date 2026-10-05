@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::HashMap,
     fs,
@@ -7,7 +9,7 @@ use std::{
 pub(super) struct Workspace {
     pub(super) root: PathBuf,
     pub(super) label: String,
-    pub(super) env_defaults: HashMap<String, String>,
+    pub(super) env_overrides: HashMap<String, String>,
 }
 
 pub(super) fn load(root: &Path) -> Result<Workspace, String> {
@@ -39,27 +41,61 @@ pub(super) fn load(root: &Path) -> Result<Workspace, String> {
     let metadata = fs::metadata(&inventory)
         .map_err(|error| format!("Workspace requires workflows/: {error}"))?;
     if !metadata.is_dir() {
-        return Err(format!("Workspace workflows/ is not a directory"));
+        return Err("Workspace workflows/ is not a directory".to_owned());
     }
-    let env_defaults = read_env_defaults(&root.join(".env"))?;
+    let env_overrides = read_env_overrides(&root)?;
     Ok(Workspace {
         root,
         label,
-        env_defaults,
+        env_overrides,
     })
 }
 
-fn read_env_defaults(path: &Path) -> Result<HashMap<String, String>, String> {
-    match fs::metadata(path) {
+pub(super) fn read_env_overrides(root: &Path) -> Result<HashMap<String, String>, String> {
+    let path = root.join(".env");
+    match fs::metadata(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
         Err(error) => return Err(format!("cannot inspect Workspace .env: {error}")),
         Ok(metadata) if !metadata.is_file() => {
             return Err("Workspace .env is not a regular file".to_owned());
         }
+        #[cfg(unix)]
+        Ok(metadata) if metadata.permissions().mode() & 0o444 == 0 => {
+            return Err("cannot read Workspace .env".to_owned());
+        }
         Ok(_) => {}
     }
-    let iter = dotenvy::from_path_iter(path)
-        .map_err(|error| format!("cannot read Workspace .env: {error}"))?;
-    iter.collect::<Result<HashMap<_, _>, _>>()
-        .map_err(|error| format!("cannot parse Workspace .env: {error}"))
+    let iter =
+        dotenvy::from_path_iter(&path).map_err(|_| "cannot read Workspace .env".to_owned())?;
+    let parsed = iter
+        .collect::<Result<HashMap<String, String>, _>>()
+        .map_err(|_| "cannot parse Workspace .env".to_owned())?;
+    Ok(parsed
+        .into_iter()
+        .filter(|(key, _)| std::env::var_os(key).is_none())
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn dotenv_parse_errors_do_not_expose_values_or_source_lines() {
+        let root = std::env::temp_dir().join(format!(
+            "ct-env-redaction-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let secret = "synthetic-api-token-that-must-not-appear";
+        fs::write(root.join(".env"), format!("API_TOKEN=\"{secret}\n")).unwrap();
+        let error = read_env_overrides(&root).unwrap_err();
+        assert!(!error.contains(secret));
+        assert!(!error.contains("API_TOKEN"));
+        fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { access, cp, mkdir, realpath } from 'node:fs/promises'
+import { access, cp, mkdir, realpath, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -75,13 +75,14 @@ export const workspaceBackend = (): Plugin => {
           workspace = join(repo, 'ui/.dev/workspace')
           const workflow = join(workspace, 'workflows/uuid-file')
           await mkdir(join(workspace, 'workflows'), { recursive: true })
+          await writeFile(join(workspace, 'control-tower.toml'), '[workspace]\nlabel = "Control Tower UI development"\n')
           // Refresh authored roles while preserving the development checkpoint and effects.
           await cp(join(repo, 'examples/simple/workflows/uuid-file'), workflow, {
             recursive: true,
             filter: (source) => !['.control_tower', 'data'].includes(source.split('/').at(-1) ?? ''),
           })
           for (const operation of ['bootstrap-local', 'migrate-local', 'verify-local']) {
-            await run(binary, ['db', operation, workflow], repo)
+            await run(binary, ['db', operation, '--workflow', workflow], workspace)
           }
         }
         console.info(`[control-tower] Workspace: ${workspace}`)
