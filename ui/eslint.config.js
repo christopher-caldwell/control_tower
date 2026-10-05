@@ -4,7 +4,7 @@ import hooks from 'eslint-plugin-react-hooks'
 import refresh from 'eslint-plugin-react-refresh'
 import sort from 'eslint-plugin-simple-import-sort'
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['dist/**', '.dev/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -17,6 +17,14 @@ export default tseslint.config(
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-nested-ternary': 'error',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXExpressionContainer LogicalExpression[operator='&&']",
+          message: 'Use an explicit conditional expression for JSX rendering.',
+        },
+      ],
     },
   },
 )

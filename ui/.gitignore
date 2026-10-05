@@ -1,4 +1,5 @@
 dist
+.dev/
 /output/playwright/
 /.playwright-cli/
 node_modules/

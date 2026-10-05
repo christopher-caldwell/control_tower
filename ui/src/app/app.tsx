@@ -1,7 +1,8 @@
 import type { FC } from 'react'
 
+import { Workbench } from '@/app/components/workbench/workbench'
 import { AppProviders } from '@/app/providers'
-import { Workbench } from '@/features/workflows/workbench'
+
 export const App: FC = () => (
   <AppProviders>
     <Workbench />

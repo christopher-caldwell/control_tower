@@ -4,19 +4,32 @@ title: Browser workbench
 type: reference
 status: maintained
 created: '2026-10-02'
-updated: '2026-10-04'
+updated: '2026-10-05'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
 - ../../crates/cli/src/web.rs
 - ../../crates/cli/src/web/http.rs
-- ../../ui/src/features/workflows/workbench/workbench.tsx
+- ../../ui/src/app/components/workbench/workbench.tsx
 - ../decisions/0006-loopback-web-ui.md
 - ../decisions/0007-desktop-ui-shell.md
 - ../research/2026-10-02-ui-reference-review.md
 ---
 
 # Browser workbench
+
+## UI architecture
+
+The browser workbench composes the workspace workflow rail, workflow execution view, and stage inspector as independently consumable features. Their public `index.ts` files expose a headless hook, standard UI, and intentional public types; the app shell connects those models. The accepted feature facade and presentation rules are recorded in the installed React Playbook UI-DEC-0001.
+
+## UI development
+
+Run `pnpm --dir ui install --frozen-lockfile` once, then `just dev-ui` from the
+checkout root, or `pnpm dev` from `ui/`. The Vite development server owns the Rust
+API process, prepares a persistent shell-only sample workspace, and proxies the
+API and SSE connections. Open Vite's URL for hot reload. See the
+[UI development guide](../../ui/README.md#develop-against-a-real-workspace)
+for prerequisites, lifecycle, sample reset, and existing workspace selection.
 
 ## Build the packaged UI
 

@@ -1,0 +1,5 @@
+export type { StageInspectorProps } from '@/features/workflows/stage_inspection/components/stage_inspector'
+export { StageInspector } from '@/features/workflows/stage_inspection/components/stage_inspector'
+export type { StageInspectionInput } from '@/features/workflows/stage_inspection/hooks/use_stage_inspection'
+export type { StageInspectionModel } from '@/features/workflows/stage_inspection/hooks/use_stage_inspection'
+export { useStageInspection } from '@/features/workflows/stage_inspection/hooks/use_stage_inspection'
