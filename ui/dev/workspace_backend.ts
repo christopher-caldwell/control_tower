@@ -75,7 +75,10 @@ export const workspaceBackend = (): Plugin => {
           workspace = join(repo, 'ui/.dev/workspace')
           const workflow = join(workspace, 'workflows/uuid-file')
           await mkdir(join(workspace, 'workflows'), { recursive: true })
-          await writeFile(join(workspace, 'control-tower.toml'), '[workspace]\nlabel = "Control Tower UI development"\n')
+          await writeFile(
+            join(workspace, 'control-tower.toml'),
+            '[workspace]\nlabel = "Control Tower UI development"\n',
+          )
           // Refresh authored roles while preserving the development checkpoint and effects.
           await cp(join(repo, 'examples/simple/workflows/uuid-file'), workflow, {
             recursive: true,
