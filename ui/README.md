@@ -23,7 +23,7 @@ This React client follows the installed `playbook react_app` guidance. The Rust 
 
 The app calls each facade once, passes its model to the standard UI, connects workflow selection to execution, and passes the selected stage context to inspection. Each feature root contains only `index.ts`; hooks, API, and components live under responsibility folders. Query keys, cache handling, transport calls, and request coordination stay private. This follows the accepted facade and presentation decision UI-DEC-0001 in the installed React Playbook.
 
-Execution's private `model/` owns movement action construction used by its headless facade. Checkpoint display formatting remains in `components/`; headless behavior does not depend on presentation modules.
+Execution's private `movement/` owns immediate, recovery, and forward movement action derivation used by its headless facade. Checkpoint display formatting remains in `components/`; headless behavior does not depend on presentation modules.
 
 ## Commands
 

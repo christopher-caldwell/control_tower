@@ -9,8 +9,8 @@ import {
   workflowSnapshotOptions,
 } from '@/features/workflows/execution/api/options'
 import { parseSnapshot } from '@/features/workflows/execution/api/snapshot'
-import type { Action } from '@/features/workflows/execution/model/movement_actions'
-import { forwardActions, movementActions } from '@/features/workflows/execution/model/movement_actions'
+import type { Action } from '@/features/workflows/execution/movement/movement_actions'
+import { forwardActions, movementActions } from '@/features/workflows/execution/movement/movement_actions'
 
 export type UseWorkflowExecutionOptions = { workflowId: string | null }
 export type WorkflowExecutionModel = ReturnType<typeof useWorkflowExecution>
