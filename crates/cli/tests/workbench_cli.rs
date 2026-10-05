@@ -26,15 +26,22 @@ impl Workflow {
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after the Unix epoch")
             .as_nanos();
-        let workflow = std::env::temp_dir().join(format!(
+        let workspace = std::env::temp_dir().join(format!(
             "control-tower-{}-{nonce}-{}",
             std::process::id(),
             NEXT_WORKFLOW.fetch_add(1, Ordering::Relaxed)
         ));
-        Self::from_fixture_at(workflow)
+        Self::from_fixture_at(workspace.join("workflows/uuid-file"))
     }
 
     fn from_fixture_at(workflow: PathBuf) -> Self {
+        let workspace = workflow.parent().unwrap().parent().unwrap();
+        fs::create_dir_all(workspace.join("workflows")).expect("create Workspace inventory");
+        fs::write(
+            workspace.join("control-tower.toml"),
+            "[workspace]\nlabel = \"Fixture\"\n",
+        )
+        .unwrap();
         copy_directory(
             &Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../examples/simple/workflows/uuid-file"),
@@ -45,6 +52,10 @@ impl Workflow {
 
     fn path(&self) -> &Path {
         &self.0
+    }
+
+    fn workspace(&self) -> &Path {
+        self.0.parent().unwrap().parent().unwrap()
     }
 }
 
@@ -77,6 +88,7 @@ fn move_to(workflow: &Workflow, direction: &str, target: u32) -> Output {
         .arg(workflow.path())
         .arg("--stage")
         .arg(target.to_string())
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower CLI")
 }
@@ -85,7 +97,9 @@ fn database_operation(workflow: &Workflow, operation: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("db")
         .arg(operation)
+        .arg("--workflow")
         .arg(workflow.path())
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower database operation")
 }
@@ -95,6 +109,7 @@ fn status(workflow: &Workflow) -> Output {
         .arg("status")
         .arg("--workflow")
         .arg(workflow.path())
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower status")
 }
@@ -352,7 +367,9 @@ fn ordinary_cli_does_not_bootstrap_or_migrate() {
     assert!(!workflow.path().join(".control_tower").exists());
     let validate = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("validate")
-        .current_dir(workflow.path())
+        .arg("--workflow")
+        .arg(workflow.path())
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower validation");
     assert!(!validate.status.success());
@@ -414,12 +431,62 @@ fn explicit_database_operations_are_available_through_the_cli() {
 }
 
 #[test]
+fn workspace_dotenv_defaults_reach_roles_with_shell_and_control_tower_precedence() {
+    let workflow = Workflow::from_fixture();
+    fs::write(
+        workflow.workspace().join(".env"),
+        "CT_ENV_FROM_FILE=dotenv\nCT_ENV_OVERRIDE=dotenv\nCONTROL_TOWER_STAGE=wrong\n",
+    )
+    .unwrap();
+    write_executable(
+        &workflow.path().join("stages/001-create-file/up"),
+        "#!/bin/sh\nset -eu\ndirectory=\"$CONTROL_TOWER_WORKFLOW/data\"\nmkdir -p \"$directory\"\n: > \"$directory/$CONTROL_TOWER_UUID\"\nprintf '%s|%s|%s' \"$CT_ENV_FROM_FILE\" \"$CT_ENV_OVERRIDE\" \"$CONTROL_TOWER_STAGE\" > \"$CONTROL_TOWER_WORKFLOW/env-record\"\n",
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["up", "--workflow"])
+        .arg(workflow.path())
+        .args(["--stage", "1"])
+        .env("CT_ENV_OVERRIDE", "shell")
+        .current_dir(workflow.workspace())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", output_text(&output));
+    assert_eq!(
+        fs::read(workflow.path().join("env-record")).unwrap(),
+        b"dotenv|shell|1"
+    );
+}
+
+#[test]
+fn invalid_workspace_dotenv_blocks_validation_and_movement_before_roles_run() {
+    let workflow = Workflow::from_fixture();
+    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
+    let marker = workflow.path().join("dotenv-role-ran");
+    write_executable(
+        &workflow.path().join("stages/001-create-file/up"),
+        "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKFLOW/dotenv-role-ran\"\n",
+    );
+    for args in [vec!["validate", "--workflow"], vec!["up", "--workflow"]] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_control-tower"));
+        command.args(args).arg(workflow.path());
+        if command.get_args().next() == Some(std::ffi::OsStr::new("up")) {
+            command.args(["--stage", "1"]);
+        }
+        let output = command.current_dir(workflow.workspace()).output().unwrap();
+        assert!(!output.status.success());
+        assert!(output_text(&output).contains("Workspace .env"));
+        assert!(!marker.exists());
+    }
+}
+
+#[test]
 fn database_operations_reject_paths_that_are_not_existing_directories() {
     let workflow = Workflow::from_fixture_unprepared();
     let missing = workflow.path().join("missing");
     let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["db", "bootstrap-local"])
+        .args(["db", "bootstrap-local", "--workflow"])
         .arg(missing)
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower database operation");
     assert!(!output.status.success());
@@ -428,8 +495,9 @@ fn database_operations_reject_paths_that_are_not_existing_directories() {
     let file = workflow.path().join("not-a-directory");
     fs::write(&file, "file").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
-        .args(["db", "bootstrap-local"])
+        .args(["db", "bootstrap-local", "--workflow"])
         .arg(file)
+        .current_dir(workflow.workspace())
         .output()
         .expect("run Control Tower database operation");
     assert!(!output.status.success());
@@ -680,6 +748,7 @@ fn role_feedback_arrives_while_roles_wait_and_output_is_not_replayed() {
         .args(["up", "--workflow"])
         .arg(workflow.path())
         .args(["--stage", "2"])
+        .current_dir(workflow.workspace())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -794,7 +863,7 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
     assert!(retry.starts_with(&format!("'{}'", env!("CARGO_BIN_EXE_control-tower"))));
     let retry_output = Command::new("sh")
         .args(["-c", &retry])
-        .current_dir("/")
+        .current_dir(workflow.workspace())
         .output()
         .unwrap();
     assert!(
@@ -816,7 +885,7 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
     assert!(reverse.ends_with("--stage 900"));
     let reversed = Command::new("sh")
         .args(["-c", &reverse])
-        .current_dir("/")
+        .current_dir(workflow.workspace())
         .output()
         .unwrap();
     assert!(reversed.status.success(), "{}", output_text(&reversed));
@@ -954,7 +1023,9 @@ fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() 
     let before = fs::read(&database).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("validate")
-        .current_dir(workflow.path())
+        .arg("--workflow")
+        .arg(workflow.path())
+        .current_dir(workflow.workspace())
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", output_text(&output));
@@ -966,15 +1037,21 @@ fn validate_uses_cwd_status_loading_without_running_roles_or_changing_storage() 
     let path_option = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .args(["validate", "--workflow"])
         .arg(workflow.path())
-        .current_dir(workflow.path())
+        .current_dir(workflow.workspace())
         .output()
         .unwrap();
-    assert!(!path_option.status.success());
+    assert!(
+        path_option.status.success(),
+        "{}",
+        output_text(&path_option)
+    );
 
     let invalid = workflow.path().join("not-a-workflow");
     fs::create_dir(&invalid).unwrap();
     let failed = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("validate")
+        .arg("--workflow")
+        .arg(&invalid)
         .current_dir(&invalid)
         .output()
         .unwrap();

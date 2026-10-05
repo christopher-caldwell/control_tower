@@ -1,6 +1,7 @@
 use super::dto::*;
 use control_tower_application::{Stage, Workbench, WorkbenchStatus};
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -9,6 +10,7 @@ use std::{
 pub(super) struct WorkspaceContext {
     pub(super) name: String,
     pub(super) workflows: Vec<WorkflowContext>,
+    pub(super) env_defaults: HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -19,23 +21,13 @@ pub(super) struct WorkflowContext {
 }
 
 pub(super) fn discover_workspace(workspace_root: &Path) -> Result<WorkspaceContext, String> {
-    if !workspace_root.is_dir() {
-        return Err(format!(
-            "launch Workspace {} is not a directory",
-            workspace_root.display()
-        ));
-    }
-    let name = workspace_root
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Workspace".to_owned());
+    let contract = crate::workspace::load(workspace_root)?;
+    let name = contract.label;
     let inventory_path = workspace_root.join("workflows");
     let mut entries = match fs::read_dir(&inventory_path) {
         Ok(entries) => entries
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("Cannot list workflows/: {error}"))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(error) => return Err(format!("Cannot inspect workflows/: {error}")),
     };
     entries.sort_by_key(|entry| entry.file_name());
@@ -51,7 +43,11 @@ pub(super) fn discover_workspace(workspace_root: &Path) -> Result<WorkspaceConte
             }
         })
         .collect();
-    Ok(WorkspaceContext { name, workflows })
+    Ok(WorkspaceContext {
+        name,
+        workflows,
+        env_defaults: contract.env_defaults,
+    })
 }
 
 pub(super) fn workspace_snapshot(workspace: &WorkspaceContext) -> WorkspaceView {

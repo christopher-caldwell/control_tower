@@ -34,6 +34,8 @@ fn filesystem_and_process_errors_keep_io_sources() {
         role: ExecutableRole::Up,
         uuid: "opaque".into(),
     };
-    let execution = SystemExecutableRunner.run(&invocation).unwrap_err();
+    let execution = SystemExecutableRunner::with_env_defaults(Default::default())
+        .run(&invocation)
+        .unwrap_err();
     assert!(has_io_source(&execution));
 }

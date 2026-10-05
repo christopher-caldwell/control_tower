@@ -38,6 +38,12 @@ impl Drop for TempDir {
 }
 
 fn prepared_workflow(workspace: &Path, id: &str, script: &str) -> PathBuf {
+    fs::create_dir_all(workspace.join("workflows")).unwrap();
+    fs::write(
+        workspace.join("control-tower.toml"),
+        "[workspace]\nlabel = \"Demo Workspace\"\n",
+    )
+    .unwrap();
     let root = workspace.join("workflows").join(id);
     let stage = root.join("stages/010-seed");
     fs::create_dir_all(&stage).unwrap();
@@ -51,6 +57,16 @@ fn prepared_workflow(workspace: &Path, id: &str, script: &str) -> PathBuf {
     operations::bootstrap(&db).unwrap();
     operations::migrate(&db).unwrap();
     root
+}
+
+fn configured_workspace(workspace: &Path) -> WorkspaceContext {
+    fs::create_dir_all(workspace.join("workflows")).unwrap();
+    fs::write(
+        workspace.join("control-tower.toml"),
+        "[workspace]\nlabel = \"Demo Workspace\"\n",
+    )
+    .unwrap();
+    discover_workspace(workspace).unwrap()
 }
 
 fn context(workspace: WorkspaceContext) -> Arc<ServerContext> {
@@ -140,7 +156,7 @@ async fn inventory_lists_workflow_directories_without_preparing_or_validating_si
         "healthy",
         "#!/bin/sh\necho unexpected > \"$CONTROL_TOWER_WORKFLOW/ran\"\n",
     );
-    let app = router(context(discover_workspace(&workspace).unwrap()));
+    let app = router(context(configured_workspace(&workspace)));
 
     let (status, inventory) = json(
         app.clone()
@@ -150,6 +166,7 @@ async fn inventory_lists_workflow_directories_without_preparing_or_validating_si
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(inventory["name"], "Demo Workspace");
     let ids = inventory["workflows"]
         .as_array()
         .unwrap()
@@ -195,7 +212,7 @@ async fn selected_workflow_can_move_and_reconnect_with_completed_text_output_and
     }
     let long_definition = "stage definition contents\n".repeat(8192);
     fs::write(stage.join("verify-down"), &long_definition).unwrap();
-    let app = router(context(discover_workspace(&workspace).unwrap()));
+    let app = router(context(configured_workspace(&workspace)));
     let initial = view(&app, "fixture").await;
     assert_eq!(initial["current_status"], "available");
 
@@ -256,7 +273,7 @@ async fn stale_checkpoint_is_rejected_before_another_role_or_checkpoint_write() 
         "fixture",
         "#!/bin/sh\necho run >> \"$CONTROL_TOWER_WORKFLOW/runs\"\n",
     );
-    let app = router(context(discover_workspace(&workspace).unwrap()));
+    let app = router(context(configured_workspace(&workspace)));
     let initial = view(&app, "fixture").await;
     assert_eq!(
         move_to(&app, "fixture", "up", 10, &initial["checkpoint"]["state"])
@@ -299,7 +316,7 @@ async fn a_dropped_request_keeps_workflow_admission_until_the_worker_finishes() 
         "fixture",
         "#!/bin/sh\ntouch \"$CONTROL_TOWER_WORKFLOW/started\"\nwhile [ ! -e \"$CONTROL_TOWER_WORKFLOW/release\" ]; do sleep 0.02; done\necho complete\n",
     );
-    let app = router(context(discover_workspace(&workspace).unwrap()));
+    let app = router(context(configured_workspace(&workspace)));
     let initial = view(&app, "fixture").await;
     let expected = initial["checkpoint"]["state"].clone();
     let body =
@@ -374,7 +391,7 @@ async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
         )
         .unwrap();
     }
-    let app = router(context(discover_workspace(&workspace).unwrap()));
+    let app = router(context(configured_workspace(&workspace)));
     let mut events = app
         .clone()
         .oneshot(request("GET", "/api/workflows/fixture/events", None))
@@ -443,19 +460,19 @@ async fn sse_shows_mutation_output_while_the_later_verifier_is_running() {
 }
 
 #[tokio::test]
-async fn an_empty_or_missing_workflow_inventory_is_a_valid_workspace() {
+async fn missing_workflow_inventory_is_rejected_as_an_invalid_workspace() {
     let temp = TempDir::new();
     let workspace = temp.path().join("demo");
     fs::create_dir_all(&workspace).unwrap();
-    let workspace_context = discover_workspace(&workspace).unwrap();
-    assert!(workspace_context.workflows.is_empty());
-    let app = router(context(workspace_context));
-    let (status, inventory) = json(
-        app.oneshot(request("GET", "/api/workspace", None))
-            .await
-            .unwrap(),
+    fs::write(
+        workspace.join("control-tower.toml"),
+        "[workspace]\nlabel = \"Demo\"\n",
     )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(inventory["workflows"], serde_json::json!([]));
+    .unwrap();
+    assert!(
+        discover_workspace(&workspace)
+            .err()
+            .unwrap()
+            .contains("requires workflows/")
+    );
 }

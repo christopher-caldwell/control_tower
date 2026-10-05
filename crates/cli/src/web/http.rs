@@ -93,6 +93,7 @@ pub(super) async fn start_movement(
     };
     let task = MovementTask {
         workspace_name: context.workspace.name.clone(),
+        env_defaults: context.workspace.env_defaults.clone(),
         workflow,
         direction,
         target_stage: request.target_stage,
@@ -129,10 +130,11 @@ pub(super) async fn workflow_events(
         .workflow_state(&context.workspace.name, &workflow);
     let mut snapshots = runtime.subscribe();
     let workspace_name = context.workspace.name.clone();
+    let env_defaults = context.workspace.env_defaults.clone();
     let runtime_for_snapshot = runtime.clone();
     let workflow_for_snapshot = workflow.clone();
     match tokio::task::spawn_blocking(move || {
-        let workbench = crate::deps::workbench(&workflow_for_snapshot.root);
+        let workbench = crate::deps::workbench(&workflow_for_snapshot.root, env_defaults);
         runtime_for_snapshot.current_snapshot(
             &workspace_name,
             &workflow_for_snapshot,
@@ -202,9 +204,10 @@ pub(super) async fn stage_definition(
         );
     };
     let root = workflow.root.clone();
+    let env_defaults = context.workspace.env_defaults.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let workbench =
-            crate::deps::workbench(&workflow.root).map_err(|error| error.to_string())?;
+        let workbench = crate::deps::workbench(&workflow.root, env_defaults)
+            .map_err(|error| error.to_string())?;
         workbench
             .stage_definitions(StageDefinitionsInput {
                 workflow_root: &workflow.root,

@@ -9,6 +9,7 @@ mod commands;
 mod deps;
 mod guides;
 mod web;
+mod workspace;
 
 #[derive(Debug, Parser)]
 #[command(name = "control-tower", about = "Move through local executable stages")]
@@ -24,8 +25,11 @@ enum Command {
         #[arg(value_enum)]
         action: Option<guides::GuideAction>,
     },
-    /// Validate the workflow in the current directory without running roles.
-    Validate,
+    /// Validate a workflow in the current Workspace without running roles.
+    Validate {
+        #[arg(long)]
+        workflow: PathBuf,
+    },
     /// Open the local browser workbench for the current workspace.
     Ui,
     /// Apply stages through the requested stage number.
@@ -58,13 +62,22 @@ enum Command {
 enum DatabaseOperation {
     /// Create the local state directory and SQLite file if necessary.
     #[command(name = "bootstrap-local")]
-    Bootstrap { path: PathBuf },
+    Bootstrap {
+        #[arg(long)]
+        workflow: PathBuf,
+    },
     /// Apply the supported versioned schema to an existing SQLite file.
     #[command(name = "migrate-local")]
-    Migrate { path: PathBuf },
+    Migrate {
+        #[arg(long)]
+        workflow: PathBuf,
+    },
     /// Verify the supported schema version and migration history read-only.
     #[command(name = "verify-local")]
-    Verify { path: PathBuf },
+    Verify {
+        #[arg(long)]
+        workflow: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -86,26 +99,31 @@ fn main() -> ExitCode {
         },
         _ => {}
     }
-    let workflow_root = match &cli.command {
-        Command::Validate => match std::env::current_dir() {
-            Ok(path) => path,
-            Err(error) => {
-                eprintln!("error: cannot read current directory: {error}");
-                return ExitCode::FAILURE;
-            }
-        },
-        Command::Up { workflow, .. }
+    let workflow_arg = match &cli.command {
+        Command::Validate { workflow }
+        | Command::Up { workflow, .. }
         | Command::Down { workflow, .. }
-        | Command::Status { workflow } => match resolve_workflow(workflow) {
-            Ok(path) => path,
-            Err(message) => {
-                eprintln!("error: {message}");
-                return ExitCode::FAILURE;
-            }
-        },
+        | Command::Status { workflow } => workflow,
         Command::Guide { .. } | Command::Ui | Command::Db { .. } => unreachable!("handled above"),
     };
-    let workbench = match deps::workbench(&workflow_root) {
+    let workspace = match std::env::current_dir()
+        .map_err(|e| e.to_string())
+        .and_then(|path| workspace::load(&path))
+    {
+        Ok(workspace) => workspace,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let workflow_root = match resolve_workflow(&workspace.root, workflow_arg) {
+        Ok(path) => path,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let workbench = match deps::workbench(&workflow_root, workspace.env_defaults) {
         Ok(service) => service,
         Err(error) => {
             eprintln!("error: {error}. Run explicit local database setup; see README.md");
@@ -114,7 +132,7 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
-        Command::Validate => run_validate(&workbench, &workflow_root),
+        Command::Validate { .. } => run_validate(&workbench, &workflow_root),
         Command::Up { stage, .. } => run_move(&workbench, &workflow_root, Direction::Up, stage),
         Command::Down { stage, .. } => run_move(&workbench, &workflow_root, Direction::Down, stage),
         Command::Status { .. } => run_status(&workbench, &workflow_root),
@@ -124,11 +142,21 @@ fn main() -> ExitCode {
 
 fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
     let path = match operation {
-        DatabaseOperation::Bootstrap { path }
-        | DatabaseOperation::Migrate { path }
-        | DatabaseOperation::Verify { path } => path,
+        DatabaseOperation::Bootstrap { workflow }
+        | DatabaseOperation::Migrate { workflow }
+        | DatabaseOperation::Verify { workflow } => workflow,
     };
-    let workflow = match resolve_workflow(path) {
+    let workspace = match std::env::current_dir()
+        .map_err(|e| e.to_string())
+        .and_then(|path| workspace::load(&path))
+    {
+        Ok(workspace) => workspace,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let workflow = match resolve_workflow(&workspace.root, path) {
         Ok(path) => path,
         Err(message) => {
             eprintln!("error: {message}");
@@ -150,8 +178,13 @@ fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
     }
 }
 
-fn resolve_workflow(workflow: &Path) -> Result<PathBuf, String> {
-    let path = workflow
+fn resolve_workflow(workspace: &Path, workflow: &Path) -> Result<PathBuf, String> {
+    let selected = if workflow.is_absolute() {
+        workflow.to_path_buf()
+    } else {
+        workspace.join(workflow)
+    };
+    let path = selected
         .canonicalize()
         .map_err(|error| format!("cannot open workflow {}: {error}", workflow.display()))?;
     if !path.is_dir() {
