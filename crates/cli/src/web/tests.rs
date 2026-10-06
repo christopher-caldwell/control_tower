@@ -16,6 +16,16 @@ use std::{
 use tower::ServiceExt;
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
+
+#[test]
+fn ui_startup_message_hyperlinks_the_visible_local_url() {
+    let url = "http://127.0.0.1:43123";
+    assert_eq!(
+        startup_message(url),
+        format!("Control Tower UI: \x1b]8;;{url}\x1b\\{url}\x1b]8;;\x1b\\")
+    );
+}
+
 struct TempDir(PathBuf);
 impl TempDir {
     fn new() -> Self {

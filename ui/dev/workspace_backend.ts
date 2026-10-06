@@ -104,7 +104,10 @@ export const workspaceBackend = (): Plugin => {
           backend.once('exit', (code, signal) => fail(new Error(`Control Tower API exited (${signal ?? code}).`)))
           backend.stdout!.on('data', (chunk: Buffer) => {
             output += chunk.toString()
-            const url = /Control Tower UI: (http:\/\/127\.0\.0\.1:\d+)/.exec(output)?.[1]
+            const url =
+              /Control Tower UI: (?:\x1b\]8;;http:\/\/127\.0\.0\.1:\d+\x1b\\)?(http:\/\/127\.0\.0\.1:\d+)/.exec(
+                output,
+              )?.[1]
             if (url) {
               clearTimeout(timer)
               resolve(url)

@@ -21,6 +21,10 @@ struct ServerContext {
     observations: Arc<ObservationStore>,
 }
 
+fn startup_message(url: &str) -> String {
+    format!("Control Tower UI: \x1b]8;;{url}\x1b\\{url}\x1b]8;;\x1b\\")
+}
+
 pub(super) fn run_from_current_directory() -> Result<(), String> {
     let workspace_root = std::env::current_dir()
         .map_err(|error| format!("cannot determine the launch Workspace directory: {error}"))?;
@@ -43,7 +47,7 @@ fn run_from(workspace_root: &Path) -> Result<(), String> {
         observations: Arc::new(ObservationStore::new()),
     });
 
-    println!("Control Tower UI: {url}");
+    println!("{}", startup_message(&url));
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
