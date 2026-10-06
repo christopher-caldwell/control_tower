@@ -62,6 +62,11 @@ It is:
 - not replaced by a hamburger menu,
 - not automatically hidden because the viewport crosses a responsive breakpoint.
 
+The rail includes one labelled search field while expanded. It filters the startup
+Workspace inventory by trimmed, case-insensitive workflow-name substring without
+changing selection; the same filtered inventory drives compact icons. The query
+survives rail collapse/reopen for the page session and resets on reload.
+
 Collapsed state is an in-memory display choice, not a different information architecture. It resets when the page reloads. Arbitrary workflow names do not need invented iconography merely to support a compact mode.
 
 ## Center stage rail
@@ -108,9 +113,30 @@ It is:
 
 - visible by default,
 - independently scrollable,
-- fixed to an ordinary CSS width,
+- resizable from its left edge with a keyboard-accessible vertical separator,
+- initialized to 382px when no usable remembered width exists,
+- remembered by a width-only localStorage value and clamped to the current desktop geometry,
 - manually collapsible,
 - collapsed only for the current page session.
+
+Resizing preserves the center's 520px minimum width and the existing horizontal
+overflow on narrow desktops. Width survives inspector collapse/reopen and reload;
+collapse itself remains session-only. Workflow and stage rows retain their current
+rendered spacing. Typography and checkpoint presentation retain the reviewed
+current design.
+
+The inspector's existing content scroller reserves a stable native scrollbar gutter
+so consuming scrollbars do not shift its content or right-edge controls; overlay
+scrollbars continue to consume no forced platform-width space. The ordinary forward
+action hierarchy uses the filled violet variant for **Run next** and light variants
+for **Run to** and **Run all**. Recovery choices retain their established emphasis.
+When no movement action exists, the dock shows its existing label as plain status
+text; actions that are temporarily unavailable remain disabled buttons.
+
+Issue #13's re-review retained the current rendered row spacing, theme typography,
+and checkpoint presentation. Its selected polish is width resize with width-only
+reload persistence, local loaded-inventory workflow search, stable inspector gutter,
+and the forward/status hierarchy above.
 
 A responsive breakpoint must not transform it into a mobile drawer, bottom sheet or separate navigation flow. If the user deliberately collapses the inspector, merely selecting another stage should not reopen it without an explicit reopen affordance.
 

@@ -1,6 +1,6 @@
 import { ActionIcon, Group, Stack, Text, Title, Tooltip } from '@mantine/core'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
-import type { FC } from 'react'
+import type { FC, KeyboardEvent, PointerEvent } from 'react'
 
 import { RoleOutput } from '@/features/workflows/stage_inspection/components/role_output'
 import { StageDetails } from '@/features/workflows/stage_inspection/components/stage_details'
@@ -12,15 +12,58 @@ export type StageInspectorProps = {
   open: boolean
   onCollapse: () => void
   onExpand: () => void
+  width: number
+  minWidth: number
+  maxWidth: number
+  onResizeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
+  onResizePointerDown: (event: PointerEvent<HTMLDivElement>) => void
+  onResizePointerMove: (event: PointerEvent<HTMLDivElement>) => void
+  onResizePointerEnd: (event: PointerEvent<HTMLDivElement>) => void
 }
 
-export const StageInspector: FC<StageInspectorProps> = ({ model, open, onCollapse, onExpand }) => {
+export const StageInspector: FC<StageInspectorProps> = ({
+  model,
+  open,
+  onCollapse,
+  onExpand,
+  width,
+  minWidth,
+  maxWidth,
+  onResizeKeyDown,
+  onResizePointerDown,
+  onResizePointerMove,
+  onResizePointerEnd,
+}) => {
   const hasRetainedOutput = Boolean(model.retainedObservation)
   const hasSelectedStage = model.stage !== null
   const showEmptySelection = !hasSelectedStage && !hasRetainedOutput
   return (
     <aside className={styles.inspector} aria-label="Selected stage inspector">
-      <Stack className={styles.panel} gap={0} style={{ visibility: open ? 'visible' : 'hidden' }} inert={!open}>
+      {open ? (
+        <div
+          className={styles.separator}
+          role="separator"
+          aria-label="Resize stage inspector"
+          aria-controls="stage-inspector-pane"
+          aria-orientation="vertical"
+          aria-valuenow={Math.round(width)}
+          aria-valuemin={Math.round(minWidth)}
+          aria-valuemax={Math.round(maxWidth)}
+          tabIndex={0}
+          onKeyDown={onResizeKeyDown}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerEnd}
+          onPointerCancel={onResizePointerEnd}
+        />
+      ) : null}
+      <Stack
+        className={styles.panel}
+        id="stage-inspector-pane"
+        gap={0}
+        style={{ visibility: open ? 'visible' : 'hidden' }}
+        inert={!open}
+      >
         <Group justify="space-between" className={styles.heading} wrap="nowrap">
           <Title order={2}>Stage inspector</Title>
           <Tooltip label="Collapse stage inspector">

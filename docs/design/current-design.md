@@ -116,7 +116,20 @@ right: selected-stage inspector
 bottom: declarative progression/recovery actions
 ```
 
-The left and right rails are visible by default and may be manually collapsed. Their widths are fixed in CSS, and collapse state lasts only while the page is open. Stage selection is primarily inspection: it does not execute anything or mutate the checkpoint, and it does not alter the immediate next transition. A selected future stage may also supply the target for an explicit Run to Stage X action.
+The left and right rails are visible by default and may be manually collapsed. The left rail keeps its existing 252px/60px widths. The expanded stage inspector starts at 382px, can be resized through its accessible left-edge separator, and remembers only its width in local storage; restored width is clamped to current geometry. Both collapse states last only while the page is open. Stage selection is primarily inspection: it does not execute anything or mutate the checkpoint, and it does not alter the immediate next transition. A selected future stage may also supply the target for an explicit Run to Stage X action.
+
+The workflow rail searches only names in its already loaded Workspace inventory.
+Its trimmed, case-insensitive substring filter preserves inventory order and current
+selection. The query remains while the rail is collapsed and resets on reload. The
+existing row spacing and typography remain unchanged.
+
+The inspector content scroller reserves a stable native scrollbar gutter while
+preserving overlay scrollbar behavior. In the ordinary forward state, **Run next**
+uses the filled violet variant and broader **Run to**/**Run all** actions use light
+variants; recovery emphasis stays as designed. No-action dock labels are plain status
+text, while temporarily disabled movement choices remain buttons. Issue #13's review
+kept the current rendered workflow/stage row spacing, typography and checkpoint
+presentation; it selected only the bounded resize/search/gutter/dock polish.
 
 Primary actions describe intent such as **Run next**, **Run to Stage 3 · Add suffix**, **Run all**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
 

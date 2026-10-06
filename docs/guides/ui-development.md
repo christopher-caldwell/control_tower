@@ -19,7 +19,10 @@ This React client follows the installed `playbook react_app` guidance. The Rust 
 
 ## Project declarations
 
-- Desktop only: three simultaneous panes, a fixed 382px inspector, a 252px workflow rail, manual session-only collapse, and independent scrolling. Narrow windows retain the horizontal workbench.
+- Desktop only: three simultaneous panes, a 382px default resizable inspector, a 252px workflow rail, manual session-only collapse, and independent scrolling. Inspector width alone is remembered across reloads; narrow windows retain the horizontal workbench.
+- Workflow search filters names in the loaded Workspace inventory without changing selection or triggering refresh; its query lasts for the page session.
+- The inspector content scroller reserves a stable native scrollbar gutter; overlay scrollbars are not assigned fixed-width chrome. Run next uses the filled variant, broader forward actions use light variants, and no-action dock labels are plain text.
+- Issue #13 review preserves rendered workflow/stage row spacing, current typography and checkpoint semantics; resize width alone persists across reloads.
 - Workflow/stage selection is transient inspection state. The Application controls legal movement and recovery choices.
 - Keyboard-operable controls, visible focus, meaningful accessible names, text status indicators, and inert output rendering are required. No formal WCAG conformance claim is made.
 - Existing HTTP/SSE live snapshots remain the only workflow status channel. No polling, automatic Query retries, or movement resubmission.
@@ -94,6 +97,6 @@ pnpm test:browser
 pnpm build
 ```
 
-Use `pnpm format` to format source. Rebuild the ignored `dist/` assets after UI changes, then build the Rust workspace with `cargo build --locked --workspace` from the repository root. A fresh checkout also needs the UI build before its first Rust build; generated assets are not committed.
+Use `pnpm format` to format source. Rebuild the tracked `ui/dist/` assets after UI changes and include them in the change, then build the Rust workspace with `cargo build --locked --workspace` from the repository root. A fresh checkout also needs the UI build before its first Rust build.
 
 TypeScript 7 remains the build/typecheck compiler. ESLint currently requires the TypeScript 6 programmatic API, so `typescript` aliases `@typescript/typescript6`, while `@typescript/native` aliases the pinned TypeScript 7 package. This follows [Microsoft's side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0).

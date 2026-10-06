@@ -1,9 +1,12 @@
+import { MantineProvider } from '@mantine/core'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { MovementObservation, RoleObservation, WorkflowView, WorkspaceView } from '@/api/types'
 import { App } from '@/app/app'
+import { MovementDock } from '@/features/workflows/execution/components/movement_dock'
+import type { WorkflowExecutionModel } from '@/features/workflows/execution/hooks/use_workflow_execution'
 
 const stage = { number: 10, name: 'seed' }
 const laterStage = { number: 20, name: 'finish' }
@@ -140,6 +143,65 @@ afterEach(() => {
 })
 
 describe('workflow browser adapter', () => {
+  it('filters local workflow names without changing a hidden selection or refreshing inventory', async () => {
+    const first = workflow('alpha')
+    const second = workflow('beta', {
+      checkpoint: {
+        accepted_stage: { number: 10, name: 'beta checkpoint' },
+        pending_transition: null,
+        state: { completed_stage_count: 1, uuid: 'beta-run', pending: null },
+      },
+      stages: [
+        {
+          number: 10,
+          name: 'beta checkpoint',
+          state: 'accepted',
+          is_accepted_checkpoint: true,
+          definitions: [{ role: 'up', path: 'stages/010-beta/up' }],
+        },
+        {
+          number: 20,
+          name: 'beta finish',
+          state: 'future',
+          is_accepted_checkpoint: false,
+          definitions: [{ role: 'up', path: 'stages/020-beta-finish/up' }],
+        },
+      ],
+    })
+    const fetchMock = installWorkbench({ alpha: first, beta: second })
+    await screen.findByRole('button', { name: 'beta' })
+    await userEvent.setup().click(screen.getByRole('button', { name: 'beta' }))
+    await emitSnapshot('beta', second)
+    expect(screen.getByRole('heading', { name: 'beta' })).toBeInTheDocument()
+    expect(screen.getByText('Stage 10 · beta checkpoint')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta checkpoint' })).toBeInTheDocument()
+
+    const search = screen.getByRole('textbox', { name: 'Search workflows' })
+    await userEvent.setup().type(search, 'no match')
+    expect(screen.getByText('No matching workflows')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'beta' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta' })).toBeInTheDocument()
+    expect(screen.getByText('Stage 10 · beta checkpoint')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta checkpoint' })).toBeInTheDocument()
+    const selectedEventSourceCount = ControlledEventSource.instances.length
+    const selectedDefinitionRequestCount = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/stages/'),
+    ).length
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/workspace')).toHaveLength(1)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/movements'))).toBe(false)
+
+    await userEvent.setup().clear(search)
+    expect(await screen.findByRole('button', { name: 'beta' })).toHaveAttribute('aria-current', 'page')
+    expect(ControlledEventSource.instances).toHaveLength(selectedEventSourceCount)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/stages/'))).toHaveLength(
+      selectedDefinitionRequestCount,
+    )
+    await userEvent.setup().click(screen.getByRole('button', { name: 'alpha' }))
+    await emitSnapshot('alpha', first)
+    expect(screen.getByRole('heading', { name: 'alpha' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  })
+
   it('waits for established inventory before showing an empty workspace', async () => {
     const response = deferred<Response>()
     installWorkbench({}, (url) => (url === '/api/workspace' ? response.promise : undefined))
@@ -232,7 +294,8 @@ describe('workflow browser adapter', () => {
     ])
     expect(screen.queryByText('Select a stage')).not.toBeInTheDocument()
     expect(screen.queryByText('CURRENT CHECKPOINT')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Workflow unavailable/ })).toBeDisabled()
+    expect(screen.getByText('Workflow unavailable')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Workflow unavailable' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Advance|Back out/ })).not.toBeInTheDocument()
   })
 
@@ -377,6 +440,144 @@ describe('live workbench reconciliation', () => {
     expect(screen.getByRole('heading', { name: 'seed' })).toBeInTheDocument()
     await emitSnapshot('a', initial)
     expect(next).toBeEnabled()
+  })
+
+  it('emphasizes Run next and renders unavailable movement as noninteractive status', async () => {
+    const initial = workflow('a')
+    installWorkbench({ a: initial })
+    await emitSnapshot('a', initial)
+    expect(screen.getByRole('button', { name: 'Run next' })).toHaveAttribute('data-variant', 'filled')
+
+    const unavailable = workflow('a', { movement_choices: [] })
+    await emitSnapshot('a', unavailable)
+    expect(screen.getByText('No immediate movement available')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'No immediate movement available' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    'Select a workflow',
+    'Workspace unavailable',
+    'Connecting to workflow',
+    'Workflow unavailable',
+    'All stages applied',
+    'No immediate movement available',
+  ])('renders "%s" as plain no-action status text', (label) => {
+    const model = {
+      actions: [],
+      forward: { next: null, to: null, all: null },
+      movementIssue: null,
+    } as unknown as WorkflowExecutionModel
+    render(
+      <MantineProvider>
+        <MovementDock model={model} unavailableLabel={label} />
+      </MantineProvider>,
+    )
+    expect(screen.getByText(label)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
+  })
+
+  it('keeps busy forward actions disabled and cold pending direction distinct from checkpoint truth', async () => {
+    const busy = workflow('a', {
+      movement_busy: true,
+      observation: {
+        ...observation([result({ stage: laterStage, state: 'in_progress', exit_code: null })], 'running'),
+        active_role: { stage: laterStage, role: 'up' },
+      },
+    })
+    installWorkbench({ a: busy })
+    await emitSnapshot('a', busy)
+    const next = screen.getByRole('button', { name: 'Run next' })
+    expect(next).toBeDisabled()
+    expect(next).toHaveAttribute('data-variant', 'filled')
+    expect(screen.getByText('Stage 10 · seed')).toBeInTheDocument()
+    expect(screen.getByText('Output will be available when the role returns.')).toBeInTheDocument()
+    expect(screen.getByText('In progress')).toBeInTheDocument()
+  })
+
+  it.each([
+    { direction: 'up' as const, accepted: stage, pending: laterStage, acceptedLabel: 'Stage 10 · seed' },
+    { direction: 'down' as const, accepted: laterStage, pending: stage, acceptedLabel: 'Stage 20 · finish' },
+  ])(
+    'preserves $direction stopped recovery emphasis and accepted position',
+    async ({ direction, accepted, pending, acceptedLabel }) => {
+      const reverseDirection = direction === 'up' ? 'down' : 'up'
+      const snapshot = workflow('a', {
+        checkpoint: {
+          accepted_stage: accepted,
+          pending_transition: { direction, stage: pending },
+          state: {
+            completed_stage_count: direction === 'up' ? 1 : 2,
+            uuid: 'fixture-run',
+            pending: { stage_index: direction === 'up' ? 1 : 0, direction },
+          },
+        },
+        stages: workflow('a').stages.map((item) => {
+          if (item.number === pending.number) return { ...item, state: 'pending', is_accepted_checkpoint: false }
+          if (item.number === accepted.number) return { ...item, state: 'accepted', is_accepted_checkpoint: true }
+          return item
+        }),
+        observation: {
+          ...observation([], 'stopped'),
+          direction,
+          target_stage: pending.number,
+          failure: {
+            kind: 'verification_failed',
+            stage: pending,
+            role: 'verify-' + direction,
+            message: 'Verifier rejected',
+          },
+          verification_choices: {
+            retry: { direction, target_stage: pending.number },
+            reverse: { direction: reverseDirection, target_stage: accepted.number },
+          },
+        },
+      })
+      const fetchMock = installWorkbench({ a: snapshot })
+      await emitSnapshot('a', snapshot)
+      const retry = screen.getByRole('button', { name: 'Retry verify-' + direction + ' for Stage ' + pending.number })
+      const reverseLabel = direction === 'up' ? /Back out Stage 20/ : /Reapply Stage 10 upward/
+      const reverse = screen.getByRole('button', { name: reverseLabel })
+      expect(retry).toHaveAttribute('data-variant', 'filled')
+      expect(reverse).toHaveAttribute('data-variant', 'default')
+      expect(screen.getByText(acceptedLabel)).toBeInTheDocument()
+      expect(screen.getByText('Observed failure')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Run next' })).not.toBeInTheDocument()
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
+    },
+  )
+
+  it.each(['up', 'down'] as const)('shows cold pending %s without inventing a verifier failure', async (direction) => {
+    const pending = direction === 'up' ? laterStage : stage
+    const accepted = direction === 'up' ? stage : laterStage
+    const snapshot = workflow('a', {
+      checkpoint: {
+        accepted_stage: accepted,
+        pending_transition: { direction, stage: pending },
+        state: {
+          completed_stage_count: direction === 'up' ? 1 : 2,
+          uuid: 'fixture-run',
+          pending: { stage_index: direction === 'up' ? 1 : 0, direction },
+        },
+      },
+      stages: workflow('a').stages.map((item) => {
+        if (item.number === pending.number) return { ...item, state: 'pending', is_accepted_checkpoint: false }
+        if (item.number === accepted.number) return { ...item, state: 'accepted', is_accepted_checkpoint: true }
+        return item
+      }),
+      observation: null,
+    })
+    const fetchMock = installWorkbench({ a: snapshot })
+    await emitSnapshot('a', snapshot)
+    expect(screen.getByText(direction === 'up' ? 'Stage 10 · seed' : 'Stage 20 · finish')).toBeInTheDocument()
+    expect(screen.getByText('Pending ' + direction)).toBeInTheDocument()
+    expect(screen.queryByText('Observed failure')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Retry verify/ })).not.toBeInTheDocument()
+    const pendingActions = screen
+      .getAllByRole('button')
+      .filter((button) => /Continue pending|Back out Stage|Reapply Stage/.test(button.textContent ?? ''))
+    expect(pendingActions).toHaveLength(2)
+    expect(pendingActions.map((button) => button.getAttribute('data-variant')).sort()).toEqual(['default', 'filled'])
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
   })
 
   it('keeps the initiating action pending through POST and the renewed snapshot', async () => {

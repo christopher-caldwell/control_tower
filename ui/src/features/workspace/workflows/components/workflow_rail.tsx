@@ -7,12 +7,14 @@ import {
   Loader,
   Stack,
   Text,
+  TextInput,
   Title,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import type { FC } from 'react'
+import { useState } from 'react'
 
 import styles from '@/features/workspace/workflows/components/workflow_rail.module.css'
 import type { WorkspaceWorkflowsModel } from '@/features/workspace/workflows/hooks/use_workspace_workflows'
@@ -25,10 +27,17 @@ export type WorkflowRailProps = {
 
 export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggleCollapsed }) => {
   const workflows = model.workspace?.workflows ?? []
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLowerCase()
+  const matchingWorkflows = normalizedQuery
+    ? workflows.filter((workflow) => workflow.name.toLowerCase().includes(normalizedQuery))
+    : workflows
   const shouldShowLoading = model.isLoading && !collapsed
   const hasEmptyInventory = model.workspace !== undefined && workflows.length === 0 && model.issue === null
   const shouldShowEmpty = !collapsed && hasEmptyInventory
   const shouldShowIssue = !collapsed && model.issue !== null
+  const shouldShowNoMatches =
+    !collapsed && !model.isLoading && model.issue === null && workflows.length > 0 && matchingWorkflows.length === 0
   const issueTitle = model.workspace === undefined ? 'Workspace unavailable' : 'Workspace refresh failed'
   return (
     <aside className={styles.rail} aria-label="Workspace workflows">
@@ -52,13 +61,21 @@ export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggle
         </Tooltip>
       </Group>
       <Stack gap="xs" className={styles.scroll} p={collapsed ? 8 : 12}>
+        {!collapsed ? (
+          <TextInput
+            label="Search workflows"
+            placeholder="Search workflows"
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        ) : null}
         {shouldShowLoading ? (
           <Group>
             <Loader size="xs" />
             <Text size="sm">Discovering workflows…</Text>
           </Group>
         ) : null}
-        {workflows.map((workflow) => (
+        {matchingWorkflows.map((workflow) => (
           <WorkflowRailItem
             key={workflow.id}
             name={workflow.name}
@@ -67,6 +84,11 @@ export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggle
             onSelect={() => model.selectWorkflow(workflow.id)}
           />
         ))}
+        {shouldShowNoMatches ? (
+          <Text size="sm" c="dimmed">
+            No matching workflows
+          </Text>
+        ) : null}
         {shouldShowEmpty ? (
           <Text size="sm" c="dimmed">
             No workflow directories were found. Add one under workflows/ and restart the UI.
