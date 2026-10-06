@@ -488,6 +488,15 @@ test('a valid saved inspector width clamps to narrower geometry without losing t
   expect(api.movementRequests()).toBe(0)
 
   await page.setViewportSize({ width: 1200, height: 820 })
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(428)
+  await expect(separator).toHaveAttribute('aria-valuenow', '428')
+  expect(await page.evaluate(() => localStorage.getItem('control-tower-stage-inspector-width-v1'))).toBe('508')
+
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(508)
+  await expect(separator).toHaveAttribute('aria-valuenow', '508')
+
+  await page.setViewportSize({ width: 1200, height: 820 })
   await page.reload()
   await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(428)
   await expect(separator).toHaveAttribute('aria-valuemax', '428')
@@ -538,6 +547,10 @@ test('resize bounds follow left-rail geometry and keep the inspector usable at b
       .locator('[class*="grid"]')
       .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ')[1]),
   ).toBe('520px')
+  expect(await page.evaluate(() => localStorage.getItem('control-tower-stage-inspector-width-v1'))).toBe('644')
+  await page.getByRole('button', { name: 'Collapse workflow rail' }).click()
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(644)
+  await expect(separator).toHaveAttribute('aria-valuenow', '644')
 })
 
 test('workflow search filters inventory without changing selection or issuing inventory requests', async ({ page }) => {

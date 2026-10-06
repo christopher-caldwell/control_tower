@@ -25,11 +25,11 @@ export const Workbench: FC = () => {
   const [isWorkflowRailCollapsed, setWorkflowRailCollapsed] = useState(false)
   const [isInspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  const [inspectorWidth, setInspectorWidth] = useState(() => readInspectorWidth())
+  const [preferredInspectorWidth, setPreferredInspectorWidth] = useState(() => readInspectorWidth())
   const resizeStart = useRef<{ pointerId: number; clientX: number; width: number } | null>(null)
   const workflowRailWidth = isWorkflowRailCollapsed ? 60 : 252
   const maximumInspectorWidth = Math.max(minimumInspectorWidth, viewportWidth - workflowRailWidth - centerMinimumWidth)
-  const boundedInspectorWidth = clamp(inspectorWidth, minimumInspectorWidth, maximumInspectorWidth)
+  const renderedInspectorWidth = clamp(preferredInspectorWidth, minimumInspectorWidth, maximumInspectorWidth)
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -37,16 +37,12 @@ export const Workbench: FC = () => {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    if (boundedInspectorWidth !== inspectorWidth) setInspectorWidth(boundedInspectorWidth)
-  }, [boundedInspectorWidth, inspectorWidth])
-
   const updateInspectorWidth = useCallback(
     (nextWidth: number) => {
       const leftWidth = isWorkflowRailCollapsed ? 60 : 252
       const maxWidth = Math.max(minimumInspectorWidth, window.innerWidth - leftWidth - centerMinimumWidth)
       const width = clamp(nextWidth, minimumInspectorWidth, maxWidth)
-      setInspectorWidth(width)
+      setPreferredInspectorWidth(width)
       try {
         window.localStorage.setItem(inspectorWidthStorageKey, String(width))
       } catch {
@@ -59,13 +55,13 @@ export const Workbench: FC = () => {
   const handleResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
-    updateInspectorWidth(inspectorWidth + (event.key === 'ArrowLeft' ? 16 : -16))
+    updateInspectorWidth(renderedInspectorWidth + (event.key === 'ArrowLeft' ? 16 : -16))
   }
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
-    resizeStart.current = { pointerId: event.pointerId, clientX: event.clientX, width: inspectorWidth }
+    resizeStart.current = { pointerId: event.pointerId, clientX: event.clientX, width: renderedInspectorWidth }
   }
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (resizeStart.current?.pointerId !== event.pointerId) return
@@ -94,7 +90,7 @@ export const Workbench: FC = () => {
       />
       <div
         className={getGridClassName(isWorkflowRailCollapsed, isInspectorCollapsed)}
-        style={{ '--inspector-width': `${boundedInspectorWidth}px` } as CSSProperties}
+        style={{ '--inspector-width': `${renderedInspectorWidth}px` } as CSSProperties}
       >
         <WorkflowRail
           model={workflows}
@@ -112,7 +108,7 @@ export const Workbench: FC = () => {
           open={!isInspectorCollapsed}
           onCollapse={() => setInspectorCollapsed(true)}
           onExpand={() => setInspectorCollapsed(false)}
-          width={boundedInspectorWidth}
+          width={renderedInspectorWidth}
           minWidth={minimumInspectorWidth}
           maxWidth={maximumInspectorWidth}
           onResizeKeyDown={handleResizeKeyDown}
