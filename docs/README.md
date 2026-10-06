@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-04'
+updated: '2026-10-05'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -15,24 +15,25 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workflow behavior; the browser adds workspace-local workflow discovery, declarative movement, and role-result inspection. Start with the runnable example; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workflow behavior; the browser adds workspace-local workflow discovery, declarative movement, and role-result inspection. Start with the canonical walkthrough; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
+
+Follow [Get started](guides/getting-started.md) for the single numbered human walkthrough, including installation, the Workspace → Workflow → Stage model, storage preparation, and equal UI/CLI paths. The root [README](../README.md) is the short product and installation entry point.
 
 | Need | Start here |
 | --- | --- |
 | Give a coding agent version-matched Control Tower guidance | [`control-tower guide`](reference/cli.md#agent-guidance-and-validation) and the [dispatcher Skill](../skills/control-tower/SKILL.md) |
-| Try it immediately | [Root quickstart](../README.md#try-the-three-stage-example) |
 | Inspect workflows in a browser | [Browser workbench](reference/browser-workbench.md) |
-| Install/build and prepare storage | [Getting started](guides/getting-started.md) |
-| See each stage's effect | [Three-stage UUID-file walkthrough](../examples/simple/workflows/uuid-file/README.md) |
+| Understand stage boundaries and role authoring | [Create a workflow](guides/creating-a-workflow.md) |
+| See the stages used by the walkthrough | [Three-stage UUID-file example](../examples/simple/workflows/uuid-file/README.md) |
 | Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workflows/generated-id/README.md) (Python 3) |
 | Choose a usage pattern | [Example gallery](../examples/README.md) |
-| Write your own stages | [Create a workflow](guides/creating-a-workflow.md) |
 | Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
 | Look up commands and database operations | [CLI reference](reference/cli.md) |
 | Look up role names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
 | Diagnose setup or script failures | [Troubleshooting](guides/troubleshooting.md) |
+| Contribute or work on the UI | [Development and contribution](guides/development.md) |
 
 Guides describe the current executable interface. They do not promise features from earlier design probes. The [documentation validation](research/documentation-validation.md) records the implementation revision checked and separates newly executed checks from previous worker evidence. The [October 2 gallery validation](research/2026-10-02-examples-gallery-validation.md) records the family/workflow restructure and its executed integration checks.
 
@@ -65,7 +66,7 @@ Read [Current design](design/current-design.md) for the maintained architecture 
 ```text
 docs/
   README.md       navigation and maintenance conventions
-  guides/         setup, authoring, navigation, troubleshooting
+  guides/         onboarding, authoring, navigation, development, troubleshooting
   reference/      implemented CLI and executable contract
   design/         current synthesis and labeled design inputs/probes
   decisions/      accepted intent and explicitly proposed choices

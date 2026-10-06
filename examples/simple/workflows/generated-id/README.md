@@ -2,7 +2,7 @@
 
 This optional two-stage workflow creates a row in an **application SQLite database**, carries its generated integer ID in an author-owned JSON file, and changes/restores that same row. Control Tower still launches ordinary executables; it does not parse the ID from stdout or manage the handoff.
 
-You need the [usual build prerequisites](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md#prerequisites) **plus Python 3 with its standard-library `sqlite3` module**. No Python packages, separate SQLite installation, server, or credentials are needed. Python is a prerequisite for this scenario; the [original UUID-file quickstart](https://github.com/christopher-caldwell/control_tower/blob/main/README.md#try-the-three-stage-example) does not need it.
+Follow the [canonical getting-started walkthrough](../../../../docs/guides/getting-started.md), then install **Python 3 with its standard-library `sqlite3` module** for this optional scenario. No Python packages, separate SQLite installation, server, or credentials are needed. Python is specific to this example; the UUID-file Workflow used in the walkthrough needs only a Unix shell.
 
 ## Prepare the workflow
 

@@ -21,7 +21,7 @@ The sample writes no trailing newline. The content checks use shell command subs
 
 ## Prepare the workflow
 
-Follow [simple example setup](../../README.md#setup-and-run), then run from the copied example root. This shell-only workflow needs no Python or Node setup:
+Follow the [canonical getting-started walkthrough](../../../../docs/guides/getting-started.md), then run from the copied example root. This shell-only workflow needs no Python or Node setup:
 
 ```sh
 workflow=workflows/uuid-file

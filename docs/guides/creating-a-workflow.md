@@ -4,7 +4,7 @@ title: Create a workflow
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-05'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -16,124 +16,39 @@ sources:
 
 # Create a workflow
 
-A workflow is a directory containing ordered executable stages and its own Control Tower database. You edit the scripts with your normal editor; Control Tower runs them. The invocation current directory is the Workspace root, identified by `control-tower.toml` with a nonempty `[workspace].label` and a required `workflows/` directory. All workflow-scoped commands require `--workflow`; relative paths resolve from the Workspace root.
+For the complete first-use path, including installation, Workspace setup, database preparation, and the UI/CLI choice, follow [Get started](getting-started.md). This guide adds detail for authors once a Workspace is ready.
 
-First [build the CLI](getting-started.md#get-the-source-and-build). Run the commands below from the repository root in one terminal.
+A **Workspace** has a `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. A **Workflow** is a directory beneath `workflows/` with ordered stages and its own Control Tower checkpoint database. Workflow-scoped commands run from the Workspace root and require `--workflow`.
 
-## Start with one stage
+## Design meaningful stages
 
-This new disposable workflow creates a marker, checks it, then removes it. It does not need a UUID or any application-specific adapter.
+Before creating files, identify the proposed stage boundaries. A stage should capture one coherent mutation at a meaningful state boundary: a state worth reaching, inspecting, verifying, and where appropriate reversing as a unit. Combine implementation commands that produce one useful state rather than splitting at command boundaries. The [UUID-file example](../../examples/simple/workflows/uuid-file/README.md) shows three meaningful states: create an empty file, write `hello`, then append ` to you`.
 
-```sh
-binary="$PWD/target/debug/control-tower"
-workspace="$(mktemp -d)"
-mkdir -p "$workspace/workflows"
-cat > "$workspace/control-tower.toml" <<'TOML'
-[workspace]
-label = "Disposable example"
-TOML
-workflow="$workspace/workflows/marker"
-stage="$workflow/stages/001-marker"
-mkdir -p "$stage"
-printf 'New workflow: %s\n' "$workflow"
+## Define each stage's roles
 
-cat > "$stage/up" <<'SH'
-#!/bin/sh
-set -eu
-printf 'ready' > "$CONTROL_TOWER_WORKFLOW/marker"
-SH
+Use numbered directories under `stages/`. Role filenames are the exact protocol: `up`, `down`, `verify-up`, and `verify-down`, with no extension. `up` performs the forward mutation; `down` returns to the prior state or applies an appropriate compensation. `verify-up` and `verify-down` independently observe those outcomes and exit 0 only when accepted. Verifiers are optional and must match an existing mutation. If no compensating action is needed, include an executable `down` that exits 0 without changing state; this explicit no-op lets backward traversal pass the stage.
 
-cat > "$stage/verify-up" <<'SH'
-#!/bin/sh
-set -eu
-test "$(cat "$CONTROL_TOWER_WORKFLOW/marker")" = 'ready'
-SH
+A role may be any directly executable file supported by the system. Its shebang selects the interpreter/runtime. Supply a valid shebang, execute permission, and the runtime/dependencies yourself. Roles run with the stage directory as their working directory. Use `CONTROL_TOWER_WORKFLOW` for paths shared across stages. The [executable reference](../reference/stage-executables.md) documents numbering, environment values, and process behavior.
 
-cat > "$stage/down" <<'SH'
-#!/bin/sh
-set -eu
-rm "$CONTROL_TOWER_WORKFLOW/marker"
-SH
+## Prepare and validate
 
-cat > "$stage/verify-down" <<'SH'
-#!/bin/sh
-set -eu
-test ! -e "$CONTROL_TOWER_WORKFLOW/marker"
-SH
-
-chmod +x "$stage/up" "$stage/down" "$stage/verify-up" "$stage/verify-down"
-```
-
-The quoted heredoc delimiters (`<<'SH'`) keep `$CONTROL_TOWER_WORKFLOW` inside each script for expansion at execution time. They do not substitute it while you create the file.
-
-Both verifiers only observe the result. `up` and `down` perform the changes. The runner cannot enforce that separation, so make it explicit in your scripts.
-
-## Prepare storage and try it
+Each new Workflow needs explicit database setup. From the Workspace root, replace `NAME` with its path under `workflows/`:
 
 ```sh
-(
-  cd "$workspace"
-  "$binary" db bootstrap-local --workflow workflows/marker
-  "$binary" db migrate-local --workflow workflows/marker
-  "$binary" db verify-local --workflow workflows/marker
-
-  "$binary" validate --workflow workflows/marker
-  "$binary" up --workflow workflows/marker --stage 1
-)
-cat "$workflow/marker"
-printf '\n'
-(
-  cd "$workspace"
-  "$binary" status --workflow workflows/marker
-)
-
-(
-  cd "$workspace"
-  "$binary" down --workflow workflows/marker --stage 0
-)
-test ! -e "$workflow/marker"
-(
-  cd "$workspace"
-  "$binary" status --workflow workflows/marker
-)
+control-tower db bootstrap-local --workflow workflows/NAME
+control-tower db migrate-local --workflow workflows/NAME
+control-tower db verify-local --workflow workflows/NAME
+control-tower validate --workflow workflows/NAME
 ```
 
-You should see `ready` after `up`, then baseline 0 after `down`. The application still allocates a run UUID, but your scripts do not have to use it. It is cleared after successful return to baseline.
+The three database commands prepare/check checkpoint storage; validation checks discoverability and loadable saved state without running roles. Ordinary movement and status commands do not prepare storage.
 
-## Extend the workflow
+A target stage is a position in the ordered sequence. `up --stage 3` walks through all needed earlier stages; it does not run only stage 3. `down --stage 1` reverses higher applied stages until position 1. The [navigation guide](verification-and-navigation.md) describes verifier retry, reversal, and failure behavior.
 
-Add another numbered directory for the next useful state. For example, `002-associated-data` can contain scripts that create related test records, while `003-mutate-data` invokes the application behavior you are debugging.
+## Iterate safely
 
-A stage number identifies a position in the ordered sequence. `up --stage 3` walks through any earlier unapplied stages; it does not jump directly to stage 3. `down --stage 1` reverses stage 3 and then stage 2, leaving stage 1 applied. You do not write pairwise reset scripts for every possible source/target combination.
+You may edit role contents between CLI invocations. If a mutation succeeded but its verifier failed, repeating that direction retries only the verifier; requesting the opposite direction backs out the active stage. Inspect author-owned state before either action.
 
-For a complete concrete example, inspect the checked-in [UUID-file workflow](../../examples/simple/workflows/uuid-file/README.md). Copy the complete simple example Workspace before editing, then select its UUID-file workflow as described in the example README.
+Do not rename, reorder, insert, or remove stage directories during a stored run and expect Control Tower to reconcile the old position. Finish or recover the run before structural edits, or use a fresh Workflow copy with fresh storage after handling outside effects. Restarting the CLI or UI does not reconcile structural changes. The UI reads selected Workflow status and stage definitions through its refresh/reconnect path; its Workflow inventory is fixed at host startup, so restart the UI after adding or removing Workflows.
 
-Use fixed role filenames without extensions. Numbered stages can have gaps, but numeric prefixes must be unique. Put shared support files in a separate directory inside the workflow, such as `support/`, not a nonnumeric directory under `stages/`. The [executable reference](../reference/stage-executables.md#workflow-layout) lists exact discovery rules.
-
-## Write ordinary programs
-
-Each role runs from its stage directory. Use the absolute `CONTROL_TOWER_WORKFLOW` variable for data shared across stages; use stage-relative paths for files stored alongside that executable. A shebang selects the interpreter, and you install any interpreter or libraries yourself.
-
-Your scripts can call APIs, use a database client, or invoke another project executable. Return a nonzero exit status when the operation/check should stop the walk; merely printing an error does not fail a role.
-
-`CONTROL_TOWER_UUID` is a convenient run token, not a mechanism for collecting generated API IDs. The runner does not parse stdout into state. Scripts that need richer handoff must explicitly manage their own files for now; see [the current handoff limit](../reference/stage-executables.md#what-the-uuid-does-and-does-not-mean).
-
-Within the copied simple example, try the optional two-stage [application-generated-ID example](../../examples/simple/workflows/generated-id/README.md). It adds Python 3's standard-library SQLite client: stage 1 creates a row and writes its generated ID to an author-owned JSON file; stage 2 changes/restores the same row. Its DB is separate from `.control_tower/state.sqlite3`. Verifiers use read-only connections, including on missing DB/schema paths, and fail instead of repairing their own assertions. Creation belongs to mutation/setup paths; use ordinary nonzero error handling that still works when interpreter assertions are disabled.
-
-## Iterate without recreating everything
-
-You can edit a role's contents between CLI invocations. If its mutation succeeded and verification failed, repeating the same direction retries only that verifier. Reversing direction runs that active stage's opposite mutation and optional check. Read [navigation and verification](verification-and-navigation.md) before testing those paths.
-
-Role-level starts/results let you see what actually ran. The CLI's failed-verifier choices target only the active stage; a farther target can continue walking after resolution. Removing a pending optional check changes that resolution to acceptance without verification. A settled target and `status` do not check the fixture again.
-
-Do not rename, reorder, insert, or remove stage directories during a stored run and expect Control Tower to reconcile the old position. Finish the run before structural edits, or use a fresh workflow copy with fresh storage after handling external effects yourself. **Restarting the CLI is not a reset.**
-
-Neither a new workflow nor deleting local bookkeeping undoes API/database mutations from the old one. Only your scripts or manual cleanup know how to reverse those effects. There is no automatic reset/cleanup contract in v0.
-
-A failed first mutation may leave partial effects and a recorded UUID at baseline with no pending check. Down 0 is then a no-op, not cleanup. Inspect effects before retrying, since the successful parts may run again with the same UUID. Fixture writes, handoff files and Control Tower checkpoint writes are separate operations, even when the fixture also uses SQLite.
-
-A failed later mutation can likewise remain unaccepted while its external effect
-exists; normal traversal does not invoke that stage's `down`. Follow the
-[mutation-failure guidance](verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure)
-and the concrete [Postgres retry/abandon procedure](../../examples/simple/workflows/postgres/README.md#failed-stage-002-retry-or-abandon)
-before returning to baseline. Recovery is owned by the workflow that made the effect.
+Neither a new Workflow nor deleting local bookkeeping undoes API/database mutations from an old one. A failed mutation may leave partial effects; ordinary traversal does not infer or repair them. Recovery belongs to the Workflow author and the system that owns those effects. See [troubleshooting](troubleshooting.md) and the concrete [Postgres recovery example](../../examples/simple/workflows/postgres/README.md#failed-stage-002-retry-or-abandon).
