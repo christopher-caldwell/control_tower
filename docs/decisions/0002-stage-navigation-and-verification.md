@@ -4,7 +4,7 @@ title: Use migration-style steps with verified completion
 type: decision
 status: accepted
 created: '2026-09-30'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction
@@ -45,7 +45,7 @@ down -> verify-down -> complete lower step
 
 If the relevant verifier is absent, mutation exit 0 completes the transition.
 
-The owner confirmed the four-role shape as the leading mechanism for formal discovery, explicitly subject to change when the real fixture is exercised. It is not an irreversible public contract.
+The owner confirmed the four Stage Action filenames as the leading mechanism for formal discovery, explicitly subject to change when the real fixture is exercised. They are not an irreversible public contract.
 
 ## Active directional transition
 

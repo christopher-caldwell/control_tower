@@ -270,7 +270,7 @@ test('inspector keeps a stable consuming scrollbar gutter across real content ov
       [aria-label="Stage inspector content"]::-webkit-scrollbar-thumb { background: #888; }
     `,
   })
-  const accordionNames = ['Checkpoint state', 'Mutation', 'Verification', 'Captured output', 'Executable definitions']
+  const accordionNames = ['Checkpoint state', 'Mutation', 'Verification', 'Captured output', 'Stage Actions']
   for (const name of accordionNames) {
     const control = page.getByRole('button', { name, exact: true })
     if ((await control.getAttribute('aria-expanded')) === 'true') await control.click()
@@ -293,7 +293,7 @@ test('inspector keeps a stable consuming scrollbar gutter across real content ov
   const controlRightBefore = await mutation.evaluate((element) => element.getBoundingClientRect().right)
   const expandedForOverflow: string[] = []
   let previousScrollHeight = before.clientHeight
-  for (const name of ['Captured output', 'Executable definitions', 'Mutation', 'Verification', 'Checkpoint state']) {
+  for (const name of ['Captured output', 'Stage Actions', 'Mutation', 'Verification', 'Checkpoint state']) {
     const control = page.getByRole('button', { name, exact: true })
     await control.click()
     await expect(control).toHaveAttribute('aria-expanded', 'true')

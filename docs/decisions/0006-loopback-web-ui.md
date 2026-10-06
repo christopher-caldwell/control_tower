@@ -4,7 +4,7 @@ title: Use a loopback web UI as the first graphical driving adapter
 type: decision
 status: accepted
 created: '2026-10-02'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 decision_authority: explicit-user-direction-after-targeted-source-review
@@ -55,22 +55,22 @@ The UI is launched through the ordinary Control Tower executable rather than a n
 
 Use ordinary HTTP request/response for commands and queries.
 
-Use **Server-Sent Events (SSE)** for server-to-browser execution observations where immediate UI updates are useful. The current Application before/after role observations are the semantic source; the UI transport must not create a second navigation/execution model.
+Use **Server-Sent Events (SSE)** for server-to-browser execution observations where immediate UI updates are useful. The current Application before/after Stage Action observations are the semantic source; the UI transport must not create a second navigation/execution model.
 
 Do not add WebSockets unless a real bidirectional interaction earns them.
 
-The first UI should surface role lifecycle promptly:
+The first UI should surface Stage Action lifecycle promptly:
 
 ```text
-role starts
+Stage Action starts
 -> UI shows running
 
-role returns
+Stage Action returns
 -> UI shows success/failure
 -> captured stdout/stderr becomes available
 ```
 
-Stdout/stderr remain buffered per role as they are today. Byte-by-byte process-output streaming is **not** part of this decision. Add it only if real use shows that “running, then done — view output” is insufficient.
+Stdout/stderr remain buffered per Stage Action as they are today. Byte-by-byte process-output streaming is **not** part of this decision. Add it only if real use shows that “running, then done — view output” is insufficient.
 
 ## Loopback boundary
 
