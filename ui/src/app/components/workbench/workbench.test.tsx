@@ -142,22 +142,61 @@ afterEach(() => {
 describe('workflow browser adapter', () => {
   it('filters local workflow names without changing a hidden selection or refreshing inventory', async () => {
     const first = workflow('alpha')
-    const second = workflow('beta')
+    const second = workflow('beta', {
+      checkpoint: {
+        accepted_stage: { number: 10, name: 'beta checkpoint' },
+        pending_transition: null,
+        state: { completed_stage_count: 1, uuid: 'beta-run', pending: null },
+      },
+      stages: [
+        {
+          number: 10,
+          name: 'beta checkpoint',
+          state: 'accepted',
+          is_accepted_checkpoint: true,
+          definitions: [{ role: 'up', path: 'stages/010-beta/up' }],
+        },
+        {
+          number: 20,
+          name: 'beta finish',
+          state: 'future',
+          is_accepted_checkpoint: false,
+          definitions: [{ role: 'up', path: 'stages/020-beta-finish/up' }],
+        },
+      ],
+    })
     const fetchMock = installWorkbench({ alpha: first, beta: second })
     await screen.findByRole('button', { name: 'beta' })
     await userEvent.setup().click(screen.getByRole('button', { name: 'beta' }))
     await emitSnapshot('beta', second)
+    expect(screen.getByRole('heading', { name: 'beta' })).toBeInTheDocument()
+    expect(screen.getByText('Stage 10 · beta checkpoint')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta checkpoint' })).toBeInTheDocument()
 
     const search = screen.getByRole('textbox', { name: 'Search workflows' })
     await userEvent.setup().type(search, 'no match')
     expect(screen.getByText('No matching workflows')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'beta' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Stage inspector' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta' })).toBeInTheDocument()
+    expect(screen.getByText('Stage 10 · beta checkpoint')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'beta checkpoint' })).toBeInTheDocument()
+    const selectedEventSourceCount = ControlledEventSource.instances.length
+    const selectedDefinitionRequestCount = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/stages/'),
+    ).length
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/workspace')).toHaveLength(1)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/movements'))).toBe(false)
 
     await userEvent.setup().clear(search)
-    expect(await screen.findByRole('button', { name: 'beta' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'beta' })).toHaveAttribute('aria-current', 'page')
+    expect(ControlledEventSource.instances).toHaveLength(selectedEventSourceCount)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/stages/'))).toHaveLength(
+      selectedDefinitionRequestCount,
+    )
+    await userEvent.setup().click(screen.getByRole('button', { name: 'alpha' }))
+    await emitSnapshot('alpha', first)
+    expect(screen.getByRole('heading', { name: 'alpha' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
   })
 
   it('waits for established inventory before showing an empty workspace', async () => {
