@@ -16,10 +16,10 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 252px minmax(520px, 1fr) 382px;
+  grid-template-columns: 252px minmax(520px, 1fr) var(--inspector-width, 382px);
 }
 .leftCollapsed {
-  grid-template-columns: 60px minmax(520px, 1fr) 382px;
+  grid-template-columns: 60px minmax(520px, 1fr) var(--inspector-width, 382px);
 }
 .rightCollapsed {
   grid-template-columns: 252px minmax(520px, 1fr) 54px;

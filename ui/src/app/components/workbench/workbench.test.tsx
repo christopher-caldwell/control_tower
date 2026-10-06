@@ -140,6 +140,26 @@ afterEach(() => {
 })
 
 describe('workflow browser adapter', () => {
+  it('filters local workflow names without changing a hidden selection or refreshing inventory', async () => {
+    const first = workflow('alpha')
+    const second = workflow('beta')
+    const fetchMock = installWorkbench({ alpha: first, beta: second })
+    await screen.findByRole('button', { name: 'beta' })
+    await userEvent.setup().click(screen.getByRole('button', { name: 'beta' }))
+    await emitSnapshot('beta', second)
+
+    const search = screen.getByRole('textbox', { name: 'Search workflows' })
+    await userEvent.setup().type(search, 'no match')
+    expect(screen.getByText('No matching workflows')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'beta' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Stage inspector' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/workspace')).toHaveLength(1)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/movements'))).toBe(false)
+
+    await userEvent.setup().clear(search)
+    expect(await screen.findByRole('button', { name: 'beta' })).toBeInTheDocument()
+  })
+
   it('waits for established inventory before showing an empty workspace', async () => {
     const response = deferred<Response>()
     installWorkbench({}, (url) => (url === '/api/workspace' ? response.promise : undefined))

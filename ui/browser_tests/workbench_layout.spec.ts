@@ -49,7 +49,7 @@ const definition: DefinitionView = {
   definitions: [{ role: 'up', path: 'stages/010-seed/up', contents: '#!/bin/sh\nexit 0', issue: null }],
 }
 
-type FixtureApi = { movementRequests: () => number }
+type FixtureApi = { movementRequests: () => number; inventoryRequests: () => number }
 async function installFixtures(
   page: Page,
   failMovement = false,
@@ -58,11 +58,15 @@ async function installFixtures(
   inventory: WorkspaceView = workspace,
 ): Promise<FixtureApi> {
   let movementCount = 0
+  let inventoryCount = 0
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
       const path = new URL(route.request().url()).pathname
-      if (path === '/api/workspace') return route.fulfill({ json: inventory })
+      if (path === '/api/workspace') {
+        inventoryCount += 1
+        return route.fulfill({ json: inventory })
+      }
       if (/\/api\/workflows\/fixture\/stages\/\d+$/.test(path)) return route.fulfill({ json: definition })
       if (path === '/api/workflows/fixture/movements') {
         movementCount += 1
@@ -91,7 +95,7 @@ async function installFixtures(
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Stage inspector' })).toBeVisible()
   if (inventory.workflows.length) await expect(page.getByRole('button', { name: 'Refresh workflow' })).toHaveCount(0)
-  return { movementRequests: () => movementCount }
+  return { movementRequests: () => movementCount, inventoryRequests: () => inventoryCount }
 }
 
 test('both desktop rails can be collapsed and reopened', async ({ page }) => {
@@ -112,14 +116,99 @@ test('both desktop rails can be collapsed and reopened', async ({ page }) => {
   })
   const scrollTop = await content.evaluate((element) => element.scrollTop)
   await page.getByRole('button', { name: 'Collapse stage inspector' }).click()
+  await expect(page.getByRole('separator', { name: 'Resize stage inspector' })).toHaveCount(0)
   expect(await originalContent?.evaluate((element) => element.isConnected)).toBe(true)
   await page.getByRole('button', { name: 'Expand stage inspector' }).click()
   await expect(page.getByRole('button', { name: 'Mutation', exact: true })).toHaveAttribute('aria-expanded', 'false')
   expect(await content.evaluate((element) => element.scrollTop)).toBe(scrollTop)
   await expect(page.getByRole('complementary', { name: 'Selected stage inspector' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Stage inspector' })).toBeVisible()
-  await expect(page.getByRole('separator', { name: 'Resize stage inspector' })).toHaveCount(0)
-  expect(await page.evaluate(() => localStorage.getItem('control-tower-workbench-layout-v1'))).toBeNull()
+  await expect(page.getByRole('separator', { name: 'Resize stage inspector' })).toHaveCount(1)
+  expect(await page.evaluate(() => localStorage.getItem('control-tower-stage-inspector-width-v1'))).toBeNull()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Collapse workflow rail' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Collapse stage inspector' })).toBeVisible()
+})
+
+test('inspector width resizes by pointer and keyboard and restores from width-only storage', async ({ page }) => {
+  await installFixtures(page)
+  const inspector = page.getByRole('complementary', { name: 'Selected stage inspector' })
+  const separator = page.getByRole('separator', { name: 'Resize stage inspector' })
+  const initialWidth = await inspector.evaluate((element) => element.getBoundingClientRect().width)
+  expect(initialWidth).toBe(382)
+  await expect(separator).toHaveAttribute('aria-controls', 'stage-inspector-pane')
+  await expect(separator).toHaveAttribute('aria-valuenow', '382')
+  await separator.focus()
+  await expect(separator).toBeFocused()
+  await separator.press('ArrowLeft')
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(398)
+  const box = await separator.boundingBox()
+  if (!box) throw new Error('Resize separator has no rendered bounds')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x - 26, box.y + box.height / 2)
+  await page.mouse.up()
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(428)
+  for (let step = 0; step < 10; step += 1) await separator.press('ArrowLeft')
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(508)
+  await expect(separator).toHaveAttribute('aria-valuemax', '508')
+  expect(await page.evaluate(() => localStorage.getItem('control-tower-stage-inspector-width-v1'))).toBe('508')
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Stage inspector' })).toBeVisible()
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(508)
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual(['control-tower-stage-inspector-width-v1'])
+})
+
+test('inspector uses the default for invalid storage and clamps restored width to current geometry', async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.setItem('control-tower-stage-inspector-width-v1', 'not-a-width'))
+  await installFixtures(page)
+  const inspector = page.getByRole('complementary', { name: 'Selected stage inspector' })
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(382)
+  await page.setViewportSize({ width: 1000, height: 820 })
+  const separator = page.getByRole('separator', { name: 'Resize stage inspector' })
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(300)
+  await expect(separator).toHaveAttribute('aria-valuemin', '300')
+  await expect(separator).toHaveAttribute('aria-valuemax', '300')
+  await separator.focus()
+  await separator.press('ArrowLeft')
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(300)
+  expect(await page.locator('[class*="grid"]').evaluate((element) => element.scrollWidth)).toBeGreaterThan(1000)
+})
+
+test('workflow search filters inventory without changing selection or issuing inventory requests', async ({ page }) => {
+  const inventory: WorkspaceView = {
+    name: 'browser-fixture',
+    workflows: [
+      { id: 'fixture', name: 'Alpha Workflow' },
+      { id: 'second', name: 'Second long workflow name' },
+      { id: 'third', name: 'ALPHABET soup' },
+    ],
+  }
+  const api = await installFixtures(page, false, undefined, workflow, inventory)
+  const startupInventoryRequests = api.inventoryRequests()
+  const search = page.getByRole('textbox', { name: 'Search workflows' })
+  await expect(page.getByText('3', { exact: true })).toBeVisible()
+  await search.fill('  aLpHa ')
+  await expect(page.getByRole('button', { name: 'Alpha Workflow' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'ALPHABET soup' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Second long workflow name' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Alpha Workflow' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('button', { name: 'Refresh workflow' })).toHaveCount(0)
+  expect(api.inventoryRequests()).toBe(startupInventoryRequests)
+
+  await page.getByRole('button', { name: 'Collapse workflow rail' }).click()
+  await expect(page.getByRole('button', { name: 'Select workflow Alpha Workflow' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Select workflow Second long workflow name' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Expand workflow rail' }).click()
+  await expect(search).toHaveValue('  aLpHa ')
+  await search.fill('nothing matches')
+  await expect(page.getByText('No matching workflows')).toBeVisible()
+  await search.clear()
+  await expect(page.getByRole('button', { name: 'Second long workflow name' })).toBeVisible()
+  expect(api.inventoryRequests()).toBe(startupInventoryRequests)
 })
 
 test('stage selection inspects a future definition without submitting movement', async ({ page }) => {
