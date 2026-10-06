@@ -125,6 +125,19 @@ collapse itself remains session-only. Workflow and stage rows retain their curre
 rendered spacing. Typography and checkpoint presentation retain the reviewed
 current design.
 
+The inspector's existing content scroller reserves a stable native scrollbar gutter
+so consuming scrollbars do not shift its content or right-edge controls; overlay
+scrollbars continue to consume no forced platform-width space. The ordinary forward
+action hierarchy uses the filled violet variant for **Run next** and light variants
+for **Run to** and **Run all**. Recovery choices retain their established emphasis.
+When no movement action exists, the dock shows its existing label as plain status
+text; actions that are temporarily unavailable remain disabled buttons.
+
+Issue #13's re-review retained the current rendered row spacing, theme typography,
+and checkpoint presentation. Its selected polish is width resize with width-only
+reload persistence, local loaded-inventory workflow search, stable inspector gutter,
+and the forward/status hierarchy above.
+
 A responsive breakpoint must not transform it into a mobile drawer, bottom sheet or separate navigation flow. If the user deliberately collapses the inspector, merely selecting another stage should not reopen it without an explicit reopen affordance.
 
 Inspector information is ordered by usefulness:

@@ -226,7 +226,7 @@ test('both desktop rails can be collapsed and reopened', async ({ page }) => {
   await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(398)
   await page.getByRole('button', { name: 'Collapse stage inspector' }).click()
   await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(54)
-  await page.getByRole('button', { name: /Not applied finish/ }).click()
+  await page.getByText('finish', { exact: true }).click()
   await expect(page.getByRole('button', { name: 'Expand stage inspector' })).toBeVisible()
   await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(54)
   await page.getByRole('button', { name: 'Expand stage inspector' }).click()
@@ -251,6 +251,67 @@ test('both desktop rails can be collapsed and reopened', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Collapse workflow rail' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Collapse stage inspector' })).toBeVisible()
   await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(398)
+})
+
+test('inspector keeps a stable consuming scrollbar gutter across real content overflow', async ({ page }) => {
+  await installFixtures(page, false, undefined, workflowWithLongContent, workspace, true)
+  const content = page.getByRole('region', { name: 'Stage inspector content' })
+  await page.addStyleTag({
+    content: `
+      [aria-label="Stage inspector content"]::-webkit-scrollbar { width: 16px; }
+      [aria-label="Stage inspector content"]::-webkit-scrollbar-thumb { background: #888; }
+    `,
+  })
+  await content.evaluate((element) => {
+    element.style.flex = 'none'
+    element.style.height = '10000px'
+  })
+  const before = await content.evaluate((element) => {
+    const contentElement = element as HTMLElement
+    return {
+      clientWidth: element.clientWidth,
+      overflowing: element.scrollHeight > element.clientHeight,
+      consumingScrollbar: contentElement.offsetWidth - element.clientWidth,
+    }
+  })
+  expect(before.overflowing).toBe(false)
+  expect(before.consumingScrollbar).toBeGreaterThanOrEqual(16)
+  const mutation = page.getByRole('button', { name: 'Mutation', exact: true })
+  const controlRightBefore = await mutation.evaluate((element) => element.getBoundingClientRect().right)
+
+  await content.evaluate((element) => {
+    element.style.height = '300px'
+  })
+  const after = await content.evaluate((element) => {
+    const contentElement = element as HTMLElement
+    return {
+      clientWidth: element.clientWidth,
+      overflowing: element.scrollHeight > element.clientHeight,
+      consumingScrollbar: contentElement.offsetWidth - element.clientWidth,
+    }
+  })
+  expect(after.overflowing).toBe(true)
+  expect(after.consumingScrollbar).toBeGreaterThanOrEqual(16)
+  expect(after.clientWidth).toBe(before.clientWidth)
+  expect(await mutation.evaluate((element) => element.getBoundingClientRect().right)).toBe(controlRightBefore)
+  await expect(mutation).toBeVisible()
+  await mutation.click()
+  await expect(mutation).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('forward dock emphasis and no-action status use the selected presentation', async ({ page }) => {
+  await installFixtures(page)
+  await expect(page.getByRole('button', { name: 'Run next' })).toHaveAttribute('data-variant', 'filled')
+  await page.getByText('verify', { exact: true }).click()
+  await expect(page.getByRole('button', { name: /Run to/ })).toHaveAttribute('data-variant', 'light')
+  await expect(page.getByRole('button', { name: 'Run all' })).toHaveAttribute('data-variant', 'light')
+})
+
+test('no-action dock text has no button semantics', async ({ page }) => {
+  const noMovement = { ...workflow, movement_choices: [] }
+  await installFixtures(page, false, undefined, noMovement)
+  await expect(page.getByText('No immediate movement available')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'No immediate movement available' })).toHaveCount(0)
 })
 
 test('inspector width resizes by pointer and keyboard and restores from width-only storage', async ({ page }) => {

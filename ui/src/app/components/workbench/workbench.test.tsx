@@ -291,7 +291,8 @@ describe('workflow browser adapter', () => {
     ])
     expect(screen.queryByText('Select a stage')).not.toBeInTheDocument()
     expect(screen.queryByText('CURRENT CHECKPOINT')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Workflow unavailable/ })).toBeDisabled()
+    expect(screen.getByText('Workflow unavailable')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Workflow unavailable' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Advance|Back out/ })).not.toBeInTheDocument()
   })
 
@@ -436,6 +437,18 @@ describe('live workbench reconciliation', () => {
     expect(screen.getByRole('heading', { name: 'seed' })).toBeInTheDocument()
     await emitSnapshot('a', initial)
     expect(next).toBeEnabled()
+  })
+
+  it('emphasizes Run next and renders unavailable movement as noninteractive status', async () => {
+    const initial = workflow('a')
+    installWorkbench({ a: initial })
+    await emitSnapshot('a', initial)
+    expect(screen.getByRole('button', { name: 'Run next' })).toHaveAttribute('data-variant', 'filled')
+
+    const unavailable = workflow('a', { movement_choices: [] })
+    await emitSnapshot('a', unavailable)
+    expect(screen.getByText('No immediate movement available')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'No immediate movement available' })).not.toBeInTheDocument()
   })
 
   it('keeps the initiating action pending through POST and the renewed snapshot', async () => {

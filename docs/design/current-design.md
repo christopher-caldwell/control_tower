@@ -123,6 +123,14 @@ Its trimmed, case-insensitive substring filter preserves inventory order and cur
 selection. The query remains while the rail is collapsed and resets on reload. The
 existing row spacing and typography remain unchanged.
 
+The inspector content scroller reserves a stable native scrollbar gutter while
+preserving overlay scrollbar behavior. In the ordinary forward state, **Run next**
+uses the filled violet variant and broader **Run to**/**Run all** actions use light
+variants; recovery emphasis stays as designed. No-action dock labels are plain status
+text, while temporarily disabled movement choices remain buttons. Issue #13's review
+kept the current rendered workflow/stage row spacing, typography and checkpoint
+presentation; it selected only the bounded resize/search/gutter/dock polish.
+
 Primary actions describe intent such as **Run next**, **Run to Stage 3 · Add suffix**, **Run all**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
 
 The interface is explicitly desktop-only. Responsive breakpoints must not turn the workbench into stacked cards, hamburger navigation, temporary mobile drawers, bottom sheets or a single-pane drill-down flow. Manual rail collapse is a user choice, not responsive behavior.

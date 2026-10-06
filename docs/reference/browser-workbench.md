@@ -119,6 +119,14 @@ compact workflow icons; the query remains through collapse/reopen and resets on
 reload. A no-match message appears only for a known nonempty inventory. Loading,
 inventory failure and genuinely empty inventory keep their distinct presentation.
 
+The inspector content scroller uses a stable native scrollbar gutter, keeping
+content width steady when accordion content begins to overflow without forcing space
+for overlay scrollbars. In the ordinary forward state, **Run next** is filled violet
+while **Run to** and **Run all** use light variants. No-action labels such as
+**Workflow unavailable** and **All stages applied** are noninteractive status text;
+genuinely disabled movement actions remain buttons. The issue #13 polish review kept
+current row spacing, typography and checkpoint semantics unchanged.
+
 Selecting a workflow opens its live view. Selecting any stage changes inspection
 only: it does not execute a script or write a checkpoint. Selection is primarily
 inspection state; a selected future stage may also name the target of an explicit

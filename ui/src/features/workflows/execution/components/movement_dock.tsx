@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@mantine/core'
-import { Button, Group, Stack, Tooltip } from '@mantine/core'
+import { Button, Group, Stack, Text, Tooltip } from '@mantine/core'
 import { IconArrowBackUp, IconArrowRight } from '@tabler/icons-react'
 import type { FC } from 'react'
 
@@ -26,7 +26,7 @@ export const MovementDock: FC<MovementDockProps> = ({ model, unavailableLabel })
         {model.forward.to ? <MovementButton action={model.forward.to} model={model} /> : null}
         {model.forward.all ? <MovementButton action={model.forward.all} model={model} /> : null}
         {defaultPrimaryAction ? <MovementButton action={defaultPrimaryAction} model={model} /> : null}
-        {hasPrimaryAction ? null : <Button disabled>{unavailableLabel}</Button>}
+        {hasPrimaryAction ? null : <Text c="dimmed">{unavailableLabel}</Text>}
       </Group>
     </Stack>
   )
@@ -37,7 +37,8 @@ const MovementButton: FC<MovementButtonProps> = ({ action, model, isSecondary = 
   const isPrimaryAction = action === model.forward.next
   let variant: ButtonProps['variant'] = 'filled'
   if (isSecondary) variant = 'default'
-  else if (isPrimaryAction) variant = 'subtle'
+  else if (isPrimaryAction) variant = 'filled'
+  else if (action === model.forward.to || action === model.forward.all) variant = 'light'
   const isLoading = model.pendingMovement?.label === action.label
   const canMove = model.canSubmitMovement && model.workflow?.checkpoint !== null
   return (
