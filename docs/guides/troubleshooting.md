@@ -43,7 +43,9 @@ The Cargo package is **`control-tower-cli`**, not `control-tower`:
 (cd "$workspace" && cargo run --locked --manifest-path "$repo/Cargo.toml" -p control-tower-cli -- status --workflow "$workflow")
 ```
 
-`just: command not found` is not a blocker. Use the three `control-tower db` commands from the setup guide instead.
+`just: command not found` is not a blocker. For normal first use, follow the
+setup guide's `control-tower init --workflow "$workflow"` command. Use the
+individual database commands below to isolate or diagnose a setup step.
 
 ## The database is missing or not initialized
 
