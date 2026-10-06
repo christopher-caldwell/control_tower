@@ -15,4 +15,4 @@ Workflow-scoped commands require `--workflow`; paths are resolved from the Works
 
 The first `up` movement can run every earlier unapplied stage in numeric order. A target is a stage number, not an instruction to run only that one script. Read `control-tower guide operate_workflow` before operating the workflow.
 
-For a complete first-use path with equal UI and CLI branches, use the [canonical human walkthrough](../../../docs/guides/getting-started.md). The existing [UUID-file Workflow](../../../examples/simple/workflows/uuid-file/README.md) is the small reference example; do not create a parallel quickstart fixture.
+For a complete first-use path with equal UI and CLI branches, use the [canonical human walkthrough](../../../docs/guides/getting-started.md). The existing [UUID-file Workflow](../../../examples/simple/workflows/uuid-file/README.md) is the small reference example; do not create a parallel quickstart fixture. For shared generated values, ordinary command-result capture, and reusable checks through optional author-owned libraries, see [common patterns](../../../examples/common_patterns/README.md); its libraries are example code, not a supported SDK.

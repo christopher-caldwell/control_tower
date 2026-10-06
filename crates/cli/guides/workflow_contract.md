@@ -40,6 +40,8 @@ The runner inherits the launching process environment, then fills missing keys f
 
 The UUID is a run token, not a generated-output channel. Control Tower does not parse stdout or carry script-produced values into later stages. Scripts that share additional values must manage their own workflow files or other storage.
 
+The optional [common patterns example](../../../examples/common_patterns/README.md) demonstrates shared generated values, ordinary command-result capture, and reusable checks through author-owned libraries; those libraries are example code, not a supported SDK.
+
 ## What validation covers
 
 `control-tower validate --workflow PATH` checks the selected workflow from the Workspace root. It checks Workspace configuration and inventory, discovers stages and reads/checks saved checkpoint state, and parses Workspace `.env` when present. It does not run `up`, `down`, `verify-up`, or `verify-down`, probe application/runtime prerequisites, and does not bootstrap, migrate, repair, or write checkpoint state.
