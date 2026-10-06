@@ -69,6 +69,29 @@ fn configured_workspace(workspace: &Path) -> WorkspaceContext {
     discover_workspace(workspace).unwrap()
 }
 
+#[test]
+fn ui_workspace_discovery_keeps_the_workspace_contract_without_parsing_dotenv() {
+    let temp = TempDir::new();
+    let workspace = temp.path().join("demo");
+    fs::create_dir_all(&workspace).unwrap();
+    fs::write(
+        workspace.join("control-tower.toml"),
+        "[workspace]\nlabel = \"Configured Workspace\"\n",
+    )
+    .unwrap();
+
+    assert!(
+        discover_workspace(&workspace).is_err(),
+        "workflows/ is required"
+    );
+
+    fs::create_dir(workspace.join("workflows")).unwrap();
+    fs::write(workspace.join(".env"), "INVALID LINE\n").unwrap();
+    let context = discover_workspace(&workspace).unwrap();
+    assert_eq!(context.name, "Configured Workspace");
+    assert!(context.workflows.is_empty());
+}
+
 fn context(workspace: WorkspaceContext) -> Arc<ServerContext> {
     Arc::new(ServerContext {
         workspace,

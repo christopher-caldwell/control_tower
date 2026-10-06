@@ -4,7 +4,7 @@ Control Tower records stage position, but it cannot make a workflow's scripts an
 
 Run commands from the Workspace root and select the workflow explicitly. Start with `control-tower status --workflow PATH` to read the checkpoint and `control-tower validate --workflow PATH` to confirm Workspace configuration, stages, dotenv syntax, and saved state still load. These commands inspect metadata; they do not establish that application data matches it.
 
-Exit status 3 means a verifier ran and rejected the transition; inspect author-owned effects before retrying that check or reversing. Exit status 1 means an operational/mutation failure or that a verifier could not start. Exit status 2 indicates invalid CLI usage. A child's own exit status is shown in the movement result and is distinct from Control Tower's exit status. Summaries report the requested target, resulting position, pending verification, and failed role/child status when known. They do not interpret authored output or assertions.
+Exit status 3 means a verifier returned a nonzero exit status and rejected the transition; inspect author-owned effects before retrying that check or reversing. Exit status 1 means an operational/mutation failure, including a verifier that could not start or terminated without a normal exit status. Exit status 2 indicates invalid CLI usage. A child's own exit status is shown in the movement result when known and is distinct from Control Tower's exit status. Summaries report the requested target, resulting position, pending verification, and failed role/child status when known. They do not interpret authored output or assertions.
 
 ## Pending verification
 

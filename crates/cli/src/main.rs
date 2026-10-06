@@ -112,7 +112,12 @@ fn main() -> ExitCode {
             return report_command_failure(&cli.command, &error.to_string(), None);
         }
     };
-    let workspace = match workspace::load(&invocation_root) {
+    let workspace_result = if matches!(&cli.command, Command::Status { .. }) {
+        workspace::load_without_dotenv(&invocation_root)
+    } else {
+        workspace::load(&invocation_root)
+    };
+    let workspace = match workspace_result {
         Ok(workspace) => workspace,
         Err(message) => {
             let checkpoint = best_effort_movement_checkpoint(&invocation_root, workflow_arg);
@@ -179,7 +184,7 @@ fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
     };
     let workspace = match std::env::current_dir()
         .map_err(|e| e.to_string())
-        .and_then(|path| workspace::load(&path))
+        .and_then(|path| workspace::load_without_dotenv(&path))
     {
         Ok(workspace) => workspace,
         Err(message) => {
@@ -204,7 +209,7 @@ fn run_database_operation(operation: &DatabaseOperation) -> ExitCode {
         Ok(()) => {
             let operation = match operation {
                 DatabaseOperation::Bootstrap { .. } => "bootstrapped",
-                DatabaseOperation::Migrate { .. } => "migrations applied",
+                DatabaseOperation::Migrate { .. } => "migration succeeded",
                 DatabaseOperation::Verify { .. } => "verified",
             };
             println!("Local database {operation}: {}", database.display());

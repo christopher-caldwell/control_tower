@@ -20,7 +20,7 @@ pub(super) struct WorkflowContext {
 }
 
 pub(super) fn discover_workspace(workspace_root: &Path) -> Result<WorkspaceContext, String> {
-    let contract = crate::workspace::load(workspace_root)?;
+    let contract = crate::workspace::load_without_dotenv(workspace_root)?;
     let name = contract.label;
     let inventory_path = workspace_root.join("workflows");
     let mut entries = match fs::read_dir(&inventory_path) {

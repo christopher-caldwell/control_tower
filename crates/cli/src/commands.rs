@@ -89,8 +89,10 @@ pub(super) fn run_move(
                 TransitionFailure::ExecutableFailed {
                     role: control_tower_application::ExecutableRole::VerifyUp
                         | control_tower_application::ExecutableRole::VerifyDown,
+                    exit_code: Some(code),
                     ..
                 }
+                if *code != 0
             ) {
                 ExitCode::from(3)
             } else {

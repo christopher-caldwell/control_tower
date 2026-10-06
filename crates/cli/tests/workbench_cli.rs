@@ -427,7 +427,7 @@ fn explicit_database_operations_are_available_through_the_cli() {
 
     let migrate = database_operation(&workflow, "migrate-local");
     assert!(migrate.status.success(), "{}", output_text(&migrate));
-    assert!(output_text(&migrate).contains("Local database migrations applied:"));
+    assert!(output_text(&migrate).contains("Local database migration succeeded:"));
     let verify = database_operation(&workflow, "verify-local");
     assert!(verify.status.success(), "{}", output_text(&verify));
     assert!(output_text(&verify).contains("Local database verified:"));
@@ -437,7 +437,9 @@ fn explicit_database_operations_are_available_through_the_cli() {
         "{}",
         output_text(&rerun_migrate)
     );
-    assert!(output_text(&rerun_migrate).contains("Local database migrations applied:"));
+    let rerun_text = output_text(&rerun_migrate);
+    assert!(rerun_text.contains("Local database migration succeeded:"));
+    assert!(!rerun_text.contains("migrations applied"));
     let rerun_verify = database_operation(&workflow, "verify-local");
     assert!(
         rerun_verify.status.success(),
@@ -445,6 +447,31 @@ fn explicit_database_operations_are_available_through_the_cli() {
         output_text(&rerun_verify)
     );
     assert!(output_text(&rerun_verify).contains("Local database verified:"));
+}
+
+#[test]
+fn malformed_workspace_dotenv_does_not_block_status_or_database_operations() {
+    let workflow = Workflow::from_fixture();
+    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
+
+    let status_output = status(&workflow);
+    assert!(
+        status_output.status.success(),
+        "{}",
+        output_text(&status_output)
+    );
+    assert!(
+        String::from_utf8_lossy(&status_output.stdout).contains("Completed stage: baseline (0)")
+    );
+
+    for operation in ["bootstrap-local", "migrate-local", "verify-local"] {
+        let output = database_operation(&workflow, operation);
+        assert!(
+            output.status.success(),
+            "{operation}: {}",
+            output_text(&output)
+        );
+    }
 }
 
 #[test]
@@ -472,6 +499,33 @@ fn verifier_start_failure_is_operational_exit_one() {
         String::from_utf8_lossy(&output.stdout)
             .contains("Failed role: stage 1 verify-up; executable did not start")
     );
+}
+
+#[test]
+fn verifier_termination_by_signal_is_operational_exit_one() {
+    for (direction, target, verifier) in [("up", 1, "verify-up"), ("down", 0, "verify-down")] {
+        let workflow = Workflow::from_fixture();
+        if direction == "down" {
+            let up = move_to(&workflow, "up", 1);
+            assert!(up.status.success(), "{}", output_text(&up));
+        }
+        write_executable(
+            &workflow
+                .path()
+                .join("stages/001-create-file")
+                .join(verifier),
+            "#!/bin/sh\nkill -TERM $$\n",
+        );
+
+        let output = move_to(&workflow, direction, target);
+        assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+        let text = output_text(&output);
+        assert!(text.contains("signal or unknown status"));
+        assert!(text.contains(&format!(
+            "Failed role: stage 1 {verifier}; child exit status signal/unknown"
+        )));
+        assert!(text.contains(&format!("Pending verification: {direction} 1")));
+    }
 }
 
 #[test]
