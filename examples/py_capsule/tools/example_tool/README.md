@@ -17,7 +17,7 @@ filesystem handoff or stage mapping.
 The manifest selects this project's child `.venv`, separate from the caller's
 shared environment. Declare body/runtime requirements here, then update
 both the tool and example locks. Category `bootstrap` validates both with locked
-syncs; strict child validation is tested without flags in ordinary roles.
+syncs; strict child validation is tested without flags in ordinary Stage Actions.
 
 Both projects install the published `capsule-runner==0.0.1` distribution from
 PyPI. It provides the `py_capsule` import used by this facade; stages continue

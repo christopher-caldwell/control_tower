@@ -12,7 +12,7 @@ export const RoleOutput: FC<RoleOutputProps> = ({ result }) => {
       <Paper withBorder p="sm" mt="sm">
         <RoleHeading result={result} />
         <Text c="dimmed" size="xs">
-          Output will be available when the role returns.
+          Output will be available when the Stage Action returns.
         </Text>
       </Paper>
     )
@@ -41,6 +41,6 @@ export const RoleOutput: FC<RoleOutputProps> = ({ result }) => {
 
 const RoleHeading: FC<RoleOutputProps> = ({ result }) => (
   <Text fw={600} size="sm">
-    Stage {result.stage.number} · {result.role}
+    Stage {result.stage.number} · Stage Action {result.role}
   </Text>
 )

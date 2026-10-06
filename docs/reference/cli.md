@@ -4,7 +4,7 @@ title: CLI reference
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -62,7 +62,7 @@ dispatches to this CLI guidance.
 `control-tower validate --workflow PATH` checks the selected workflow under the
 current Workspace root. It validates Workspace configuration and inventory,
 discovers stages, reads/checks the saved checkpoint, and parses the Workspace
-`.env` if present. It runs no role and does not prepare or change workflow
+`.env` if present. It runs no Stage Action and does not prepare or change workflow
 storage. It does not probe application/runtime prerequisites or establish that
 external application state matches the checkpoint.
 
@@ -76,7 +76,7 @@ external application state matches the checkpoint.
 
 `ui` starts the loopback browser host from the current directory, which becomes the launch-scoped Workspace. The command prints a plain local URL to open manually. The host uses the committed static React build; Node is not a runtime dependency. The UI offers Run next, Run to a selected farther stage, and Run all, each submitted as one movement request that the Application movement engine walks; selection is primarily inspection, with outcome-specific pending-verification recovery. See [build, workflow inventory, and interface details](browser-workbench.md).
 
-Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no roles ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
+Every stage crossed is completed separately; the walk stops on the first failure. A settled target is a no-op and says that no Stage Actions ran; it does not recheck the fixture. A target in the wrong direction or an unknown stage produces a nonzero result without stage execution.
 
 ### Pending verification
 
@@ -118,15 +118,15 @@ Control Tower CLI outcomes use these exit codes:
 | `2` | Invalid CLI invocation (Clap usage error). |
 | `3` | A verifier ran and rejected the transition. |
 
-Only an executed verifier that returns failure produces 3. A verifier that cannot start is an operational failure and returns 1. Child-process exit status remains separately visible in role output and the movement summary; it is not remapped as Control Tower's exit code. Successful guide requests, status, validation, and database operations return 0.
+Only an executed verifier that returns failure produces 3. A verifier that cannot start is an operational failure and returns 1. Child-process exit status remains separately visible in Stage Action output and the movement summary; it is not remapped as Control Tower's exit code. Successful guide requests, status, validation, and database operations return 0.
 
-Movement first identifies the selected workflow and requested direction/target. Each actual role attempt gets a flushed start line with its numeric stage, label and role, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that role returns, before the next role is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
+Movement first identifies the selected workflow and requested direction/target. Each actual Stage Action attempt gets a flushed start line with its numeric stage, label and executable name, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that Stage Action returns, before the next is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
 
-Output remains buffered for one role; a quiet long-running role shows its start but does not stream intermediate bytes. Stdout/stderr stay separate, with stage/role context and a display newline when needed; the captured bytes in Application remain unchanged. Relative chronology across the streams is not preserved. There is no structured JSON contract or persistent log viewer.
+Output remains buffered for one Stage Action; a quiet long-running action shows its start but does not stream intermediate bytes. Stdout/stderr stay separate, with stage/executable context and a display newline when needed; the captured bytes in Application remain unchanged. Relative chronology across the streams is not preserved. There is no structured JSON contract or persistent log viewer.
 
-Every movement ends with a compact summary naming the requested target and resulting Control Tower position. When known it includes pending verification, failed role, and child exit status. It does not parse authored PASS/FAIL output, invent assertion totals, or classify application-level meaning. Final movement output and `status` identify the same recorded completed stage (actual number/label, or baseline 0), run UUID and pending direction/stage. `status` is metadata, not a fresh external-state assertion. A role's success line confirms process success, not that the subsequent checkpoint save succeeded.
+Every movement ends with a compact summary naming the requested target and resulting Control Tower position. When known it includes pending verification, failed Stage Action, and child exit status. It does not parse authored PASS/FAIL output, invent assertion totals, or classify application-level meaning. Final movement output and `status` identify the same recorded completed stage (actual number/label, or baseline 0), run UUID and pending direction/stage. `status` is metadata, not a fresh external-state assertion. A Stage Action's success line confirms process success, not that the subsequent checkpoint save succeeded.
 
-If a checkpoint write fails, output distinguishes the **last confirmed checkpoint** from the **unconfirmed checkpoint update** and retains successful role output. No further role/write is attempted. Under a fail-before-write fault, a later `status` agrees with the last confirmed checkpoint. An ambiguous storage error carries no guarantee about the database's current contents or external effects; inspect those yourself. There is no automatic write retry or repair.
+If a checkpoint write fails, output distinguishes the **last confirmed checkpoint** from the **unconfirmed checkpoint update** and retains successful Stage Action output. No further action/write is attempted. Under a fail-before-write fault, a later `status` agrees with the last confirmed checkpoint. An ambiguous storage error carries no guarantee about the database's current contents or external effects; inspect those yourself. There is no automatic write retry or repair.
 
 ## Database operations
 

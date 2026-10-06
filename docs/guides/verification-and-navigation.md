@@ -4,7 +4,7 @@ title: Navigate and retry verification
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -18,9 +18,9 @@ sources:
 
 A **completed stage** is Control Tower's last accepted, recorded position. A **pending transition** records that a mutation succeeded but its verifier has not succeeded. Both facts can be true at once; the stored position is not a claim that the external system remained unchanged.
 
-Movement shows the workflow/target, then a flushed start and captured result for each actual role before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one role, so the start identity may be the only output during a long operation. Success of a role does not by itself confirm the following checkpoint write.
+Movement shows the workflow/target, then a flushed start and captured result for each actual Stage Action before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one Stage Action, so the start identity may be the only output during a long operation. Success of a Stage Action does not by itself confirm the following checkpoint write.
 
-Run CLI commands from the Workspace root and select the workflow with `--workflow`. Control Tower returns 0 for success/no-op, 1 for operational or mutation failure (including a verifier that cannot start), 2 for CLI usage errors, and 3 only when a verifier ran and rejected the transition. The child's own exit status is shown separately. Each movement ends with a factual summary of requested target, resulting position, and known pending/failed-role details. On exit 3, inspect author-owned effects before retrying or reversing.
+Run CLI commands from the Workspace root and select the workflow with `--workflow`. Control Tower returns 0 for success/no-op, 1 for operational or mutation failure (including a verifier that cannot start), 2 for CLI usage errors, and 3 only when a verifier ran and rejected the transition. The child's own exit status is shown separately. Each movement ends with a factual summary of requested target, resulting position, and known pending/failed Stage Action details. On exit 3, inspect author-owned effects before retrying or reversing.
 
 ## Move to a target
 
@@ -127,9 +127,9 @@ chmod +x "$check"
 ct up --workflow workflows/uuid-file --stage 3
 ```
 
-Only stage 3/verify-up should appear in this invocation's role results. There is no standalone `verify` subcommand.
+Only stage 3/verify-up should appear in this invocation's Stage Action results. There is no standalone `verify` subcommand.
 
-Checks are optional and discovered afresh. Editing/removing a pending verifier changes what the next invocation runs; removing it can accept without a check or mutation replay. Preserve the check when you intend a verifier-only retry. An already settled target runs no roles and says so; it does not reverify external state.
+Checks are optional and discovered afresh. Editing/removing a pending verifier changes what the next invocation runs; removing it can accept without a check or mutation replay. Preserve the check when you intend a verifier-only retry. An already settled target runs no Stage Actions and says so; it does not reverify external state.
 
 When finished with either path:
 
@@ -162,7 +162,7 @@ row; abandonment requires explicit UUID-scoped SQL cleanup before returning to
 baseline. Neither an earlier stage's reversal nor deleting checkpoint files performs
 that cleanup.
 
-After a save failure, the movement separates the last confirmed checkpoint from the attempted update, preserves role results, and stops. A pending-save failure can retain a successful mutation with no recorded pending check; a final-save failure can retain a pending check after the verifier succeeded. Those cases have different retry effects. No automatic retry/reconciliation is provided.
+After a save failure, the movement separates the last confirmed checkpoint from the attempted update, preserves Stage Action results, and stops. A pending-save failure can retain a successful mutation with no recorded pending check; a final-save failure can retain a pending check after the verifier succeeded. Those cases have different retry effects. No automatic retry/reconciliation is provided.
 
 A Rust-process crash or SQLite failure likewise carries no external-state reconciliation guarantee. Do not treat a saved checkpoint as a transaction around an API/database mutation. See [troubleshooting](troubleshooting.md).
 

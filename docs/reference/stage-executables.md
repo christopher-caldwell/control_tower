@@ -4,7 +4,7 @@ title: Stage executables and environment
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-05'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -41,9 +41,9 @@ my-workflow/
 
 Only numbered directories immediately under `stages/` are stages. Names begin with a positive decimal integer, optionally followed by `-` and a label. `001-create-fixture` and `20` are valid; `0`, duplicate numeric prefixes, nonnumeric stage directories and prefixes beyond the CLI's `u32` range are rejected. Numbers need not be contiguous. Non-directory entries under `stages/` are ignored; keep support directories outside `stages/` so they are not mistaken for stages.
 
-The role filenames are exact: `up`, `down`, `verify-up`, `verify-down`. A file called `up.sh` is not an `up` role. No YAML/TOML configuration or `actions/` directory is used by v0.
+Stage Action filenames are exact: `up`, `down`, `verify-up`, `verify-down`. A file called `up.sh` is not the `up` Stage Action. No YAML/TOML configuration or `actions/` directory is used by v0.
 
-## Executable roles
+## Stage Actions
 
 | File | Responsibility |
 | --- | --- |
@@ -54,7 +54,7 @@ The role filenames are exact: `up`, `down`, `verify-up`, `verify-down`. A file c
 
 Each stage must contain at least one mutation (`up` or `down`). A verifier requires its matching mutation file. A missing mutation makes traversal in that direction unavailable. Missing verifiers need no placeholder: successful mutation is sufficient when that directional verifier is absent.
 
-Role paths must be regular files; execute permission is required when a role is launched. Discovery/status can still succeed when an execute bit is absent; a role path that is a directory fails discovery. For scripts, supply a valid shebang and install the interpreter yourself:
+Stage Action paths must be regular files; execute permission is required when a Stage Action is launched. Discovery/status can still succeed when an execute bit is absent; a Stage Action path that is a directory fails discovery. For scripts, supply a valid shebang and install the interpreter yourself:
 
 ```sh
 #!/bin/sh
@@ -62,7 +62,7 @@ set -eu
 # Your operation here.
 ```
 
-After writing a role file, make it executable, for example:
+After writing a Stage Action file, make it executable, for example:
 
 ```sh
 chmod +x "$workflow/stages/001-create-fixture/up"
@@ -72,13 +72,13 @@ Control Tower starts the file directly; it does not prepend `sh`, install packag
 
 ## Working directory and process behavior
 
-Each role runs with **its own stage directory** as the working directory, not the repository root or workflow root. Use `CONTROL_TOWER_WORKFLOW` for workflow-wide paths. Keep shared helper files outside `stages/`, for example `support/`, and reference them explicitly.
+Each Stage Action runs with **its own stage directory** as the working directory, not the repository root or workflow root. Use `CONTROL_TOWER_WORKFLOW` for workflow-wide paths. Keep shared helper files outside `stages/`, for example `support/`, and reference them explicitly.
 
-The runner adds no command-line arguments to a role. Its current implementation captures stdout/stderr and gives the child no interactive stdin. Write noninteractive scripts; do not depend on a terminal prompt. Other environment variables are inherited from the launching process, with the five variables below set by Control Tower.
+The runner adds no command-line arguments to a Stage Action. Its current implementation captures stdout/stderr and gives the child no interactive stdin. Write noninteractive scripts; do not depend on a terminal prompt. Other environment variables are inherited from the launching process, with the five variables below set by Control Tower.
 
-The runner inherits the launching process environment. If `<workspace>/.env` exists, its parsed values fill keys absent from the inherited environment. Shell values take precedence, and Control Tower's `CONTROL_TOWER_*` variables take precedence over both. This is the only automatic dotenv location; no workflow or parent-directory search occurs. Missing `.env` is valid; unreadable or malformed `.env` blocks validation and movement before roles run. `validate --workflow PATH` checks its syntax without running roles.
+The runner inherits the launching process environment. If `<workspace>/.env` exists, its parsed values fill keys absent from the inherited environment. Shell values take precedence, and Control Tower's `CONTROL_TOWER_*` variables take precedence over both. This is the only automatic dotenv location; no workflow or parent-directory search occurs. Missing `.env` is valid; unreadable or malformed `.env` blocks validation and movement before Stage Actions run. `validate --workflow PATH` checks its syntax without running Stage Actions.
 
-The CLI flushes the stage/role identity before attempting invocation. It shows captured output and the result when that role returns, before attempting the next. Bytes are buffered for one role, with stdout/stderr displayed separately and a framing newline if a stream lacks one. Application retains the original bytes; stdout is never parsed into state. Ordering between the two streams is not a chronological log. Each movement ends with a concise summary of the requested target, resulting Control Tower position and, when known, pending verification, failed role and child exit status. The child exit status is separate from Control Tower's CLI exit code.
+The CLI flushes the stage/Stage Action identity before attempting invocation. It shows captured output and the result when that Stage Action returns, before attempting the next. Bytes are buffered for one Stage Action, with stdout/stderr displayed separately and a framing newline if a stream lacks one. Application retains the original bytes; stdout is never parsed into state. Ordering between the two streams is not a chronological log. Each movement ends with a concise summary of the requested target, resulting Control Tower position and, when known, pending verification, failed Stage Action and child exit status. The child exit status is separate from Control Tower's CLI exit code.
 
 | Variable | Value |
 | --- | --- |
@@ -102,11 +102,11 @@ The optional [generated-ID example](../../examples/simple/workflows/generated-id
 
 ## Success, failure, and trust
 
-An exit code of 0 accepts a role. A nonzero mutation stops the walk before its verifier or later stages. A successful mutation followed by failed verification remains unfinished; [navigation](../guides/verification-and-navigation.md) describes explicit retry and reversal.
+An exit code of 0 accepts a Stage Action. A nonzero mutation stops the walk before its verifier or later stages. A successful mutation followed by failed verification remains unfinished; [navigation](../guides/verification-and-navigation.md) describes explicit retry and reversal.
 
 Write fixture verifiers to observe, not repair, the state they check. Control Tower cannot enforce that convention. Likewise, `down` is not guaranteed undo: any side effects and compensating operations belong to the script author.
 
-Optional roles are discovered again on each invocation. Editing a pending check changes the next check; removing it can accept the pending transition without replaying its mutation or checking anything. Finish/clean runs before structural stage edits. A later missing mutation stops traversal after earlier stages may already have been accepted; the route is not atomic or fully preflighted.
+Optional Stage Actions are discovered again on each invocation. Editing a pending check changes the next check; removing it can accept the pending transition without replaying its mutation or checking anything. Finish/clean runs before structural stage edits. A later missing mutation stops traversal after earlier stages may already have been accepted; the route is not atomic or fully preflighted.
 
 Scripts run with your user permissions and inherited environment, including any credentials you supply. Local-only does not make execution sandboxed or offline. Read scripts before running an unfamiliar workflow.
 

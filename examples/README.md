@@ -2,7 +2,7 @@
 
 An **example** is the complete portable Workspace you copy. Its **workflows**
 are the runnable scenarios inside that Workspace. Control Tower executes
-ordinary role files directly; each role selects its runtime through its shebang.
+ordinary Stage Action files directly; each Stage Action selects its runtime through its shebang.
 
 | Example to copy | What it teaches | Where to start |
 | --- | --- | --- |

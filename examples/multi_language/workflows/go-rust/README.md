@@ -1,9 +1,9 @@
 # Go and Rust
 
 Go writes `21` to a file. Rust reads it and persists the doubled value, `42`.
-The executable shell roles use ordinary `go run ./main.go` and `cargo run` commands
+The executable shell Stage Actions use ordinary `go run ./main.go` and `cargo run` commands
 to compile and invoke the programs at execution time. Control Tower executes those
-role files directly, just as it executes a shell, Python, or Node role. Source lives
+Stage Action files directly, just as it executes shell, Python, or Node Stage Actions. Source lives
 beside the corresponding stage. Shell verifiers inspect the files; reversal removes
 only the file produced by that stage.
 

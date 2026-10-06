@@ -108,7 +108,7 @@ const RetainedOutput: FC<RetainedOutputProps> = ({ observation }) => (
   <Stack gap={0} p="md">
     <Title order={4}>Latest observed output</Title>
     <Text size="xs" c="dimmed" mt="xs">
-      Current stage status is unavailable. These are the latest role results this host observed.
+      Current stage status is unavailable. These are the latest Stage Action results this host observed.
     </Text>
     {observation.role_results.map((result, index) => (
       <RoleOutput key={index} result={result} />

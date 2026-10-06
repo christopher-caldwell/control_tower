@@ -4,7 +4,7 @@ title: Troubleshoot local setup and runs
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -72,21 +72,21 @@ Do not delete the database to repair external test data. Deleting bookkeeping do
 
 The actual directory is `stages/`, not the `steps/` name used in older design probes. Each immediate stage directory needs a unique positive numeric prefix and at least an `up` or `down` file. Put support directories elsewhere.
 
-Role names have no extension: use `up`, not `up.sh`. A verifier without its matching mutation is rejected. Check [the layout reference](../reference/stage-executables.md#workflow-layout).
+Stage Action filenames have no extension: use `up`, not `up.sh`. A verifier without its matching mutation is rejected. Check [the layout reference](../reference/stage-executables.md#workflow-layout).
 
-`status` also discovers the layout, so a role path turned into a directory can block status. Removing an execute bit alone does not block discovery/status; it fails when that role is launched. There is no degraded-status mode for invalid layouts.
+`status` also discovers the layout, so a Stage Action path turned into a directory can block status. Removing an execute bit alone does not block discovery/status; it fails when that Stage Action is launched. There is no degraded-status mode for invalid layouts.
 
 ## A script could not start
 
-Read the stage and role identified in the error. Check that the file is executable and its shebang points to an installed interpreter. For a copied/new stage, for example:
+Read the stage and Stage Action identified in the error. Check that the file is executable and its shebang points to an installed interpreter. For a copied/new stage, for example:
 
 ```sh
 chmod +x "$workflow/stages/001-create-file/up"
 ```
 
-Apply permissions only to the roles actually present in your stage. Control Tower directly launches roles and does not install interpreters. Supply a shebang even if executable shell text happens to work on your host: shebangless text ran in the archived macOS experiment, but its fallback mechanism and other hosts were not verified. A missing interpreter or CRLF shebang can produce “No such file or directory” even when the role exists. Relative paths inside a script resolve from the **stage directory**; workflow-wide paths should use `CONTROL_TOWER_WORKFLOW`.
+Apply permissions only to the Stage Actions actually present in your stage. Control Tower directly launches Stage Actions and does not install interpreters. Supply a shebang even if executable shell text happens to work on your host: shebangless text ran in the archived macOS experiment, but its fallback mechanism and other hosts were not verified. A missing interpreter or CRLF shebang can produce “No such file or directory” even when the Stage Action exists. Relative paths inside a script resolve from the **stage directory**; workflow-wide paths should use `CONTROL_TOWER_WORKFLOW`.
 
-The runner gives scripts no interactive stdin. Scripts that prompt for confirmation or credentials need to be made noninteractive. A flushed start line appears before invocation is attempted; captured output/result appears when that role returns, before the next role starts. A long-running role can remain quiet after its start line because intermediate bytes are not streamed. Output is not persisted as execution history; capture terminal output or use author-owned logs if needed. Signal failures currently lack specific signal identity.
+The runner gives scripts no interactive stdin. Scripts that prompt for confirmation or credentials need to be made noninteractive. A flushed start line appears before invocation is attempted; captured output/result appears when that Stage Action returns, before the next starts. A long-running Stage Action can remain quiet after its start line because intermediate bytes are not streamed. Output is not persisted as execution history; capture terminal output or use author-owned logs if needed. Signal failures currently lack specific signal identity.
 
 ## Verification failed
 
@@ -94,9 +94,9 @@ The final movement output already distinguishes the recorded completed stage fro
 
 Follow [the worked failure exercise](verification-and-navigation.md#try-a-verification-failure). Do not repeatedly rerun the mutation manually when a verifier retry is what you need. There is no separate `verify`, `force` or `skip` subcommand.
 
-## A role succeeded but the checkpoint save failed
+## A Stage Action succeeded but the checkpoint save failed
 
-The CLI reports the last confirmed checkpoint separately from the unconfirmed attempted update and stops all further work. Successful role output remains visible. If the pending-marker save failed, the last confirmed state can have a UUID but no pending check: retry may repeat the mutation. If final acceptance failed, the confirmed state can remain pending even after a successful verifier. Inspect external effects before choosing movement; no safe verifier-only recipe is inferred from a save failure or an older pending field after a failed reverse mutation. A later status agrees under deterministic fail-before-write faults, but an ambiguous storage error is not proof of the database's current contents.
+The CLI reports the last confirmed checkpoint separately from the unconfirmed attempted update and stops all further work. Successful Stage Action output remains visible. If the pending-marker save failed, the last confirmed state can have a UUID but no pending check: retry may repeat the mutation. If final acceptance failed, the confirmed state can remain pending even after a successful verifier. Inspect external effects before choosing movement; no safe verifier-only recipe is inferred from a save failure or an older pending field after a failed reverse mutation. A later status agrees under deterministic fail-before-write faults, but an ambiguous storage error is not proof of the database's current contents.
 
 ## Printing an ID did not pass it to the next stage
 

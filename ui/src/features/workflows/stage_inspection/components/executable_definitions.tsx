@@ -13,7 +13,7 @@ type ExecutableDefinitionsProps = {
 
 export const ExecutableDefinitions: FC<ExecutableDefinitionsProps> = ({ definition, issue, isLoading, onRetry }) => (
   <Accordion.Item value="definitions">
-    <Accordion.Control>Executable definitions</Accordion.Control>
+    <Accordion.Control>Stage Actions</Accordion.Control>
     <Accordion.Panel>
       {isLoading ? (
         <Group gap="xs">

@@ -25,7 +25,7 @@ enum Command {
         #[arg(value_enum)]
         action: Option<guides::GuideAction>,
     },
-    /// Validate a selected workflow in the current Workspace without running roles.
+    /// Validate a selected workflow in the current Workspace without running Stage Actions.
     Validate {
         #[arg(long)]
         workflow: PathBuf,

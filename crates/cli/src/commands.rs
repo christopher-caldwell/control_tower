@@ -48,7 +48,7 @@ pub(super) fn run_move(
         MoveStatus::Complete(state) => {
             println!("{direction} complete.");
             if outcome.executions.is_empty() {
-                println!("No roles ran.");
+                println!("No Stage Actions ran.");
             }
             render_position(state, &outcome.stages);
             ExitCode::SUCCESS
@@ -127,14 +127,14 @@ pub(super) fn report_movement_preflight_failure(
                     pending.direction, stage.number, stage.name
                 );
             }
-            println!("  No roles ran.");
+            println!("  No Stage Actions ran.");
             println!("  Failure: {error}");
         }
         None => {
             println!(
                 "Result: stopped before movement; requested {direction} to {target}; position unavailable"
             );
-            println!("  No roles ran.");
+            println!("  No Stage Actions ran.");
             println!("  Failure: {error}");
         }
     }
@@ -169,13 +169,15 @@ fn render_movement_summary(
                 let child_status =
                     exit_code.map_or_else(|| "signal/unknown".to_owned(), |code| code.to_string());
                 println!(
-                    "  Failed role: stage {stage_number} {role}; child exit status {child_status}"
+                    "  Failed Stage Action: stage {stage_number} {role}; child exit status {child_status}"
                 );
             }
             TransitionFailure::ExecutableCouldNotStart {
                 stage_number, role, ..
             } => {
-                println!("  Failed role: stage {stage_number} {role}; executable did not start");
+                println!(
+                    "  Failed Stage Action: stage {stage_number} {role}; executable did not start"
+                );
             }
             _ => println!("  Failure: {failure}"),
         }

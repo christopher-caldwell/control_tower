@@ -4,7 +4,7 @@ title: Get started with Control Tower
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-05'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -50,7 +50,7 @@ control-tower --help
 
 ## 2. Understand the Workspace
 
-The hierarchy is **Workspace → Workflow → Stage → role files**. The directory where you run the UI or a workflow-scoped CLI command is the Workspace root. It contains `control-tower.toml` and `workflows/`. Each Workflow under `workflows/` is an ordered scenario with its own stages and checkpoint database. A Stage is one meaningful state transition in that scenario.
+The hierarchy is **Workspace → Workflow → Stage → Stage Actions**. The directory where you run the UI or a workflow-scoped CLI command is the Workspace root. It contains `control-tower.toml` and `workflows/`. Each Workflow under `workflows/` is an ordered scenario with its own stages and checkpoint database. A Stage is one meaningful user-defined state transition in that scenario. A Stage Action may contain multiple commands or application operations; stage boundaries are not one-command or one-infrastructure-operation boundaries. Separate Stage Actions are not transactional. Implement any required atomicity inside a single Stage Action.
 
 For orientation, the copied example has this shape:
 
@@ -72,7 +72,7 @@ simple/                              # Workspace; author-owned
       .control_tower/state.sqlite3    # generated Control Tower checkpoint state
 ```
 
-The author owns the Workspace configuration, Workflow directories, role files, support code, and application/test data. Control Tower creates and updates `.control_tower/state.sqlite3` as generated checkpoint state; do not edit it to change application state. The example's `data/` and its roles are separate from that database.
+The author owns the Workspace configuration, Workflow directories, Stage Action files, support code, and application/test data. Control Tower creates and updates `.control_tower/state.sqlite3` as generated checkpoint state; do not edit it to change application state. The example's `data/` and its Stage Actions are separate from that database.
 
 ## 3. Get the example Workspace
 
@@ -98,15 +98,15 @@ Every Workflow has a separate checkpoint database. Prepare it explicitly before 
 (cd "$example" && control-tower validate --workflow workflows/uuid-file)
 ```
 
-Database preparation does not run stages. Ordinary `up`, `down`, and `status` commands do not bootstrap or migrate storage. `validate` checks that the Workspace, Workflow layout, and prepared checkpoint state load; it does not run role files or prove their application-specific behavior.
+Database preparation does not run stages. Ordinary `up`, `down`, and `status` commands do not bootstrap or migrate storage. `validate` checks that the Workspace, Workflow layout, and prepared checkpoint state load; it does not run Stage Actions or prove their application-specific behavior.
 
 ## 5. Authoring model: make stages meaningful
 
-A stage should represent one coherent mutation that is useful to run, inspect, verify, and, where appropriate, reverse as a unit. Split stages at meaningful state boundaries, not at implementation-command boundaries. A stage may run several commands to create one fixture state; avoid making a stage for each shell command. The UUID-file example demonstrates a useful sequence: create an empty file, write `hello`, then append ` to you`.
+A Stage is a meaningful user-defined state transition that is useful to run, inspect, verify, and, where appropriate, reverse as a unit. A Stage Action may run multiple commands or application operations; stage boundaries are not one-command or one-infrastructure-operation boundaries. Control Tower does not make separate Stage Actions transactional. Implement any required atomicity inside the single Stage Action that needs it. The UUID-file example demonstrates a useful sequence: create an empty file, write `hello`, then append ` to you`.
 
-The role names are the protocol and must be exact, with no extensions: `up`, `down`, `verify-up`, and `verify-down`. Control Tower uses those names to discover each role and pair directional verification with its mutation. `up` makes the forward change; `down` restores the prior state (or performs an appropriate compensation); `verify-up` checks that the forward change worked; `verify-down` checks that the reversal worked. Verifiers should observe state independently and exit 0 only when it is correct. A verifier is optional. If no compensating action is needed for a direction, an executable `down` that exits 0 without changing anything is an explicit no-op; it allows backward traversal to pass that stage.
+Stage Action filenames are the protocol and must be exact, with no extensions: `up`, `down`, `verify-up`, and `verify-down`. Control Tower uses those names to discover each Stage Action and pair directional verification with its mutation. `up` makes the forward change; `down` restores the prior state (or performs an appropriate compensation); `verify-up` checks that the forward change worked; `verify-down` checks that the reversal worked. Verifiers should observe state independently and exit 0 only when it is correct. A verifier is optional. If no compensating action is needed for a direction, an executable `down` that exits 0 without changing anything is an explicit no-op; it allows backward traversal to pass that stage.
 
-Each role can be any directly executable file supported by your system. Its shebang selects the interpreter or runtime, so a role may be a shell script, Python file, compiled executable, or another executable format. Provide the shebang and execute permission, and install any runtime/dependencies yourself. See the [executable contract](../reference/stage-executables.md) for discovery rules and environment details.
+Each Stage Action can be any directly executable file supported by your system. Its shebang selects the interpreter or runtime, so a Stage Action may be a shell script, Python file, compiled executable, or another executable format. Provide the shebang and execute permission, and install any runtime/dependencies yourself. See the [executable contract](../reference/stage-executables.md) for discovery rules and environment details.
 
 ## 6. Choose how to operate
 
@@ -165,6 +165,6 @@ The data directory is empty and the UI/CLI status reports baseline with no activ
 
 ## 8. Keep working safely
 
-Role scripts run with your permissions and may change real systems. Control Tower records workflow progress; it cannot guarantee that `down` undoes `up`, sandbox scripts, or reconcile outside effects after a crash. Finish or explicitly recover a run before structural stage edits. The UI's Workflow inventory is fixed at startup, while selecting a Workflow re-reads its status and stage definitions; neither UI restart nor refresh reconciles structural edits with stored run state.
+Stage Actions run with your permissions and may change real systems. Control Tower records workflow progress; it cannot guarantee that `down` undoes `up`, sandbox executables, or reconcile outside effects after a crash. Finish or explicitly recover a run before structural stage edits. The UI's Workflow inventory is fixed at startup, while selecting a Workflow re-reads its status and stage definitions; neither UI restart nor refresh reconciles structural edits with stored run state.
 
 For deeper authoring guidance see [creating a Workflow](creating-a-workflow.md); for UI details, [browser workbench](../reference/browser-workbench.md); for commands, [CLI reference](../reference/cli.md). These links are optional depth; the steps above form the complete first-use path.
