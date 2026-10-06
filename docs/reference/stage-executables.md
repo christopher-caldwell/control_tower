@@ -4,7 +4,7 @@ title: Stage executables and environment
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-05'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -16,6 +16,9 @@ sources:
 ---
 
 # Stage executables and environment
+
+For a complete first-use path and the stage-authoring mental model, see the
+[canonical getting-started walkthrough](../guides/getting-started.md).
 
 Control Tower discovers files and runs them. It does not interpret your SQL, HTTP responses, application records, or test assertions. Commands run from the Workspace root, whose `control-tower.toml` must contain a nonempty `[workspace].label` and whose `workflows/` directory is required. Workflow-scoped CLI commands select a workflow with `--workflow PATH`.
 

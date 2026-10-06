@@ -18,6 +18,9 @@ sources:
 
 # Browser workbench
 
+For a first-use path through installation, preparation, and operation, follow the
+[canonical getting-started walkthrough](../guides/getting-started.md).
+
 ## UI architecture
 
 The browser workbench composes the workspace workflow rail, workflow execution view, and stage inspector as independently consumable features. Their public `index.ts` files expose a headless hook, standard UI, and intentional public types; the app shell connects those models. The accepted feature facade and presentation rules are recorded in the installed React Playbook UI-DEC-0001.
@@ -28,7 +31,7 @@ Run `pnpm --dir ui install --frozen-lockfile` once, then `just dev-ui` from the
 checkout root, or `pnpm dev` from `ui/`. The Vite development server owns the Rust
 API process, prepares a persistent shell-only sample workspace, and proxies the
 API and SSE connections. Open Vite's URL for hot reload. See the
-[UI development guide](../../ui/README.md#develop-against-a-real-workspace)
+[UI development guide](../guides/ui-development.md#develop-against-a-real-workspace)
 for prerequisites, lifecycle, sample reset, and existing workspace selection.
 
 ## Build the packaged UI
@@ -76,7 +79,10 @@ The invocation current directory is the Workspace root. It must contain a valid
 directory. The UI uses the configured label and lists directory names directly
 under `workflows/`. It does not fall back to the directory name or treat a missing
 inventory as empty, and it does not create or repair Workspace structure. The list
-is fixed at startup; restart the UI to pick up added or removed workflows.
+is fixed at startup; restart the UI to pick up added or removed workflows. The
+selected Workflow's status and stages can be re-read through the existing
+refresh/reconnect path. This inspection refresh does not reconcile structural
+stage edits with a stored run position.
 
 Selecting a workflow reads that workflow's current state and stages. An
 unprepared or malformed workflow reports its ordinary error when selected; it does

@@ -28,9 +28,9 @@ may use their containing Workspace's configuration and helpers; their directorie
 are not the portability boundary. Only PyCapsule demonstrates a reusable `tools/`
 layer. Control Tower gives that directory no special meaning.
 
-The [root quickstart](../README.md#try-the-three-stage-example) uses shell and built
-the `control-tower` CLI. See [workflow authoring](../docs/guides/creating-a-workflow.md)
-and the [executable contract](../docs/reference/stage-executables.md) for global semantics.
+The canonical [getting-started walkthrough](../docs/guides/getting-started.md)
+uses the shell-only UUID-file Workflow in `simple`. See [workflow authoring](../docs/guides/creating-a-workflow.md)
+and the [executable contract](../docs/reference/stage-executables.md) for deeper detail.
 
 ## Optional integration tests
 

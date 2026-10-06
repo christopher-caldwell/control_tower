@@ -15,9 +15,9 @@ application data, and Control Tower checkpoint database.
 
 ## Setup and run
 
-Build or install `control-tower` and put it on PATH.
-You need a Unix shell; install the additional tools only for the scenarios you
-choose. See the repository's [CLI setup guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/getting-started.md).
+Install `control-tower` and put it on PATH, then follow the repository's
+[canonical getting-started walkthrough](../../docs/guides/getting-started.md).
+You need a Unix shell; install additional tools only for the scenarios you choose.
 
 From the Control Tower checkout, copy the complete example, then enter the copy:
 
