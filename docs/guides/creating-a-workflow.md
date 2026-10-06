@@ -35,13 +35,10 @@ A Stage Action may be any directly executable file supported by the system. Its 
 Each new Workflow needs explicit database setup. From the Workspace root, replace `NAME` with its path under `workflows/`:
 
 ```sh
-control-tower db bootstrap-local --workflow workflows/NAME
-control-tower db migrate-local --workflow workflows/NAME
-control-tower db verify-local --workflow workflows/NAME
-control-tower validate --workflow workflows/NAME
+control-tower init --workflow workflows/NAME
 ```
 
-The three database commands prepare/check checkpoint storage; validation checks discoverability and loadable saved state without running Stage Actions. Ordinary movement and status commands do not prepare storage.
+`init` runs the database bootstrap, migration, and verification operations, then validates Workflow discoverability and loadable saved state without running Stage Actions. It stops at the first failure. The individual `db bootstrap-local`, `db migrate-local`, `db verify-local`, and `validate` commands remain available when you want to run a step separately. Ordinary movement and status commands do not prepare storage.
 
 A target stage is a position in the ordered sequence. `up --stage 3` walks through all needed earlier stages; it does not run only stage 3. `down --stage 1` reverses higher applied stages until position 1. The [navigation guide](verification-and-navigation.md) describes verifier retry, reversal, and failure behavior.
 

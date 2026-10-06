@@ -40,6 +40,7 @@ The invocation current directory identifies the Workspace and must contain a val
 
 ```text
 control-tower guide [ACTION]
+control-tower init --workflow PATH
 control-tower validate --workflow PATH
 control-tower ui
 control-tower up --workflow PATH --stage NUMBER
@@ -51,6 +52,13 @@ control-tower db verify-local --workflow PATH
 ```
 
 ### Agent guidance and validation
+
+`control-tower init --workflow PATH` prepares a new Workflow and checks that it
+loads. It runs the existing `db bootstrap-local`, `db migrate-local`, and
+`db verify-local` operations in order, then runs `validate`. It stops and exits
+with failure at the first failed step. It uses the same Workspace-root `.env`
+behavior as `validate`; the database operations do not load `.env`. Use the
+individual commands when you need to prepare or inspect storage separately.
 
 `control-tower guide` prints the embedded routing index and does not require a
 workflow. Its only actions are `create_workflow`, `edit_workflow`,
@@ -98,6 +106,7 @@ After this invocation fails at a verifier, the CLI prints shell-quoted commands 
 ```sh
 control-tower --help
 control-tower guide --help
+control-tower init --help
 control-tower validate --help
 control-tower up --help
 control-tower down --help

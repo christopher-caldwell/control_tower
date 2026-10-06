@@ -104,6 +104,16 @@ fn database_operation(workflow: &Workflow, operation: &str) -> Output {
         .expect("run Control Tower database operation")
 }
 
+fn init(workflow: &Workflow) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("init")
+        .arg("--workflow")
+        .arg(workflow.path())
+        .current_dir(workflow.workspace())
+        .output()
+        .expect("run Control Tower initialization")
+}
+
 fn status(workflow: &Workflow) -> Output {
     Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("status")
@@ -447,6 +457,93 @@ fn explicit_database_operations_are_available_through_the_cli() {
         output_text(&rerun_verify)
     );
     assert!(output_text(&rerun_verify).contains("Local database verified:"));
+}
+
+#[test]
+fn init_composes_database_preparation_and_validation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let output = init(&workflow);
+    assert!(output.status.success(), "{}", output_text(&output));
+    let text = output_text(&output);
+    let bootstrapped = text.find("Local database bootstrapped:").unwrap();
+    let migrated = text.find("Local database migration succeeded:").unwrap();
+    let verified = text.find("Local database verified:").unwrap();
+    let validated = text.find("Workflow loaded successfully:").unwrap();
+    assert!(bootstrapped < migrated && migrated < verified && verified < validated);
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
+}
+
+#[test]
+fn init_stops_when_bootstrap_fails() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::write(workflow.path().join(".control_tower"), "not a directory").unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("database operation failed:"));
+    assert!(!text.contains("Local database migration succeeded:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+}
+
+#[test]
+fn init_stops_when_migration_fails() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let database = workflow.path().join(".control_tower/state.sqlite3");
+    fs::create_dir_all(database.parent().unwrap()).unwrap();
+    rusqlite::Connection::open(&database)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 99;")
+        .unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database bootstrapped:"));
+    assert!(text.contains("unsupported SQLite schema version"));
+    assert!(!text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+}
+
+#[test]
+fn init_returns_failure_when_validation_fails_after_preparation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::remove_dir_all(workflow.path().join("stages")).unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
+}
+
+#[test]
+fn init_keeps_workspace_dotenv_validation_after_database_preparation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
 }
 
 #[test]

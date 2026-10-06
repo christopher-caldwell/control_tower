@@ -92,13 +92,10 @@ Keep this terminal open for the commands below; its `example` variable is used a
 Every Workflow has a separate checkpoint database. Prepare it explicitly before use:
 
 ```sh
-(cd "$example" && control-tower db bootstrap-local --workflow workflows/uuid-file)
-(cd "$example" && control-tower db migrate-local --workflow workflows/uuid-file)
-(cd "$example" && control-tower db verify-local --workflow workflows/uuid-file)
-(cd "$example" && control-tower validate --workflow workflows/uuid-file)
+(cd "$example" && control-tower init --workflow workflows/uuid-file)
 ```
 
-Database preparation does not run stages. Ordinary `up`, `down`, and `status` commands do not bootstrap or migrate storage. `validate` checks that the Workspace, Workflow layout, and prepared checkpoint state load; it does not run Stage Actions or prove their application-specific behavior.
+`init` runs the existing database bootstrap, migration, and verification operations, then validates that the Workspace, Workflow layout, and prepared checkpoint state load. It stops at the first failure and does not run Stage Actions. The individual database commands and `validate` remain available for separate use. Ordinary `up`, `down`, and `status` commands do not bootstrap or migrate storage.
 
 ## 5. Authoring model: make stages meaningful
 
