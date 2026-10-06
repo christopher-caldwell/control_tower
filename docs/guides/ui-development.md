@@ -4,7 +4,7 @@ title: Develop the UI
 type: guide
 status: maintained
 created: '2026-10-05'
-updated: '2026-10-05'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -97,6 +97,6 @@ pnpm test:browser
 pnpm build
 ```
 
-Use `pnpm format` to format source. Rebuild the tracked `ui/dist/` assets after UI changes and include them in the change, then build the Rust workspace with `cargo build --locked --workspace` from the repository root. A fresh checkout also needs the UI build before its first Rust build.
+Use `pnpm format` to format source. Rebuild the tracked `ui/dist/` assets after UI changes and include them in the change, then build the Rust workspace with `cargo build --locked --workspace` from the repository root. Ordinary fresh Rust builds and installs use the tracked `ui/dist/` assets and do not require a frontend build first.
 
 TypeScript 7 remains the build/typecheck compiler. ESLint currently requires the TypeScript 6 programmatic API, so `typescript` aliases `@typescript/typescript6`, while `@typescript/native` aliases the pinned TypeScript 7 package. This follows [Microsoft's side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0).
