@@ -163,7 +163,7 @@ The compliance pass retained `rusqlite` as a documented DEFAULT deviation: this 
 
 `bootstrap-local` provisions the file; `migrate-local` applies the versioned schema; `verify-local` reads the supported version/history. Ordinary `up`, `down`, and `status` do not call bootstrap/migrate. The current migration can adopt the earlier v0 table and preserve its saved rows. Operational schema history is distinct from a history of user-authored stage executions.
 
-PostgreSQL server roles and privileges do not apply to this embedded file. No server-style DDL privilege isolation is claimed. See [database commands](../reference/cli.md#database-operations), [setup](../guides/getting-started.md#4-prepare-and-validate-the-workflow), and the Database-owned operations implementation.
+PostgreSQL server roles and privileges do not apply to this embedded file. No server-style DDL privilege isolation is claimed. See [database commands](../reference/cli.md#database-operations), [setup](../guides/getting-started.md#3-prepare-and-validate-the-workflow), and the Database-owned operations implementation.
 
 ### Error boundaries and inputs
 

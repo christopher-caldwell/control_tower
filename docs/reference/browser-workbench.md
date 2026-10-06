@@ -25,40 +25,13 @@ For a first-use path through installation, preparation, and operation, follow th
 
 The browser workbench composes the workspace workflow rail, workflow execution view, and stage inspector as independently consumable features. Their public `index.ts` files expose a headless hook, standard UI, and intentional public types; the app shell connects those models. The accepted feature facade and presentation rules are recorded in the installed React Playbook UI-DEC-0001.
 
-## UI development
+## UI development and build
 
-Run `pnpm --dir ui install --frozen-lockfile` once, then `just dev-ui` from the
-checkout root, or `pnpm dev` from `ui/`. The Vite development server owns the Rust
-API process, prepares a persistent shell-only sample workspace, and proxies the
-API and SSE connections. Open Vite's URL for hot reload. See the
-[UI development guide](../guides/ui-development.md#develop-against-a-real-workspace)
-for prerequisites, lifecycle, sample reset, and existing workspace selection.
-
-## Build the packaged UI
-
-The UI is a desktop browser client served by the ordinary Rust `control-tower`
-executable. React assets are built ahead of time and embedded into that executable;
-the running host does not require Node, Vite, SSR, or a separate frontend server.
-
-From a Control Tower checkout, rebuild the React assets and Rust executable with:
-
-```sh
-cd ui
-pnpm install --frozen-lockfile
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm test
-pnpm test:browser
-cd ..
-cargo build --locked --workspace
-```
-
-The committed `ui/dist/` is embedded by Rust builds. Rebuild it after changing UI
-source. Browser tests use the existing Playwright setup; they are test-time tooling
-only. Install the pinned browser with `pnpm exec playwright install chromium`
-before the first browser-test run. The package manager is pinned in `ui/package.json`.
+The workbench is served by the ordinary Rust `control-tower` executable. React
+assets are generated ahead of time and embedded into that executable; the running
+host does not require Node, Vite, or a separate frontend server. For UI development,
+frontend checks, packaged builds, and the fresh-checkout asset prerequisite, follow
+the [UI development guide](../guides/ui-development.md).
 
 ## Start the UI
 
