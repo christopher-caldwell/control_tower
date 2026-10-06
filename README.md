@@ -11,15 +11,6 @@ git clone https://github.com/christopher-caldwell/control_tower.git
 cd control_tower
 ```
 
-The Rust executable embeds the browser UI. On a fresh clone, build its generated assets before either Rust install command; `ui/dist/` is ignored and absent from Git:
-
-```sh
-pnpm --dir ui install --frozen-lockfile
-pnpm --dir ui build
-```
-
-This requires Node.js and the package manager version pinned in `ui/package.json`. Neither is needed when running the installed executable.
-
 With `just` installed, this installs `control-tower` and its agent Skill:
 
 ```sh

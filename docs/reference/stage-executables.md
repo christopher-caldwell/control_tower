@@ -48,13 +48,11 @@ The role filenames are exact: `up`, `down`, `verify-up`, `verify-down`. A file c
 | File | Responsibility |
 | --- | --- |
 | `up` | Establish this stage's forward state. |
-| `verify-up` | Observe whether the state required at this forward transition is acceptable; exit 0 to accept it. Optional. |
+| `verify-up` | Check whether this stage's `up` worked; exit 0 for acceptance. Optional. |
 | `down` | Establish the prior stage's state using your chosen reverse/compensating operation. |
-| `verify-down` | Observe whether the state required at this reverse transition is acceptable; exit 0 to accept it. Optional. |
+| `verify-down` | Check whether this stage's `down` worked; exit 0 for acceptance. Optional. |
 
 Each stage must contain at least one mutation (`up` or `down`). A verifier requires its matching mutation file. A missing mutation makes traversal in that direction unavailable. Missing verifiers need no placeholder: successful mutation is sufficient when that directional verifier is absent.
-
-A verifier is an executable observation used to decide whether the state required at that transition is acceptable: exit 0 passes and nonzero rejects it. It corresponds to the current transition, but may also re-check earlier invariants that still need to hold. For example, a later stage may verify that a file created several stages earlier still exists. There is no standalone command for arbitrarily rerunning an earlier stage's verifier. An HTTP-backed workflow might POST in `up`, GET and assert the expected state in `verify-up`, DELETE in `down`, then GET and assert the state is gone (such as an expected 404) in `verify-down`. This is an example of intent, not a required HTTP implementation.
 
 Role paths must be regular files; execute permission is required when a role is launched. Discovery/status can still succeed when an execute bit is absent; a role path that is a directory fails discovery. For scripts, supply a valid shebang and install the interpreter yourself:
 

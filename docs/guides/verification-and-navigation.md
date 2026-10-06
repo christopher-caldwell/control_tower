@@ -4,7 +4,7 @@ title: Navigate and retry verification
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-05'
+updated: '2026-10-04'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -41,8 +41,6 @@ stage N/down -> optional stage N/verify-down -> accept lower position
 ```
 
 An absent verifier adds no gate. A verifier that exists must pass before the destination is accepted. The next stage does not run until this one completes.
-
-A verifier is an executable observation of whether the state required at that transition is acceptable: exit 0 passes; nonzero rejects. It corresponds to the current transition, but may re-check earlier invariants that still need to hold. Control Tower has no standalone command to rerun an arbitrary earlier stage's verifier.
 
 ## Understand a failure
 
