@@ -17,7 +17,13 @@ sources:
 
 # Troubleshoot local setup and runs
 
-Start with the [setup guide](getting-started.md). Run repository-relative commands from the checkout root. The examples below assume `$workflow` still contains the path printed when you created it.
+Start with the [setup guide](getting-started.md). Build/install commands run from the checkout root; every workflow-scoped CLI invocation runs with current directory set to the Workspace root. The examples below assume `$workflow` still contains the path printed when you created it. From the checkout root, you can define this helper for a built CLI:
+
+```sh
+repo="$PWD"
+workspace="$(dirname "$(dirname "$workflow")")"
+ct() (cd "$workspace" && "$repo/target/debug/control-tower" "$@")
+```
 
 ## Cargo or a built binary is missing
 
@@ -34,7 +40,7 @@ Use `./target/debug/control-tower` for all commands with Cargo's default target 
 The Cargo package is **`control-tower-cli`**, not `control-tower`:
 
 ```sh
-cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
+(cd "$workspace" && cargo run --locked --manifest-path "$repo/Cargo.toml" -p control-tower-cli -- status --workflow "$workflow")
 ```
 
 `just: command not found` is not a blocker. Use the three `control-tower db` commands from the setup guide instead.
@@ -51,9 +57,9 @@ ls -ld "$workflow"
 For a new workflow, run:
 
 ```sh
-./target/debug/control-tower db bootstrap-local "$workflow"
-./target/debug/control-tower db migrate-local "$workflow"
-./target/debug/control-tower db verify-local "$workflow"
+ct db bootstrap-local --workflow "$workflow"
+ct db migrate-local --workflow "$workflow"
+ct db verify-local --workflow "$workflow"
 ```
 
 Normal commands intentionally refuse an unprepared database. Bootstrap does not migrate, and ordinary `status` does not create storage. The CLI's startup message suggests setup for database-opening failures in general; if setup/verification already succeeds, inspect the underlying message and filesystem permissions rather than assuming another migration fixes it.

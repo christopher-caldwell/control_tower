@@ -22,32 +22,32 @@ This page describes the implemented CLI, not proposed command spellings from dis
 
 ## Invocation forms
 
-Commands below use the installed binary. From the repository root, you can instead use `./target/debug/control-tower` after building, or invoke the same command through Cargo:
+Workflow-scoped commands require the invocation current directory to be the Workspace root. From that root, you may run the installed `control-tower` binary, invoke a built binary by absolute path, or run Cargo with an absolute manifest path:
 
 ```sh
-cargo run --locked -p control-tower-cli -- status --workflow "$workflow"
+cargo run --locked --manifest-path /path/to/control_tower/Cargo.toml -p control-tower-cli -- status --workflow workflows/my-workflow
 ```
 
 The package is `control-tower-cli`; its executable is `control-tower`. For database operations:
 
 ```sh
-cargo run --locked -p control-tower-cli -- db verify-local "$workflow"
+cargo run --locked --manifest-path /path/to/control_tower/Cargo.toml -p control-tower-cli -- db verify-local --workflow workflows/my-workflow
 ```
 
-An installed binary can run from any directory. Relative workflow paths are resolved against the directory from which you invoke the command. Use an absolute path when changing directories between invocations.
+The invocation current directory identifies the Workspace and must contain a valid `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. Run each workflow-scoped command from that Workspace root and select the Workflow with `--workflow`; paths such as `workflows/my-workflow` are the normal form.
 
 ## Workbench commands
 
 ```text
 control-tower guide [ACTION]
-control-tower validate
+control-tower validate --workflow PATH
 control-tower ui
 control-tower up --workflow PATH --stage NUMBER
 control-tower down --workflow PATH --stage NUMBER
 control-tower status --workflow PATH
-control-tower db bootstrap-local PATH
-control-tower db migrate-local PATH
-control-tower db verify-local PATH
+control-tower db bootstrap-local --workflow PATH
+control-tower db migrate-local --workflow PATH
+control-tower db verify-local --workflow PATH
 ```
 
 ### Agent guidance and validation
@@ -59,12 +59,12 @@ its compile-time embedded Markdown. The shipped zero-guidance agent Skill is
 [`skills/control-tower/SKILL.md`](../../skills/control-tower/SKILL.md) and
 dispatches to this CLI guidance.
 
-`control-tower validate` uses the current directory as the workflow. It reuses
-the Workbench status path to discover stages and read/check the saved checkpoint.
-It runs no role, takes no workflow path, does not search parent directories, and
-does not prepare or change workflow storage. A successful result means the
-layout, prepared database and saved state can be loaded; it does not establish
-that role scripts work or that external application state matches the checkpoint.
+`control-tower validate --workflow PATH` checks the selected workflow under the
+current Workspace root. It validates Workspace configuration and inventory,
+discovers stages, reads/checks the saved checkpoint, and parses the Workspace
+`.env` if present. It runs no role and does not prepare or change workflow
+storage. It does not probe application/runtime prerequisites or establish that
+external application state matches the checkpoint.
 
 `PATH` must be an existing workflow with a prepared database and a `stages/` directory. `NUMBER` is an existing stage's numeric prefix, not a count of commands to execute. `0` denotes the baseline. Stage numbers may have gaps; `--stage 20` selects a stage numbered 20, not the twentieth stage.
 
@@ -109,25 +109,34 @@ control-tower db migrate-local --help
 control-tower db verify-local --help
 ```
 
-A completed/no-op movement, successful status or validation, successful guide request, or workbench help request exits successfully. A stopped movement, failed verifier, failed script start, or workbench error returns a nonzero exit. The child process's own exit code is reported in text; it is not used as the workbench's exit code.
+Control Tower CLI outcomes use these exit codes:
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | Success or valid no-op. |
+| `1` | Operational failure, mutation failure, or executable/verifier start failure. |
+| `2` | Invalid CLI invocation (Clap usage error). |
+| `3` | A verifier ran and rejected the transition. |
+
+Only an executed verifier that returns failure produces 3. A verifier that cannot start is an operational failure and returns 1. Child-process exit status remains separately visible in role output and the movement summary; it is not remapped as Control Tower's exit code. Successful guide requests, status, validation, and database operations return 0.
 
 Movement first identifies the selected workflow and requested direction/target. Each actual role attempt gets a flushed start line with its numeric stage, label and role, followed by captured stdout/stderr and success, nonzero exit or launch failure **when that role returns, before the next role is attempted**. Starting means an invocation will be attempted, not that the OS has launched it. An absent optional verifier has no start/result lines. Final output does not replay child output.
 
 Output remains buffered for one role; a quiet long-running role shows its start but does not stream intermediate bytes. Stdout/stderr stay separate, with stage/role context and a display newline when needed; the captured bytes in Application remain unchanged. Relative chronology across the streams is not preserved. There is no structured JSON contract or persistent log viewer.
 
-Final movement output and `status` identify the same recorded completed stage (actual number/label, or baseline 0), run UUID and pending direction/stage. `status` is metadata, not a fresh external-state assertion. A role's success line confirms process success, not that the subsequent checkpoint save succeeded.
+Every movement ends with a compact summary naming the requested target and resulting Control Tower position. When known it includes pending verification, failed role, and child exit status. It does not parse authored PASS/FAIL output, invent assertion totals, or classify application-level meaning. Final movement output and `status` identify the same recorded completed stage (actual number/label, or baseline 0), run UUID and pending direction/stage. `status` is metadata, not a fresh external-state assertion. A role's success line confirms process success, not that the subsequent checkpoint save succeeded.
 
 If a checkpoint write fails, output distinguishes the **last confirmed checkpoint** from the **unconfirmed checkpoint update** and retains successful role output. No further role/write is attempted. Under a fail-before-write fault, a later `status` agrees with the last confirmed checkpoint. An ambiguous storage error carries no guarantee about the database's current contents or external effects; inspect those yourself. There is no automatic write retry or repair.
 
 ## Database operations
 
 ```text
-control-tower db bootstrap-local PATH
-control-tower db migrate-local PATH
-control-tower db verify-local PATH
+control-tower db bootstrap-local --workflow PATH
+control-tower db migrate-local --workflow PATH
+control-tower db verify-local --workflow PATH
 ```
 
-These use a positional workflow path, **not** `--workflow`. The path must already be a directory. All operate on `PATH/.control_tower/state.sqlite3`.
+These require `--workflow PATH`, like every other workflow-scoped command. Run them from the Workspace root and select the Workflow, normally with a path such as `workflows/my-workflow`. All operate on `PATH/.control_tower/state.sqlite3`.
 
 | Operation | Effect |
 | --- | --- |
@@ -135,7 +144,7 @@ These use a positional workflow path, **not** `--workflow`. The path must alread
 | `migrate-local` | Open an existing file and apply the supported versioned schema. The current version-1 migration can adopt the earlier unversioned v0 table without discarding its rows. An already supported version is checked, not reset. |
 | `verify-local` | Open read-only and check the supported schema version/history. It does not verify user-authored stages. |
 
-These commands use the same Clap interface as the rest of `control-tower`; each operation requires its positional workflow path. A successful operation exits 0; path, usage, or database failures exit nonzero. Ordinary workbench commands never run these operations.
+Each successful operation prints a concise confirmation of the operation. A successful operation exits 0; operational failures exit 1 and CLI usage errors exit 2. Ordinary workbench commands never run these operations.
 
 `verify-local` checks version/history, not comprehensive schema readiness. A missing/malformed checkpoint table or unsuitable upsert key can still fail ordinary commands even after version/history verification succeeds. No schema repair is inferred from this operation.
 

@@ -1,6 +1,6 @@
 # Workflow and executable contract
 
-This guide describes the current Control Tower implementation. It does not define a workflow DSL or a protocol for values produced by scripts.
+This guide describes the current Control Tower implementation. It does not define a workflow DSL or a protocol for values produced by scripts. Run CLI commands from the Workspace root, identified by `control-tower.toml` with a nonempty `[workspace].label` and a required `workflows/` directory. Select workflows with `--workflow PATH`, where paths are resolved from that root.
 
 ## Layout and discovery
 
@@ -20,13 +20,13 @@ Each immediate child directory under `stages/` is parsed as a stage. The part be
 
 The only recognized role filenames are `up`, `down`, `verify-up`, and `verify-down`. Each stage needs at least one mutation (`up` or `down`). A verifier requires its matching mutation. Either verifier may be absent. Role paths must be regular files; execute permission is needed when a role is launched, not during discovery or status.
 
-The workflow database must already exist and have a supported schema. Setup is explicit and separate: `control-tower db bootstrap-local PATH`, `migrate-local PATH`, and `verify-local PATH`. `control-tower validate` does not run these operations, create storage, or repair state.
+The workflow database must already exist and have a supported schema. Setup is explicit and separate: `control-tower db bootstrap-local --workflow PATH`, `control-tower db migrate-local --workflow PATH`, and `control-tower db verify-local --workflow PATH`. Successful operations print a concise confirmation. `control-tower validate --workflow PATH` does not run these operations, create storage, or repair state.
 
 ## Running roles
 
 Control Tower directly launches a role file without adding arguments or choosing an interpreter. Provide a valid shebang, install the interpreter and dependencies yourself, and make the file executable. Each role's working directory is its own stage directory. Use `CONTROL_TOWER_WORKFLOW` for workflow-wide paths. Roles receive no interactive stdin.
 
-The runner inherits the launching process environment and provides these additional variables:
+The runner inherits the launching process environment, then fills missing keys from the Workspace-root `.env` when present. Shell values override dotenv values; Control Tower-owned `CONTROL_TOWER_*` values override both. No workflow-level or parent-directory dotenv discovery is performed. A missing `.env` is valid; an unreadable or malformed existing file blocks validation and movement. `validate --workflow PATH` checks dotenv parsing without executing roles. `status`, explicit local database operations, and UI startup do not parse `.env`; the UI reads it before each movement. A verifier that returns a normal nonzero exit status rejects the transition; one that cannot start or terminates without a normal exit status is an operational failure. The runner provides these additional variables:
 
 | Variable | Meaning |
 | --- | --- |
@@ -42,6 +42,6 @@ The UUID is a run token, not a generated-output channel. Control Tower does not 
 
 ## What validation covers
 
-`control-tower validate` takes the current working directory as the workflow. It uses the existing Workbench status path to discover stages and read/check saved checkpoint state. It does not run `up`, `down`, `verify-up`, or `verify-down`, and it does not bootstrap, migrate, repair, or write checkpoint state.
+`control-tower validate --workflow PATH` checks the selected workflow from the Workspace root. It checks Workspace configuration and inventory, discovers stages and reads/checks saved checkpoint state, and parses Workspace `.env` when present. It does not run `up`, `down`, `verify-up`, or `verify-down`, probe application/runtime prerequisites, and does not bootstrap, migrate, repair, or write checkpoint state.
 
 Validation does not check whether a role is executable, whether its shebang or dependencies work, whether script logic is correct or safe, or whether external application state matches the saved checkpoint. Those remain author-owned responsibilities.

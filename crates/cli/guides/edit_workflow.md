@@ -1,11 +1,15 @@
 # Edit an existing workflow
 
-Use this guide when changing a workflow that already exists. For a new workflow, use `control-tower guide create_workflow`.
+Use this guide when changing a workflow that already exists. For a new workflow, use `control-tower guide create_workflow` instead. Run CLI commands from the Workspace root, which contains `control-tower.toml` and `workflows/`; `control-tower.toml` must define a nonempty `[workspace].label`.
 
-1. Work from the intended workflow directory and run `control-tower validate` to confirm its stages and saved checkpoint can be loaded. If it fails, keep the reported load/status problem visible while you inspect the workflow and database setup.
-2. Run `control-tower status --workflow PATH` to see the recorded completed position, run UUID, pending verification (if any), and discovered stage count. This is saved metadata, not a fresh assertion about external application state.
+1. Run `control-tower validate --workflow workflows/NAME` to confirm its stages and saved checkpoint can be loaded. If it fails, keep the reported load/status problem visible while you inspect the workflow and database setup.
+2. Run `control-tower status --workflow workflows/NAME` to see the recorded completed position, run UUID, pending verification (if any), and discovered stage count. This is saved metadata, not a fresh assertion about external application state.
 3. Inspect the relevant stage files and any author-owned data or external effects before changing a pending or previously executed role. A successful or failed process does not guarantee that external state matches the checkpoint.
 4. Make the smallest changes needed to existing stage files. Preserve the exact role names and matching verifier relationships in `control-tower guide workflow_contract`. Add or remove stage structure only after considering the stored position; stage-directory changes during a stored run are not reconciled automatically.
-5. From inside the workflow directory, run `control-tower validate` again before considering the edit ready. It verifies that the current layout and saved state load through the existing status path. It does not execute a role or validate script logic, permissions at launch time, external effects, or application-specific correctness.
+5. Run `control-tower validate --workflow workflows/NAME` again before considering the edit ready. It verifies that the current layout and saved state load through the existing status path. It does not execute a role or validate script logic, permissions at launch time, external effects, or application-specific correctness.
+
+Only the Workspace-root `.env` is loaded for stage executables. Its values are defaults, inherited shell values override them, and Control Tower's `CONTROL_TOWER_*` values are authoritative. Missing `.env` is valid; a malformed or unreadable file blocks validation and movement.
+
+Exit codes: 0 means success or a valid no-op, 1 means an operational or mutation failure, 2 means invalid CLI usage, and 3 means a verifier returned a nonzero exit status and rejected the transition. A verifier that cannot start or terminates without a normal exit status returns 1. On exit 3, inspect author-owned effects before retrying the check or reversing the active stage. The movement summary reports Control Tower's resulting position, pending verification and failed role when known; the child's exit status is separate from Control Tower's exit code.
 
 Do not delete or recreate `.control_tower/state.sqlite3` as a shortcut for reconciling scripts with external state. Check `control-tower guide recover_workflow` before retrying or reversing a failed or pending movement.

@@ -59,9 +59,9 @@ Select a workflow from this example root:
 
 ```sh
 workflow=workflows/uuid-file
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 3
 cat "$workflow"/data/*
 control-tower down --workflow "$workflow" --stage 0

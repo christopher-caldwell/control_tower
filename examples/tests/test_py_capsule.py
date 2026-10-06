@@ -249,7 +249,7 @@ def test_verifier_retry_does_not_repeat_mutation(tmp_path, cli_environment, dire
     original = verifier.read_text()
     verifier.write_text(original.replace('import os\n', 'import os\nraise SystemExit("injected verifier failure")\n', 1))
     target = 2 if direction == "up" else 1
-    move(sandbox, workflow, env, direction, target, expected=1)
+    move(sandbox, workflow, env, direction, target, expected=3)
     status(sandbox, workflow, env, 1 if direction == "up" else 2, f"{direction} 2")
     assert_artifacts(workflow, name, target)
     verifier.write_text(original)

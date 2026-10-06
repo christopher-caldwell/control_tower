@@ -40,9 +40,9 @@ export GALLERY_POSTGRES_DSN="host=$GALLERY_PG_DIR/socket dbname=control_tower_ga
 
 # Schema creation belongs to setup, never a stage or verifier.
 psql -X "$GALLERY_POSTGRES_DSN" -v ON_ERROR_STOP=1 -f "$workflow/schema.sql"
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 2
 cat "$workflow/data/tool_result.json"
 control-tower up --workflow "$workflow" --stage 3

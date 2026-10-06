@@ -155,7 +155,7 @@ def test_postgres_verifier_retry_preserves_committed_effect(tmp_path, cli_enviro
     original = verifier.read_text()
     verifier.write_text(original.replace('import os\n', 'import os\nraise SystemExit("injected verifier failure")\n', 1))
     target = store_stage if direction == "up" else store_stage - 1
-    move(sandbox, workflow, env, direction, target, expected=1)
+    move(sandbox, workflow, env, direction, target, expected=3)
     status(sandbox, workflow, env, store_stage - 1 if direction == "up" else store_stage, f"{direction} {store_stage}")
     committed = postgres_rows(postgres_dsn)
     assert len(committed) == (1 if direction == "up" else 0)
@@ -232,7 +232,7 @@ def test_psql_stages_stop_on_sql_error_and_retry(tmp_path, cli_environment, post
     # Matching-verifier retry must not execute the SQL role again.
     verifier = stage / "verify-down"
     verifier.write_text('#!/bin/sh\nexit 1\n')
-    move(sandbox, workflow, env, "down", target - 1, expected=1)
+    move(sandbox, workflow, env, "down", target - 1, expected=3)
     status(sandbox, workflow, env, target, f"down {target}")
     assert not artifact.exists()
     verifier.write_text(f'#!/bin/sh\nset -eu\ntest ! -e "$CONTROL_TOWER_WORKFLOW/data/{artifact.name}"\n')

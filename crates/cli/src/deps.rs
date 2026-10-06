@@ -5,9 +5,12 @@ use control_tower_infrastructure::{
     stage_definition_reader::FilesystemStageDefinitionReader,
     stage_discovery::FilesystemStageDiscovery,
 };
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
-pub(super) fn workbench(workflow: &Path) -> Result<Workbench, PersistenceError> {
+pub(super) fn workbench(
+    workflow: &Path,
+    env_overrides: HashMap<String, String>,
+) -> Result<Workbench, PersistenceError> {
     let database = workflow.join(".control_tower/state.sqlite3");
     let queries = SqliteWorkbenchQueries::open(&database)?;
     let writes = SqliteWorkbenchWrites::open(&database)?;
@@ -15,7 +18,7 @@ pub(super) fn workbench(workflow: &Path) -> Result<Workbench, PersistenceError> 
         Box::new(FilesystemStageDiscovery),
         Box::new(queries),
         Box::new(writes),
-        Box::new(SystemExecutableRunner),
+        Box::new(SystemExecutableRunner::with_env_overrides(env_overrides)),
         Box::new(FilesystemStageDefinitionReader),
     ))
 }

@@ -16,6 +16,7 @@ pub(super) struct WorkerResult {
 }
 pub(super) struct MovementTask {
     pub(super) workspace_name: String,
+    pub(super) env_overrides: std::collections::HashMap<String, String>,
     pub(super) workflow: WorkflowContext,
     pub(super) direction: Direction,
     pub(super) target_stage: u32,
@@ -27,6 +28,7 @@ pub(super) struct MovementTask {
 pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
     let MovementTask {
         workspace_name,
+        env_overrides,
         workflow,
         direction,
         target_stage,
@@ -34,7 +36,7 @@ pub(super) fn execute_movement(task: MovementTask) -> WorkerResult {
         runtime,
         mut permit,
     } = task;
-    let workbench = match crate::deps::workbench(&workflow.root) {
+    let workbench = match crate::deps::workbench(&workflow.root, env_overrides) {
         Ok(workbench) => workbench,
         Err(error) => {
             runtime.rejected(&workspace_name, &workflow, Err(error.to_string()));

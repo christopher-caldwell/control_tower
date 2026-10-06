@@ -1,12 +1,24 @@
 use control_tower_application::{ExecutableRunError, ExecutableRunner, Invocation, ProcessOutput};
-use std::process::Command;
+use std::{collections::HashMap, process::Command};
 
-pub struct SystemExecutableRunner;
+pub struct SystemExecutableRunner {
+    env_overrides: HashMap<String, String>,
+}
+
+impl SystemExecutableRunner {
+    pub fn with_env_overrides(env_overrides: HashMap<String, String>) -> Self {
+        Self { env_overrides }
+    }
+}
 
 impl ExecutableRunner for SystemExecutableRunner {
     fn run(&self, invocation: &Invocation) -> Result<ProcessOutput, ExecutableRunError> {
-        let output = Command::new(&invocation.executable)
-            .current_dir(&invocation.working_directory)
+        let mut command = Command::new(&invocation.executable);
+        command.current_dir(&invocation.working_directory);
+        for (key, value) in &self.env_overrides {
+            command.env(key, value);
+        }
+        let output = command
             .env("CONTROL_TOWER_WORKFLOW", &invocation.workflow_root)
             .env("CONTROL_TOWER_UUID", &invocation.uuid)
             .env("CONTROL_TOWER_STAGE", invocation.stage_number.to_string())

@@ -20,15 +20,17 @@ A **completed stage** is Control Tower's last accepted, recorded position. A **p
 
 Movement shows the workflow/target, then a flushed start and captured result for each actual role before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one role, so the start identity may be the only output during a long operation. Success of a role does not by itself confirm the following checkpoint write.
 
+Run CLI commands from the Workspace root and select the workflow with `--workflow`. Control Tower returns 0 for success/no-op, 1 for operational or mutation failure (including a verifier that cannot start), 2 for CLI usage errors, and 3 only when a verifier ran and rejected the transition. The child's own exit status is shown separately. Each movement ends with a factual summary of requested target, resulting position, and known pending/failed-role details. On exit 3, inspect author-owned effects before retrying or reversing.
+
 ## Move to a target
 
-With the [three-stage example](../../examples/simple/workflows/uuid-file/README.md) prepared, run these from the repository root:
+With the [three-stage example](../../examples/simple/workflows/uuid-file/README.md) prepared, run these from the copied simple example Workspace root with `control-tower` on `PATH`:
 
 ```sh
-./target/debug/control-tower up --workflow "$workflow" --stage 2
-./target/debug/control-tower status --workflow "$workflow"
-./target/debug/control-tower up --workflow "$workflow" --stage 3
-./target/debug/control-tower down --workflow "$workflow" --stage 2
+control-tower up --workflow workflows/uuid-file --stage 2
+control-tower status --workflow workflows/uuid-file
+control-tower up --workflow workflows/uuid-file --stage 3
+control-tower down --workflow workflows/uuid-file --stage 2
 ```
 
 The first command applies stages 1 and 2 if starting from baseline. The last reverses only stage 3. Every transition is ordered:
@@ -72,9 +74,11 @@ Use a **fresh disposable copy**, not a workflow containing valuable test state. 
 example="$(mktemp -d)/simple"
 cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
-./target/debug/control-tower db bootstrap-local "$workflow"
-./target/debug/control-tower db migrate-local "$workflow"
-./target/debug/control-tower db verify-local "$workflow"
+binary="$PWD/target/debug/control-tower"
+ct() { (cd "$example" && "$binary" "$@"); }
+ct db bootstrap-local --workflow workflows/uuid-file
+ct db migrate-local --workflow workflows/uuid-file
+ct db verify-local --workflow workflows/uuid-file
 
 check="$workflow/stages/003-add-to-you/verify-up"
 cp "$check" "$workflow/verify-up.original"
@@ -82,16 +86,16 @@ printf '#!/bin/sh\nexit 23\n' > "$check"
 chmod +x "$check"
 ```
 
-Now deliberately run a command that fails. A nonzero exit here is the expected result, not failed setup:
+Now deliberately run a command that fails. Exit 3 here means the verifier ran and rejected the transition; the child's exit status is 23. This is the expected result, not failed setup:
 
 ```sh
-./target/debug/control-tower up --workflow "$workflow" --stage 3
+ct up --workflow workflows/uuid-file --stage 3
 ```
 
 Run status separately even though the preceding command failed:
 
 ```sh
-./target/debug/control-tower status --workflow "$workflow"
+ct status --workflow workflows/uuid-file
 cat "$workflow"/data/*
 printf '\n'
 ```
@@ -101,14 +105,14 @@ The file should contain `hello to you`, but completed position remains 2 with pe
 ### Back out and exercise the mutation again
 
 ```sh
-./target/debug/control-tower down --workflow "$workflow" --stage 2
+ct down --workflow workflows/uuid-file --stage 2
 cat "$workflow"/data/*
 printf '\n'
 
 cp "$workflow/verify-up.original" "$check"
 chmod +x "$check"
-./target/debug/control-tower up --workflow "$workflow" --stage 3
-./target/debug/control-tower status --workflow "$workflow"
+ct up --workflow workflows/uuid-file --stage 3
+ct status --workflow workflows/uuid-file
 ```
 
 After down, the file contains `hello`. After the repaired forward run it contains `hello to you`, with no pending verification.
@@ -120,7 +124,7 @@ Use this **instead of** the preceding back-out block while stage 3/up is still p
 ```sh
 cp "$workflow/verify-up.original" "$check"
 chmod +x "$check"
-./target/debug/control-tower up --workflow "$workflow" --stage 3
+ct up --workflow workflows/uuid-file --stage 3
 ```
 
 Only stage 3/verify-up should appear in this invocation's role results. There is no standalone `verify` subcommand.
@@ -130,8 +134,8 @@ Checks are optional and discovered afresh. Editing/removing a pending verifier c
 When finished with either path:
 
 ```sh
-./target/debug/control-tower down --workflow "$workflow" --stage 0
-./target/debug/control-tower status --workflow "$workflow"
+ct down --workflow workflows/uuid-file --stage 0
+ct status --workflow workflows/uuid-file
 ```
 
 ## Downward and reverse verification

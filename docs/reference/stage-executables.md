@@ -17,7 +17,7 @@ sources:
 
 # Stage executables and environment
 
-Control Tower discovers files and runs them. It does not interpret your SQL, HTTP responses, application records, or test assertions.
+Control Tower discovers files and runs them. It does not interpret your SQL, HTTP responses, application records, or test assertions. Commands run from the Workspace root, whose `control-tower.toml` must contain a nonempty `[workspace].label` and whose `workflows/` directory is required. Workflow-scoped CLI commands select a workflow with `--workflow PATH`.
 
 ## Workflow layout
 
@@ -73,7 +73,9 @@ Each role runs with **its own stage directory** as the working directory, not th
 
 The runner adds no command-line arguments to a role. Its current implementation captures stdout/stderr and gives the child no interactive stdin. Write noninteractive scripts; do not depend on a terminal prompt. Other environment variables are inherited from the launching process, with the five variables below set by Control Tower.
 
-The CLI flushes the stage/role identity before attempting invocation. It shows captured output and the result when that role returns, before attempting the next. Bytes are buffered for one role, with stdout/stderr displayed separately and a framing newline if a stream lacks one. Application retains the original bytes; stdout is never parsed into state. Ordering between the two streams is not a chronological log.
+The runner inherits the launching process environment. If `<workspace>/.env` exists, its parsed values fill keys absent from the inherited environment. Shell values take precedence, and Control Tower's `CONTROL_TOWER_*` variables take precedence over both. This is the only automatic dotenv location; no workflow or parent-directory search occurs. Missing `.env` is valid; unreadable or malformed `.env` blocks validation and movement before roles run. `validate --workflow PATH` checks its syntax without running roles.
+
+The CLI flushes the stage/role identity before attempting invocation. It shows captured output and the result when that role returns, before attempting the next. Bytes are buffered for one role, with stdout/stderr displayed separately and a framing newline if a stream lacks one. Application retains the original bytes; stdout is never parsed into state. Ordering between the two streams is not a chronological log. Each movement ends with a concise summary of the requested target, resulting Control Tower position and, when known, pending verification, failed role and child exit status. The child exit status is separate from Control Tower's CLI exit code.
 
 | Variable | Value |
 | --- | --- |

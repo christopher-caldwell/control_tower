@@ -24,9 +24,9 @@ From the copied example root after setup:
 
 ```sh
 workflow=workflows/node-and-tool
-control-tower db bootstrap-local "$workflow"
-control-tower db migrate-local "$workflow"
-control-tower db verify-local "$workflow"
+control-tower db bootstrap-local --workflow "$workflow"
+control-tower db migrate-local --workflow "$workflow"
+control-tower db verify-local --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 1
 cat "$workflow/data/record.json"
 control-tower up --workflow "$workflow" --stage 2
