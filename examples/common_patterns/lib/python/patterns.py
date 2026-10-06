@@ -30,6 +30,12 @@ def load_value(key):
     return state[key]
 
 
+def require_absent_value(key):
+    state = json.loads(_state_file().read_text())
+    if key in state:
+        raise AssertionError(f"Expected saved value to be absent: {key}")
+
+
 def delete_value(key):
     path = _state_file()
     state = json.loads(path.read_text())

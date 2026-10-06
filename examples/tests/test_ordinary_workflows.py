@@ -57,6 +57,7 @@ def assert_artifacts(workflow, name, completed):
         if completed == 1:
             assert set(state) == {"generated"}
         else:
+            assert set(state) == {"generated", "verified"}
             assert state["verified"] == generated_id
         return
     expected = {}
@@ -92,8 +93,6 @@ def test_copied_example_workflow_traversal(tmp_path, cli_environment, family, na
     prepare_workflow(sandbox, workflow, cli_environment)
     locks = lock_contents(sandbox)
     initialize(sandbox, workflow, env)
-    if family == "common_patterns":
-        run(["control-tower", "validate", "--workflow", str(workflow)], cwd=sandbox, env=env)
     status(sandbox, workflow, env, 0)
     first_uuid = None
     for stage in range(1, target + 1):
@@ -135,6 +134,40 @@ def test_copied_example_workflow_traversal(tmp_path, cli_environment, family, na
     status(sandbox, workflow, env, 0)
     assert_artifacts(workflow, name, 0)
     assert lock_contents(sandbox) == locks
+
+
+@pytest.mark.parametrize(
+    ("family", "name", "runtime"),
+    [
+        pytest.param("common_patterns", "node", "node", marks=pytest.mark.family_common_patterns),
+        pytest.param("common_patterns", "python", "python3", marks=pytest.mark.family_common_patterns),
+    ],
+)
+def test_common_pattern_verify_down_rejects_remaining_verified_value(
+    tmp_path, cli_environment, family, name, runtime
+):
+    env = cli_environment
+    sandbox, workflow = materialize_workflow(tmp_path, family, name)
+    prepare_workflow(sandbox, workflow, env)
+    initialize(sandbox, workflow, env)
+    move(sandbox, workflow, env, "up", 2)
+
+    state_file = workflow / "data/state.json"
+    before = json.loads(state_file.read_text())
+    assert "verified" in before
+
+    # Simulate a broken/no-op Stage 2 reversal. Control Tower must run the
+    # Stage Action verifier and reject the transition while verified remains.
+    down = workflow / "stages/002-consume/down"
+    no_op = "#!/usr/bin/env node\n// Intentionally leaves Stage 2 state unchanged.\n" if runtime == "node" else (
+        "#!/usr/bin/env python3\n# Intentionally leaves Stage 2 state unchanged.\n"
+    )
+    down.write_text(no_op)
+    rejected = move(sandbox, workflow, env, "down", 1, expected=3)
+    output = rejected.stdout + rejected.stderr
+    assert "Failed Stage Action: stage 2 verify-down" in output
+    assert "child exit status 1" in output
+    assert json.loads(state_file.read_text()) == before, "the verifier must observe, not repair, state"
 
 
 @pytest.mark.family_simple

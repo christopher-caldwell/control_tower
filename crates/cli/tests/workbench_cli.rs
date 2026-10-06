@@ -1263,7 +1263,10 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
         .output()
         .unwrap();
     let create = String::from_utf8(create.stdout).unwrap();
-    assert!(create.contains("control-tower validate"));
+    assert!(create.contains("control-tower init --workflow workflows/NAME"));
+    assert!(create.contains("bootstrap, migrate, verify, and validate operations"));
+    assert!(create.contains("stops at the first failure"));
+    assert!(create.contains("individual `control-tower db bootstrap-local`"));
     assert!(!create.contains("status --workflow"));
     let edit = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .args(["guide", "edit_workflow"])

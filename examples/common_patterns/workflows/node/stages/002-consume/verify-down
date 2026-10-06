@@ -1,4 +1,8 @@
 #!/usr/bin/env node
-import { loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+import { loadValue, requireAbsentValue, requireEqual } from "../../../../lib/node/index.mjs";
 
-requireEqual(typeof (await loadValue("generated")).id, "string", "generated id type");
+const generated = await loadValue("generated");
+requireEqual(typeof generated.id, "string", "generated id type");
+if (!generated.id) throw new Error("generated id must not be empty");
+requireEqual(JSON.parse(generated.captured_stdout).id, generated.id, "captured evidence");
+await requireAbsentValue("verified");

@@ -3,8 +3,11 @@
 This copyable Workspace shows how Stage Actions in separate Workflows can use
 the same small, reusable libraries for ordinary author-owned plumbing. Both
 Workflows capture the output of a local operation, save a generated value, and
-consume that saved value in a later Stage Action. One uses Node and one uses
-Python; both use only their language's standard library.
+consume that saved value in a later Stage Action. Stage 2's `verify-down`
+independently checks that the generated value is still valid and the Stage
+2-owned `verified` value is absent; it only observes the saved state. One
+Workflow uses Node and one uses Python; both use only their language's standard
+library.
 
 | Workflow | Prerequisites | Lesson |
 | --- | --- | --- |
@@ -27,18 +30,19 @@ cp -R examples/common_patterns "$example"
 cd "$example"
 ```
 
-Choose a Workflow and prepare it using the ordinary Control Tower commands:
+Choose a Workflow and prepare it with the normal first-use command:
 
 ```sh
 workflow=workflows/node
-control-tower db bootstrap-local --workflow "$workflow"
-control-tower db migrate-local --workflow "$workflow"
-control-tower db verify-local --workflow "$workflow"
-control-tower validate --workflow "$workflow"
+control-tower init --workflow "$workflow"
 control-tower up --workflow "$workflow" --stage 2
 cat "$workflow/data/state.json"
 control-tower down --workflow "$workflow" --stage 0
 ```
+
+`init` runs bootstrap, migrate, verify, and validate in order, stopping at the
+first failure. The individual database commands and `validate` remain
+available when you want to run or diagnose one operation separately.
 
 Use `workflow=workflows/python` for the Python version. Each complete forward
 and reset traversal uses the helper library rooted at the copied Workspace.

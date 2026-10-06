@@ -54,7 +54,15 @@ printf 'Workflow: %s\n' "$workflow"
 ls -ld "$workflow"
 ```
 
-For a new workflow, run:
+For a new workflow, start with the convenience setup command:
+
+```sh
+ct init --workflow "$workflow"
+```
+
+It runs bootstrap, migration, schema verification, and Workflow validation in
+order, and stops at the first failure. If you want to isolate or diagnose one
+operation, the underlying commands remain available individually:
 
 ```sh
 ct db bootstrap-local --workflow "$workflow"

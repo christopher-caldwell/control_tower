@@ -27,6 +27,11 @@ export async function loadValue(key) {
   return state[key];
 }
 
+export async function requireAbsentValue(key) {
+  const state = JSON.parse(await readFile(stateFile(), "utf8"));
+  if (Object.hasOwn(state, key)) throw new Error(`Expected saved value to be absent: ${key}`);
+}
+
 export async function deleteValue(key) {
   const path = stateFile();
   const state = JSON.parse(await readFile(path, "utf8"));
