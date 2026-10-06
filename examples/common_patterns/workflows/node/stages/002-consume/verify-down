@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+import { loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+
+requireEqual(typeof (await loadValue("generated")).id, "string", "generated id type");

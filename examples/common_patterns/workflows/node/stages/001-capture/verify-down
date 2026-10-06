@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+import { access } from "node:fs/promises";
+
+try {
+  await access(`${process.env.CONTROL_TOWER_WORKFLOW}/data/state.json`);
+  throw new Error("state should be removed");
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}

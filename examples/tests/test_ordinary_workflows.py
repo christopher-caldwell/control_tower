@@ -19,6 +19,8 @@ WORKFLOWS = [
     pytest.param("simple", "python-isolated-stage", 3, marks=pytest.mark.family_simple),
     pytest.param("multi_language", "shell-python-node", 3, marks=pytest.mark.family_multi_language),
     pytest.param("multi_language", "go-rust", 2, marks=pytest.mark.family_multi_language),
+    pytest.param("common_patterns", "node", 2, marks=pytest.mark.family_common_patterns),
+    pytest.param("common_patterns", "python", 2, marks=pytest.mark.family_common_patterns),
 ]
 
 
@@ -43,6 +45,19 @@ def assert_artifacts(workflow, name, completed):
         with sqlite3.connect((data / "application.sqlite3").resolve().as_uri() + "?mode=ro", uri=True) as db:
             rows = db.execute("SELECT id, value FROM fixture").fetchall()
         assert rows == ([(identifier, "initial" if completed == 1 else "changed")] if completed else [])
+        return
+    if workflow.parents[1].name == "common_patterns":
+        if not completed:
+            assert not paths
+            return
+        state = json.loads((data / "state.json").read_text())
+        generated_id = state["generated"]["id"]
+        assert isinstance(generated_id, str) and generated_id
+        assert json.loads(state["generated"]["captured_stdout"])["id"] == generated_id
+        if completed == 1:
+            assert set(state) == {"generated"}
+        else:
+            assert state["verified"] == generated_id
         return
     expected = {}
     if name == "go-rust":
@@ -77,6 +92,8 @@ def test_copied_example_workflow_traversal(tmp_path, cli_environment, family, na
     prepare_workflow(sandbox, workflow, cli_environment)
     locks = lock_contents(sandbox)
     initialize(sandbox, workflow, env)
+    if family == "common_patterns":
+        run(["control-tower", "validate", "--workflow", str(workflow)], cwd=sandbox, env=env)
     status(sandbox, workflow, env, 0)
     first_uuid = None
     for stage in range(1, target + 1):

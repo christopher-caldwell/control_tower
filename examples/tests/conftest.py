@@ -8,13 +8,13 @@ from common import REPOSITORY
 
 
 def pytest_addoption(parser):
-    parser.addoption("--family", action="append", choices=("simple", "multi_language", "py_capsule"),
+    parser.addoption("--family", action="append", choices=("simple", "multi_language", "common_patterns", "py_capsule"),
                      help="run only this family; repeat to select several")
     parser.addoption("--postgres", action="store_true", help="also start disposable PostgreSQL clusters")
 
 
 def pytest_configure(config):
-    for family in ("simple", "multi_language", "py_capsule"):
+    for family in ("simple", "multi_language", "common_patterns", "py_capsule"):
         config.addinivalue_line("markers", f"family_{family}: {family} workflows")
     config.addinivalue_line("markers", "postgres: requires explicit --postgres")
     if config.getoption("--postgres"):

@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import { capture, loadValue, requireEqual, requireSuccess, saveValue } from "../../../../lib/node/index.mjs";
+
+const saved = await loadValue("generated");
+const result = requireSuccess(await capture(process.execPath, "-e", `process.stdout.write(${JSON.stringify(saved.id)})`));
+requireEqual(result.stdout, saved.id, "consumed value");
+await saveValue("verified", result.stdout);

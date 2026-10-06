@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+import { deleteValue, loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+
+const saved = await loadValue("generated");
+requireEqual(typeof saved.id, "string", "generated id type");
+await deleteValue("verified");
