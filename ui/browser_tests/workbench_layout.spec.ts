@@ -49,6 +49,7 @@ const definition: DefinitionView = {
   definitions: [{ role: 'up', path: 'stages/010-seed/up', contents: '#!/bin/sh\nexit 0', issue: null }],
 }
 const longStageName = 'Seed stage with a long descriptive workflow operation that should wrap cleanly in the inspector'
+const longTargetName = 'Long target stage name that remains fully discoverable in the forward movement action dock'
 const longOutput = Array.from(
   { length: 300 },
   (_, index) => `output line ${index}: ${'observed role detail '.repeat(4)}`,
@@ -81,6 +82,10 @@ const workflowWithLongContent: WorkflowView = {
     failure: null,
     verification_choices: null,
   },
+}
+const workflowWithLongTarget: WorkflowView = {
+  ...workflow,
+  stages: workflow.stages.map((stage) => (stage.number === 500 ? { ...stage, name: longTargetName } : stage)),
 }
 const secondWorkflow: WorkflowView = {
   ...workflow,
@@ -254,22 +259,30 @@ test('both desktop rails can be collapsed and reopened', async ({ page }) => {
 })
 
 test('inspector keeps a stable consuming scrollbar gutter across real content overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 820 })
   await installFixtures(page, false, undefined, workflowWithLongContent, workspace, true)
+  const inspector = page.getByRole('complementary', { name: 'Selected stage inspector' })
   const content = page.getByRole('region', { name: 'Stage inspector content' })
+  await expect.poll(() => inspector.evaluate((element) => element.getBoundingClientRect().width)).toBe(382)
   await page.addStyleTag({
     content: `
       [aria-label="Stage inspector content"]::-webkit-scrollbar { width: 16px; }
       [aria-label="Stage inspector content"]::-webkit-scrollbar-thumb { background: #888; }
     `,
   })
-  await content.evaluate((element) => {
-    element.style.flex = 'none'
-    element.style.height = '10000px'
-  })
+  const accordionNames = ['Checkpoint state', 'Mutation', 'Verification', 'Captured output', 'Executable definitions']
+  for (const name of accordionNames) {
+    const control = page.getByRole('button', { name, exact: true })
+    if ((await control.getAttribute('aria-expanded')) === 'true') await control.click()
+    await expect(control).toHaveAttribute('aria-expanded', 'false')
+  }
+  await expect.poll(() => content.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true)
   const before = await content.evaluate((element) => {
     const contentElement = element as HTMLElement
     return {
+      clientHeight: element.clientHeight,
       clientWidth: element.clientWidth,
+      scrollHeight: element.scrollHeight,
       overflowing: element.scrollHeight > element.clientHeight,
       consumingScrollbar: contentElement.offsetWidth - element.clientWidth,
     }
@@ -278,25 +291,39 @@ test('inspector keeps a stable consuming scrollbar gutter across real content ov
   expect(before.consumingScrollbar).toBeGreaterThanOrEqual(16)
   const mutation = page.getByRole('button', { name: 'Mutation', exact: true })
   const controlRightBefore = await mutation.evaluate((element) => element.getBoundingClientRect().right)
-
-  await content.evaluate((element) => {
-    element.style.height = '300px'
-  })
+  const expandedForOverflow: string[] = []
+  let previousScrollHeight = before.clientHeight
+  for (const name of ['Captured output', 'Executable definitions', 'Mutation', 'Verification', 'Checkpoint state']) {
+    const control = page.getByRole('button', { name, exact: true })
+    await control.click()
+    await expect(control).toHaveAttribute('aria-expanded', 'true')
+    await expect.poll(() => content.evaluate((element) => element.scrollHeight)).toBeGreaterThan(previousScrollHeight)
+    previousScrollHeight = await content.evaluate((element) => element.scrollHeight)
+    expandedForOverflow.push(name)
+    if (previousScrollHeight > before.clientHeight) break
+  }
+  expect(expandedForOverflow).toContain('Captured output')
+  expect(previousScrollHeight).toBeGreaterThan(before.clientHeight)
+  expect(await page.getByLabel('stdout').textContent()).toContain(longOutput.slice(0, 120))
+  expect(await page.getByLabel('stderr').textContent()).toContain(longOutput.slice(0, 120))
   const after = await content.evaluate((element) => {
     const contentElement = element as HTMLElement
     return {
+      clientHeight: element.clientHeight,
       clientWidth: element.clientWidth,
+      scrollHeight: element.scrollHeight,
       overflowing: element.scrollHeight > element.clientHeight,
       consumingScrollbar: contentElement.offsetWidth - element.clientWidth,
     }
   })
   expect(after.overflowing).toBe(true)
+  expect(after.clientHeight).toBe(before.clientHeight)
   expect(after.consumingScrollbar).toBeGreaterThanOrEqual(16)
   expect(after.clientWidth).toBe(before.clientWidth)
   expect(await mutation.evaluate((element) => element.getBoundingClientRect().right)).toBe(controlRightBefore)
   await expect(mutation).toBeVisible()
   await mutation.click()
-  await expect(mutation).toHaveAttribute('aria-expanded', 'false')
+  await expect(mutation).toHaveAttribute('aria-expanded', 'true')
 })
 
 test('forward dock emphasis and no-action status use the selected presentation', async ({ page }) => {
@@ -305,6 +332,29 @@ test('forward dock emphasis and no-action status use the selected presentation',
   await page.getByText('verify', { exact: true }).click()
   await expect(page.getByRole('button', { name: /Run to/ })).toHaveAttribute('data-variant', 'light')
   await expect(page.getByRole('button', { name: 'Run all' })).toHaveAttribute('data-variant', 'light')
+})
+
+test('long forward targets stay discoverable through hover and keyboard focus', async ({ page }) => {
+  const api = await installFixtures(page, false, undefined, workflowWithLongTarget)
+  await page.getByText(longTargetName, { exact: true }).click()
+  const label = 'Run to Stage 500 · ' + longTargetName
+  const runTo = page.getByRole('button', { name: label })
+  await expect(runTo).toBeVisible()
+  await expect(runTo).toHaveAttribute('data-variant', 'light')
+  await runTo.hover()
+  await expect(page.getByRole('tooltip')).toHaveText(label)
+
+  const runNext = page.getByRole('button', { name: 'Run next' })
+  await runNext.hover()
+  await expect(runNext).toHaveAttribute('data-variant', 'filled')
+  const search = page.getByRole('textbox', { name: 'Search workflows' })
+  await search.focus()
+  for (let step = 0; step < 30; step += 1) {
+    if (await runTo.evaluate((element) => document.activeElement === element)) break
+    await page.keyboard.press('Tab')
+  }
+  await expect(runTo).toBeFocused()
+  expect(await api.movementRequests()).toBe(0)
 })
 
 test('no-action dock text has no button semantics', async ({ page }) => {
