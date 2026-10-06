@@ -1,8 +1,8 @@
 # Ordinary Node dependencies
 
 The simple example owns `package.json` and `package-lock.json`. Node
-roles use normal module resolution to find example-owned `dayjs`; no role
-installs packages. The timestamp is normalized to UTC before downstream inspection.
+Stage Actions use normal module resolution to find example-owned `dayjs`; they do not
+install packages. The timestamp is normalized to UTC before downstream inspection.
 
 ## Prerequisites and progression
 

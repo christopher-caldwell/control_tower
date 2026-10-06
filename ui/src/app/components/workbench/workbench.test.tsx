@@ -316,7 +316,7 @@ describe('workflow browser adapter', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/outputs/'))).toBe(false)
   })
 
-  it('keeps an accepted checkpoint separate from unrecorded role results', async () => {
+  it('keeps an accepted checkpoint separate from unrecorded Stage Action results', async () => {
     const snapshot = workflow('workflow-a', {
       stages: [
         {
@@ -359,7 +359,7 @@ describe('workflow browser adapter', () => {
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(false)
   })
 
-  it('distinguishes output still buffered during a role from an executable launch error', async () => {
+  it('distinguishes output still buffered during a Stage Action from an executable launch error', async () => {
     const snapshot = workflow('workflow-a', {
       observation: observation(
         [result({ state: 'in_progress', exit_code: null, stdout: null, stderr: null })],
@@ -368,7 +368,7 @@ describe('workflow browser adapter', () => {
     })
     installWorkbench({ 'workflow-a': snapshot })
     await emitSnapshot('workflow-a', snapshot)
-    expect(screen.getByText('Output will be available when the role returns.')).toBeInTheDocument()
+    expect(screen.getByText('Output will be available when the Stage Action returns.')).toBeInTheDocument()
 
     const failed = workflow('workflow-a', {
       observation: observation(
@@ -386,7 +386,7 @@ describe('workflow browser adapter', () => {
     })
     await emitSnapshot('workflow-a', failed)
     expect(screen.getAllByText('permission denied by fixture').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Output will be available when the role returns.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Output will be available when the Stage Action returns.')).not.toBeInTheDocument()
   })
 })
 
@@ -490,7 +490,7 @@ describe('live workbench reconciliation', () => {
     expect(next).toBeDisabled()
     expect(next).toHaveAttribute('data-variant', 'filled')
     expect(screen.getByText('Stage 10 · seed')).toBeInTheDocument()
-    expect(screen.getByText('Output will be available when the role returns.')).toBeInTheDocument()
+    expect(screen.getByText('Output will be available when the Stage Action returns.')).toBeInTheDocument()
     expect(screen.getByText('In progress')).toBeInTheDocument()
   })
 

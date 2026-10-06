@@ -50,6 +50,10 @@ def materialize_workflow(tmp_path, family, name):
     return sandbox, sandbox / "workflows" / name
 
 
+def family_for_workflow(workflow):
+    return workflow.parents[1].name
+
+
 def prepare_workflow(sandbox, workflow, env):
     """Install only the selected scenario's runtimes using documented setup."""
     name = workflow.name
@@ -64,6 +68,8 @@ def prepare_workflow(sandbox, workflow, env):
         require_tools("node", "npm")
     if name == "generated-id":
         require_tools("python3")
+    if family_for_workflow(workflow) == "common_patterns":
+        require_tools("node" if name == "node" else "python3")
     if name == "go-rust":
         require_tools("go", "cargo", "rustc")
     locks = lock_contents(sandbox)
@@ -81,11 +87,10 @@ def prepare_workflow(sandbox, workflow, env):
 
 
 def initialize(sandbox, workflow, env):
-    for operation in ("bootstrap-local", "migrate-local", "verify-local"):
-        run(
-            ["control-tower", "db", operation, "--workflow", str(workflow)],
-            cwd=sandbox, env=env,
-        )
+    run(
+        ["control-tower", "init", "--workflow", str(workflow.relative_to(sandbox))],
+        cwd=sandbox, env=env,
+    )
 
 
 def move(sandbox, workflow, env, direction, stage, *, expected=0):

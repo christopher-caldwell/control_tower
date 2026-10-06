@@ -25,8 +25,13 @@ enum Command {
         #[arg(value_enum)]
         action: Option<guides::GuideAction>,
     },
-    /// Validate a selected workflow in the current Workspace without running roles.
+    /// Validate a selected workflow in the current Workspace without running Stage Actions.
     Validate {
+        #[arg(long)]
+        workflow: PathBuf,
+    },
+    /// Prepare a workflow's local database and validate the workflow.
+    Init {
         #[arg(long)]
         workflow: PathBuf,
     },
@@ -82,6 +87,24 @@ enum DatabaseOperation {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Command::Init { workflow } = &cli.command {
+        for operation in [
+            DatabaseOperation::Bootstrap {
+                workflow: workflow.clone(),
+            },
+            DatabaseOperation::Migrate {
+                workflow: workflow.clone(),
+            },
+            DatabaseOperation::Verify {
+                workflow: workflow.clone(),
+            },
+        ] {
+            let result = run_database_operation(&operation);
+            if result != ExitCode::SUCCESS {
+                return result;
+            }
+        }
+    }
     if let Command::Db { operation } = &cli.command {
         return run_database_operation(operation);
     }
@@ -100,7 +123,8 @@ fn main() -> ExitCode {
         _ => {}
     }
     let workflow_arg = match &cli.command {
-        Command::Validate { workflow }
+        Command::Init { workflow }
+        | Command::Validate { workflow }
         | Command::Up { workflow, .. }
         | Command::Down { workflow, .. }
         | Command::Status { workflow } => workflow,
@@ -139,7 +163,7 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
-        Command::Validate { .. } => run_validate(&workbench, &workflow_root),
+        Command::Init { .. } | Command::Validate { .. } => run_validate(&workbench, &workflow_root),
         Command::Up { stage, .. } => run_move(&workbench, &workflow_root, Direction::Up, stage),
         Command::Down { stage, .. } => run_move(&workbench, &workflow_root, Direction::Down, stage),
         Command::Status { .. } => run_status(&workbench, &workflow_root),

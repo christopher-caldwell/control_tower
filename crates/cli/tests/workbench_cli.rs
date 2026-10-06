@@ -104,6 +104,16 @@ fn database_operation(workflow: &Workflow, operation: &str) -> Output {
         .expect("run Control Tower database operation")
 }
 
+fn init(workflow: &Workflow) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .arg("init")
+        .arg("--workflow")
+        .arg(workflow.path())
+        .current_dir(workflow.workspace())
+        .output()
+        .expect("run Control Tower initialization")
+}
+
 fn status(workflow: &Workflow) -> Output {
     Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("status")
@@ -168,7 +178,7 @@ fn walks_fixture_forward_and_backward_across_cli_processes() {
         output_text(&no_op)
             .contains("Result: complete; requested up to 1; position 1 (create-file)")
     );
-    assert!(output_text(&no_op).contains("No roles ran."));
+    assert!(output_text(&no_op).contains("No Stage Actions ran."));
 
     let up_to_three = move_to(&workflow, "up", 3);
     assert!(
@@ -450,6 +460,93 @@ fn explicit_database_operations_are_available_through_the_cli() {
 }
 
 #[test]
+fn init_composes_database_preparation_and_validation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let output = init(&workflow);
+    assert!(output.status.success(), "{}", output_text(&output));
+    let text = output_text(&output);
+    let bootstrapped = text.find("Local database bootstrapped:").unwrap();
+    let migrated = text.find("Local database migration succeeded:").unwrap();
+    let verified = text.find("Local database verified:").unwrap();
+    let validated = text.find("Workflow loaded successfully:").unwrap();
+    assert!(bootstrapped < migrated && migrated < verified && verified < validated);
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
+}
+
+#[test]
+fn init_stops_when_bootstrap_fails() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::write(workflow.path().join(".control_tower"), "not a directory").unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("database operation failed:"));
+    assert!(!text.contains("Local database migration succeeded:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+}
+
+#[test]
+fn init_stops_when_migration_fails() {
+    let workflow = Workflow::from_fixture_unprepared();
+    let database = workflow.path().join(".control_tower/state.sqlite3");
+    fs::create_dir_all(database.parent().unwrap()).unwrap();
+    rusqlite::Connection::open(&database)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 99;")
+        .unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database bootstrapped:"));
+    assert!(text.contains("unsupported SQLite schema version"));
+    assert!(!text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+}
+
+#[test]
+fn init_returns_failure_when_validation_fails_after_preparation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::remove_dir_all(workflow.path().join("stages")).unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
+}
+
+#[test]
+fn init_keeps_workspace_dotenv_validation_after_database_preparation() {
+    let workflow = Workflow::from_fixture_unprepared();
+    fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
+
+    let output = init(&workflow);
+    assert!(!output.status.success());
+    let text = output_text(&output);
+    assert!(text.contains("Local database verified:"));
+    assert!(!text.contains("Workflow loaded successfully:"));
+    assert!(
+        workflow
+            .path()
+            .join(".control_tower/state.sqlite3")
+            .is_file()
+    );
+}
+
+#[test]
 fn malformed_workspace_dotenv_does_not_block_status_or_database_operations() {
     let workflow = Workflow::from_fixture();
     fs::write(workflow.workspace().join(".env"), "INVALID LINE\n").unwrap();
@@ -497,7 +594,7 @@ fn verifier_start_failure_is_operational_exit_one() {
     assert!(output_text(&output).contains("could not start stage 1 verify-up"));
     assert!(
         String::from_utf8_lossy(&output.stdout)
-            .contains("Failed role: stage 1 verify-up; executable did not start")
+            .contains("Failed Stage Action: stage 1 verify-up; executable did not start")
     );
 }
 
@@ -522,7 +619,7 @@ fn verifier_termination_by_signal_is_operational_exit_one() {
         let text = output_text(&output);
         assert!(text.contains("signal or unknown status"));
         assert!(text.contains(&format!(
-            "Failed role: stage 1 {verifier}; child exit status signal/unknown"
+            "Failed Stage Action: stage 1 {verifier}; child exit status signal/unknown"
         )));
         assert!(text.contains(&format!("Pending verification: {direction} 1")));
     }
@@ -585,7 +682,7 @@ fn invalid_workspace_dotenv_blocks_validation_and_movement_before_roles_run() {
             assert!(String::from_utf8_lossy(&output.stdout).contains(
                 "Result: stopped before movement; requested down to 0; position 1 (create-file)"
             ));
-            assert!(String::from_utf8_lossy(&output.stdout).contains("No roles ran."));
+            assert!(String::from_utf8_lossy(&output.stdout).contains("No Stage Actions ran."));
         }
         assert!(marker.exists());
     }
@@ -605,7 +702,7 @@ fn parsed_movement_failures_always_report_target_and_known_or_unavailable_positi
             "Result: stopped before movement; requested up to 999; position baseline (0)"
         )
     );
-    assert!(invalid_target_output.contains("No roles ran."));
+    assert!(invalid_target_output.contains("No Stage Actions ran."));
     assert!(!invalid_target_workflow.path().join("calls.log").exists());
     let database = rusqlite::Connection::open(
         invalid_target_workflow
@@ -626,7 +723,7 @@ fn parsed_movement_failures_always_report_target_and_known_or_unavailable_positi
         output_text(&startup_failure)
             .contains("Result: stopped before movement; requested down to 0; position unavailable")
     );
-    assert!(output_text(&startup_failure).contains("No roles ran."));
+    assert!(output_text(&startup_failure).contains("No Stage Actions ran."));
 
     let discovery_workflow = Workflow::from_fixture();
     fs::remove_dir_all(discovery_workflow.path().join("stages")).unwrap();
@@ -637,7 +734,7 @@ fn parsed_movement_failures_always_report_target_and_known_or_unavailable_positi
         discovery_output
             .contains("Result: stopped before movement; requested down to 0; position unavailable")
     );
-    assert!(discovery_output.contains("No roles ran."));
+    assert!(discovery_output.contains("No Stage Actions ran."));
 
     let state_workflow = Workflow::from_fixture();
     fs::remove_file(state_workflow.path().join(".control_tower/state.sqlite3")).unwrap();
@@ -648,7 +745,7 @@ fn parsed_movement_failures_always_report_target_and_known_or_unavailable_positi
         state_output
             .contains("Result: stopped before movement; requested up to 1; position unavailable")
     );
-    assert!(state_output.contains("No roles ran."));
+    assert!(state_output.contains("No Stage Actions ran."));
     assert!(
         !state_workflow
             .path()
@@ -771,7 +868,7 @@ fn failed_verify_up_backs_out_same_stage_or_farther_across_cli_processes() {
         let summary = String::from_utf8_lossy(&first.stdout);
         assert!(summary.contains("Result: stopped; requested up to 3; position 2 (write-hello)"));
         assert!(summary.contains("Pending verification: up 3 (add-to-you)"));
-        assert!(summary.contains("Failed role: stage 3 verify-up; child exit status 23"));
+        assert!(summary.contains("Failed Stage Action: stage 3 verify-up; child exit status 23"));
         assert_checkpoint(&workflow, 2, Some(("up", 3)));
         let uuid = checkpoint(&workflow).uuid.unwrap();
         assert_eq!(
@@ -1059,7 +1156,7 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
     assert!(retry_text.contains("stage 200 verify-up"));
     assert!(!retry_text.contains("stage 200 up"));
     assert!(!retry_text.contains("stage 900"));
-    assert!(output_text(&move_to(&workflow, "up", 200)).contains("No roles ran"));
+    assert!(output_text(&move_to(&workflow, "up", 200)).contains("No Stage Actions ran"));
     assert!(move_to(&workflow, "up", 900).status.success());
     fail_verifier_once(&workflow, "900-add-to-you", "verify-down");
     let failed = move_to(&workflow, "down", 0);
@@ -1072,7 +1169,7 @@ fn sparse_retry_and_reversal_commands_are_usable_and_resolve_only_the_active_sta
         .output()
         .unwrap();
     assert!(reversed.status.success(), "{}", output_text(&reversed));
-    assert!(!output_text(&reversed).contains("No roles ran"));
+    assert!(!output_text(&reversed).contains("No Stage Actions ran"));
     assert_eq!(
         fs::read(uuid_file(&workflow).unwrap()).unwrap(),
         b"hello to you"
@@ -1166,7 +1263,10 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
         .output()
         .unwrap();
     let create = String::from_utf8(create.stdout).unwrap();
-    assert!(create.contains("control-tower validate"));
+    assert!(create.contains("control-tower init --workflow workflows/NAME"));
+    assert!(create.contains("bootstrap, migrate, verify, and validate operations"));
+    assert!(create.contains("stops at the first failure"));
+    assert!(create.contains("individual `control-tower db bootstrap-local`"));
     assert!(!create.contains("status --workflow"));
     let edit = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .args(["guide", "edit_workflow"])

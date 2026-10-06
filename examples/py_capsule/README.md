@@ -58,7 +58,7 @@ state and output; all reuse the copied shared tool.
 
 ## Dependency and execution boundaries
 
-Python roles use `#!/usr/bin/env -S uv run python`. Control Tower invokes them
+Python Stage Actions use `#!/usr/bin/env -S uv run python`. Control Tower invokes them
 from their stage directory; uv finds this example's Python project. Stages call:
 
 ```python

@@ -2,7 +2,7 @@
 
 Three ordinary Python stages show input ownership, a real PostgreSQL write, and
 read-only inspection. The simple example supplies `psycopg[binary]`; this workflow
-owns its schema and role files.
+owns its schema and Stage Action files.
 The database row is keyed by the active Control Tower UUID.
 
 ```text
@@ -135,7 +135,7 @@ control-tower down --workflow "$workflow" --stage 0
 control-tower status --workflow "$workflow"
 ```
 
-Earlier stages' `down` roles do not clean later unaccepted database effects.
+Earlier stages' `down` Stage Actions do not clean later unaccepted database effects.
 Deleting `.control_tower/` or local output does not remove PostgreSQL rows.
 After a verifier failure, repeating the same move retries only the observational
 check without replaying the mutation. See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).

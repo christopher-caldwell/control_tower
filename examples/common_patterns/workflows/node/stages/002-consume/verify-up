@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+import { loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+
+const generated = await loadValue("generated");
+requireEqual(await loadValue("verified"), generated.id, "verified value");

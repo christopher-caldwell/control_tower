@@ -83,7 +83,7 @@ const CheckpointDisplay: FC<WorkflowSummaryProps> = ({ model }) => {
         </Badge>
       ) : null}
       {model.workflow?.movement_busy ? (
-        <Badge color="teal">Movement active{activeRole ? ' · ' + activeRole.role : ''}</Badge>
+        <Badge color="teal">Movement active{activeRole ? ' · Stage Action ' + activeRole.role : ''}</Badge>
       ) : null}
     </Stack>
   )

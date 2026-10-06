@@ -153,7 +153,7 @@ control-tower down --workflow "$workflow" --stage 0
 control-tower status --workflow "$workflow"
 ```
 
-Earlier stages' `down` roles do not clean later unaccepted database effects.
+Earlier stages' `down` Stage Actions do not clean later unaccepted database effects.
 Deleting `.control_tower/` or local output does not remove PostgreSQL rows.
 After a verifier failure, repeating the same move retries only the observational
 check without replaying the mutation. See [navigation guidance](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#a-mutation-failure-is-not-a-verifier-failure).

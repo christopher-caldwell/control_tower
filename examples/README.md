@@ -2,12 +2,13 @@
 
 An **example** is the complete portable Workspace you copy. Its **workflows**
 are the runnable scenarios inside that Workspace. Control Tower executes
-ordinary role files directly; each role selects its runtime through its shebang.
+ordinary Stage Action files directly; each Stage Action selects its runtime through its shebang.
 
 | Example to copy | What it teaches | Where to start |
 | --- | --- | --- |
 | [simple](simple/README.md) | Focused workflows, ordinary dependencies, stage isolation, and database ownership. | [uuid-file](simple/workflows/uuid-file/README.md). |
 | [multi_language](multi_language/README.md) | Ordinary runtimes composed through explicit files. | [shell-python-node](multi_language/workflows/shell-python-node/README.md). |
+| [common_patterns](common_patterns/README.md) | Reusable author-owned helpers shared across Stage Actions. | [Node](common_patterns/workflows/node/README.md) or [Python](common_patterns/workflows/python/README.md). |
 | [py_capsule](py_capsule/README.md) | Shared encapsulated tools and richer workflows. | [tool-only](py_capsule/workflows/tool-only/README.md), then full-stack. |
 
 ```text
@@ -16,6 +17,9 @@ examples/
     workflows/                focused scenarios
   multi_language/             a Workspace: copy this complete example
     workflows/                ordinary runtime compositions
+  common_patterns/            a Workspace: copy this complete example
+    lib/                      ordinary author-owned shared helpers
+    workflows/                Node and Python scenarios
   py_capsule/                 a Workspace: copy this complete example
     tools/                    shared encapsulated capabilities
     workflows/                scenarios consuming those capabilities
@@ -40,6 +44,7 @@ Build this checkout with `cargo build --locked --workspace`, then run:
 ./examples/test
 ./examples/test --family simple
 ./examples/test --family multi_language
+./examples/test --family common_patterns
 ./examples/test --family py_capsule
 ./examples/test --postgres
 # Options can be combined; repeat --family to select several examples.

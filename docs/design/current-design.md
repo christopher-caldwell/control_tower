@@ -4,7 +4,7 @@ title: Current design and decision audit
 type: design
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-04'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -52,7 +52,7 @@ workspace/
       stages/
 ```
 
-The shipped filesystem convention inside a Workflow is `stages/` with numbered directories and up to four role files:
+The shipped filesystem convention inside a Workflow is `stages/` with numbered directories and up to four Stage Action files:
 
 ```text
 workflow/
@@ -64,20 +64,20 @@ workflow/
       verify-down
 ```
 
-Both verifiers are optional. A stage needs at least one mutation; a verifier needs its matching mutation. Required missing mutations make traversal unavailable. Stage numbers are unique positive numeric prefixes, sorted numerically; gaps are allowed. No workflow YAML/TOML is used.
+Both verifiers are optional. A Stage is a meaningful user-defined state transition, and one Stage Action may run multiple commands or application operations. Stage boundaries are not one-command or one-infrastructure-operation boundaries. Required atomicity belongs inside one Stage Action; separate Stage Actions are not transactional. A stage needs at least one mutation; a verifier needs its matching mutation. Required missing mutations make traversal unavailable. Stage numbers are unique positive numeric prefixes, sorted numerically; gaps are allowed. No workflow YAML/TOML is used.
 
 ```text
 up   -> optional verify-up   -> accept higher position
 down -> optional verify-down -> accept lower position
 ```
 
-The author is responsible for correctness and reversibility. A role name is not a sandbox or proof of side-effect freedom. Exact execution mechanics are in the [executable reference](../reference/stage-executables.md).
+The author is responsible for correctness and reversibility. A Stage Action name is not a sandbox or proof of side-effect freedom. Exact execution mechanics are in the [executable reference](../reference/stage-executables.md).
 
 ## Entry architecture: CLI and loopback browser UI
 
 CLI is the implemented Application-driving adapter. It parses intent, calls Application use cases and renders results. Transition rules do not live in CLI. The executable entry point constructs concrete dependencies explicitly. See [ADR-0005](../decisions/0005-cli-first-driving-adapter.md).
 
-[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The platform-neutral `control-tower ui` command prints a plain local URL for manual browser opening, serves workflow inventory and selected-workflow movement/definition APIs, and sends SSE role observations. Production does not require Vite or Node.
+[ADR-0006](../decisions/0006-loopback-web-ui.md) selects the graphical Entry: a built React frontend served by the Rust process over loopback HTTP. The platform-neutral `control-tower ui` command prints a plain local URL for manual browser opening, serves workflow inventory and selected-workflow movement/definition APIs, and sends SSE Stage Action observations. Production does not require Vite or Node.
 
 The UI Entry composes Workbench inside the CLI package rather than shelling out to the CLI or changing Application ownership. Workspace scope comes from the launch directory, which must have a valid `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. Startup inventory reads directory names under `workflows/` and uses the configured label. It does not open sibling databases or validate stages. Each selected workflow is composed and read inside a blocking Entry operation; an unprepared or malformed sibling does not prevent use of a healthy workflow. The UI does not bootstrap, migrate or repair storage. The normal executable embeds prebuilt assets. The UI is desktop-only; exact component styling remains an implementation detail.
 
@@ -99,7 +99,7 @@ snapshots, and the blocking movement/inspection bridge. Entry composition stays
 explicit in `deps.rs`; the test harness is separate. This split adds no Application
 services, shared Workbench requirements, or persistence model.
 
-Application offers synchronous observations before and after each actual role attempt. CLI renders captured output/results before the next role is attempted. The UI maps those observations to SSE and keeps the latest in-process attempt for the selected workflow. It converts each completed role's captured stdout/stderr to separate displayable text in the snapshot, so completed mutation output remains available while a later verifier runs. The Application outcome and Infrastructure runner retain their existing raw bytes. True byte-by-byte process-output streaming is deferred until real use demonstrates that role-level running/completed state plus finished output is insufficient.
+Application offers synchronous observations before and after each actual Stage Action attempt. CLI renders captured output/results before the next Stage Action is attempted. The UI maps those observations to SSE and keeps the latest in-process attempt for the selected workflow. It converts each completed Stage Action's captured stdout/stderr to separate displayable text in the snapshot, so completed mutation output remains available while a later verifier runs. The Application outcome and Infrastructure runner retain their existing raw bytes. True byte-by-byte process-output streaming is deferred until real use demonstrates that Stage Action running/completed state plus finished output is insufficient.
 
 The `control-tower db` subcommands perform explicit operational database setup through the primary CLI. They call Database-owned operations before workbench composition; ordinary workbench commands do not bootstrap or migrate storage.
 
@@ -131,7 +131,7 @@ text, while temporarily disabled movement choices remain buttons. Issue #13's re
 kept the current rendered workflow/stage row spacing, typography and checkpoint
 presentation; it selected only the bounded resize/search/gutter/dock polish.
 
-Primary actions describe intent such as **Run next**, **Run to Stage 3 · Add suffix**, **Run all**, **Retry verification**, or **Back out 003 -> 002**. Mechanical role detail such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
+Primary actions describe intent such as **Run next**, **Run to Stage 3 · Add suffix**, **Run all**, **Retry verification**, or **Back out 003 -> 002**. The concrete Stage Action names such as `up -> verify-up` can appear as explanatory subtext. Application remains authoritative for the available actions.
 
 The interface is explicitly desktop-only. Responsive breakpoints must not turn the workbench into stacked cards, hamburger navigation, temporary mobile drawers, bottom sheets or a single-pane drill-down flow. Manual rail collapse is a user choice, not responsive behavior.
 
@@ -166,7 +166,7 @@ Domain is deliberately absent in the current implementation: the modeled types r
 
 Application uses `WorkbenchQueries::read_checkpoint()` for an independent read and `WorkbenchWrites::record_checkpoint()` for one independent singleton upsert. Absence is `Option`; no Application-managed transaction is claimed across scripts or checkpoints, so no Store/UoW was added. The Query adapter uses a read-only connection and the Write adapter an existing read-write connection to the same local file.
 
-Checkpoint proposals are published to confirmed Application state only after a successful write. A save failure returns the latest confirmed state, attempted update, original error and all collected role results; further roles/writes stop. An absent initial row means default baseline, not a fabricated saved row. Last-confirmed bookkeeping does not prove current database contents after an ambiguous storage error.
+Checkpoint proposals are published to confirmed Application state only after a successful write. A save failure returns the latest confirmed state, attempted update, original error and all collected Stage Action results; further Stage Actions/writes stop. An absent initial row means default baseline, not a fabricated saved row. Last-confirmed bookkeeping does not prove current database contents after an ambiguous storage error.
 
 ### SQLite library and SQL default departure
 
@@ -194,7 +194,7 @@ The [run-semantics validation](../research/run-semantics-validation.md) records 
 
 ## V0 state handoff is intentionally minimal
 
-The shipped runner generates one UUID before a run's first mutation and supplies it to every role. The original UUID-file sample uses it to name a file; it does not generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
+The shipped runner generates one UUID before a run's first mutation and supplies it to every Stage Action. The original UUID-file sample uses it to name a file; it does not generate and publish an ID back to the runner. Stdout is output for the user, not a parsed state-update channel.
 
 This distinction is recorded in [ADR-0003's implementation observation](../decisions/0003-session-state-and-process-io.md#current-implementation-observation). The UUID-file sample proves a shared runner token and navigation. The optional [generated-ID sample](../../examples/simple/workflows/generated-id/README.md) demonstrates an author-owned JSON handoff and separate application SQLite database through the existing executable contract; it adds Python only as an example prerequisite. Managed script-produced context remains unimplemented; the example does not accept ADR-0003's broader proposals.
 
@@ -220,6 +220,6 @@ A workflow-wide reset executable remains a future idea, not a current command. D
 
 ## What still has not earned scope
 
-The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are implemented as a platform-neutral loopback browser workbench. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped role-definition text. Declarative movement, SSE role observations, completed text output and outcome-specific recovery are implemented in the UI Entry. Native app packaging, workspace switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
+The graphical UI delivery architecture and desktop shell in ADR-0006/ADR-0007 are implemented as a platform-neutral loopback browser workbench. The frontend uses three simultaneously visible regions with deliberate rail collapse; it preserves selection/checkpoint distinction and escaped Stage Action definition text. Declarative movement, SSE Stage Action observations, completed text output and outcome-specific recovery are implemented in the UI Entry. Native app packaging, workspace switching, persistent execution history, mobile/tablet responsive behavior, WebSockets and live byte-by-byte stdout/stderr streaming remain outside the selected scope. Helper ecosystems, generalized context protocol, automatic mutation retry, crash recovery, concurrent-instance coordination, structural-drift protection and an external transaction system also remain outside the implemented scope.
 
 The first discovery and correction rounds have implementation evidence. The next useful input is actual use, not replaying the historical discovery queue as setup work. [Open questions](open-questions.md) keeps that future work separate; the [discovery brief](discovery-brief.md) and [earlier probe](three-step-workspace.md) remain historical inputs.

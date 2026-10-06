@@ -51,7 +51,7 @@ For the Node workflow:
 npm ci --ignore-scripts --no-audit --no-fund
 ```
 
-Node roles resolve example-owned `dayjs` through normal ancestor lookup.
+Node Stage Actions resolve example-owned `dayjs` through normal ancestor lookup.
 The UUID workflow needs neither setup command; generated-ID uses only Python's
 standard library. PostgreSQL server/schema setup is documented in its workflow.
 

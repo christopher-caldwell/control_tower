@@ -4,7 +4,7 @@ title: Browser workbench
 type: reference
 status: maintained
 created: '2026-10-02'
-updated: '2026-10-05'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -147,18 +147,18 @@ reconstruct legal movements from checkpoint arithmetic or definition files. Pend
 remains separate from these controls. A verifier failure observed in the current attempt can supply
 Application-owned retry-only verification and reversal choices. Mutation and
 verification results are shown separately. A cold pending checkpoint does not
-fabricate a verifier failure, and a historical accepted stage without retained role
+fabricate a verifier failure, and a historical accepted stage without retained Stage Action
 evidence is shown as applied with history unavailable.
 
 The selected-stage inspector shows checkpoint state, mutation and verification
 results, relevant stdout/stderr, and the stage's executable definitions. Reading a
 definition is inspection only. Full normal file contents are displayed as escaped
-text; ordinary read errors are shown beside the affected role. No fixed-size preview
+text; ordinary read errors are shown beside the affected Stage Action. No fixed-size preview
 or truncation contract is applied.
 
 If current status cannot be read, the stage list, checkpoint and movement choices
 are omitted and movement stays disabled. The status error is shown, and the latest
-role results this host observed remain in the inspector with their separate
+Stage Action results this host observed remain in the inspector with their separate
 stdout/stderr, labelled as observed output rather than current state.
 
 ## HTTP and observations
@@ -174,7 +174,7 @@ The API uses the same loopback origin as the embedded UI and has four capabiliti
 
 The movement request copies `completed_stage_count`, `uuid`, and `pending` from the
 shown checkpoint. Application compares that complete expected state to the fresh
-stored state before it launches a role or writes a checkpoint. A mismatch returns
+stored state before it launches a Stage Action or writes a checkpoint. A mismatch returns
 409 `stale_checkpoint`; an overlapping request for the same workflow returns 409
 `workflow_busy`. Both use `{ "error": { "code": string, "message": string } }`.
 A completed request returns 204. HTTP does not decide legal movement targets or call
@@ -190,9 +190,9 @@ the action dock until another explicit submission or workflow selection.
 
 SSE begins with the current selected-workflow snapshot; reconnecting observes state
 without replaying commands. The snapshot carries status, movement choices, busy
-state, the latest movement outcome, role results, and buffered role output. Starting
-and finished callbacks report semantic role state. Stdout and stderr are attached as
-separate displayable text when that role returns. Normal text is decoded lossily at
+state, the latest movement outcome, Stage Action results, and buffered Stage Action output. Starting
+and finished callbacks report semantic Stage Action state. Stdout and stderr are attached as
+separate displayable text when that Stage Action returns. Normal text is decoded lossily at
 the outer UI boundary and rendered as inert text. There is no raw-byte download API,
 output identifier/cache, WebSocket, or byte-by-byte process stream.
 
@@ -213,7 +213,7 @@ implementations.
 
 Stop the UI host from its launching terminal when finished. Stopping the host does
 not roll back author-owned effects; inspect the workflow and external systems if a
-role was interrupted. Closing a tab or losing a POST response does not itself cancel
+Stage Action was interrupted. Closing a tab or losing a POST response does not itself cancel
 a movement, and the browser does not retry a movement automatically.
 
 ## Design references

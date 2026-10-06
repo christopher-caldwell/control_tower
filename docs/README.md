@@ -4,7 +4,7 @@ title: Control Tower documentation
 type: index
 status: maintained
 created: '2026-09-30'
-updated: '2026-10-05'
+updated: '2026-10-06'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -15,7 +15,7 @@ sources:
 
 # Control Tower documentation
 
-Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workflow behavior; the browser adds workspace-local workflow discovery, declarative movement, and role-result inspection. Start with the canonical walkthrough; the architecture history is not a setup prerequisite.
+Control Tower is a local workbench for user-owned executable stages. The CLI and loopback browser UI drive the same workflow behavior; the browser adds workspace-local workflow discovery, declarative movement, and Stage Action result inspection. Start with the canonical walkthrough; the architecture history is not a setup prerequisite.
 
 ## Using Control Tower
 
@@ -25,13 +25,13 @@ Follow [Get started](guides/getting-started.md) for the single numbered human wa
 | --- | --- |
 | Give a coding agent version-matched Control Tower guidance | [`control-tower guide`](reference/cli.md#agent-guidance-and-validation) and the [dispatcher Skill](../skills/control-tower/SKILL.md) |
 | Inspect workflows in a browser | [Browser workbench](reference/browser-workbench.md) |
-| Understand stage boundaries and role authoring | [Create a workflow](guides/creating-a-workflow.md) |
+| Understand stage boundaries and Stage Action authoring | [Create a workflow](guides/creating-a-workflow.md) |
 | See the stages used by the walkthrough | [Three-stage UUID-file example](../examples/simple/workflows/uuid-file/README.md) |
 | Carry an application-generated ID between stages | [Optional two-stage SQLite/JSON example](../examples/simple/workflows/generated-id/README.md) (Python 3) |
 | Choose a usage pattern | [Example gallery](../examples/README.md) |
 | Retry a check or back out unfinished work | [Navigation and verification](guides/verification-and-navigation.md) |
 | Look up commands and database operations | [CLI reference](reference/cli.md) |
-| Look up role names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
+| Look up Stage Action names, paths and environment variables | [Executable contract](reference/stage-executables.md) |
 | Diagnose setup or script failures | [Troubleshooting](guides/troubleshooting.md) |
 | Contribute or work on the UI | [Development and contribution](guides/development.md) |
 
