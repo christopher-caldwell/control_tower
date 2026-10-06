@@ -7,6 +7,28 @@ import type { Plugin } from 'vite'
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
+const findUiStartupUrl = (output: string): string | undefined => {
+  const prefix = 'Control Tower UI: '
+  const prefixIndex = output.indexOf(prefix)
+  if (prefixIndex < 0) return undefined
+
+  const escape = String.fromCharCode(27)
+  const hyperlinkOpen = `${escape}]8;;`
+  const hyperlinkClose = `${escape}\\`
+  let urlStart = prefixIndex + prefix.length
+  let hyperlinkTarget: string | undefined
+  if (output.startsWith(hyperlinkOpen, urlStart)) {
+    const targetStart = urlStart + hyperlinkOpen.length
+    const closeIndex = output.indexOf(hyperlinkClose, targetStart)
+    if (closeIndex < 0) return undefined
+    hyperlinkTarget = output.slice(targetStart, closeIndex)
+    urlStart = closeIndex + hyperlinkClose.length
+  }
+
+  const url = /^http:\/\/127\.0\.0\.1:\d+/.exec(output.slice(urlStart))?.[0]
+  return url && (hyperlinkTarget === undefined || hyperlinkTarget === url) ? url : undefined
+}
+
 /** Own the real API and sample workspace for a Vite development session. */
 export const workspaceBackend = (): Plugin => {
   const children = new Set<ChildProcess>()
@@ -104,10 +126,7 @@ export const workspaceBackend = (): Plugin => {
           backend.once('exit', (code, signal) => fail(new Error(`Control Tower API exited (${signal ?? code}).`)))
           backend.stdout!.on('data', (chunk: Buffer) => {
             output += chunk.toString()
-            const url =
-              /Control Tower UI: (?:\x1b\]8;;http:\/\/127\.0\.0\.1:\d+\x1b\\)?(http:\/\/127\.0\.0\.1:\d+)/.exec(
-                output,
-              )?.[1]
+            const url = findUiStartupUrl(output)
             if (url) {
               clearTimeout(timer)
               resolve(url)
