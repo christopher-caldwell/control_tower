@@ -34,7 +34,7 @@ The package is `control-tower-cli`; its executable is `control-tower`. For datab
 cargo run --locked --manifest-path /path/to/control_tower/Cargo.toml -p control-tower-cli -- db verify-local --workflow workflows/my-workflow
 ```
 
-The invocation current directory is the Workspace root and must contain a valid `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. Relative workflow paths are resolved against that root. Use an absolute path when changing Workspace directories between invocations.
+The invocation current directory identifies the Workspace and must contain a valid `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. Run each workflow-scoped command from that Workspace root and select the Workflow with `--workflow`; paths such as `workflows/my-workflow` are the normal form.
 
 ## Workbench commands
 
@@ -136,7 +136,7 @@ control-tower db migrate-local --workflow PATH
 control-tower db verify-local --workflow PATH
 ```
 
-These require `--workflow PATH`, like every other workflow-scoped command. The path must already be a directory under the Workspace root or an absolute directory. All operate on `PATH/.control_tower/state.sqlite3`.
+These require `--workflow PATH`, like every other workflow-scoped command. Run them from the Workspace root and select the Workflow, normally with a path such as `workflows/my-workflow`. All operate on `PATH/.control_tower/state.sqlite3`.
 
 | Operation | Effect |
 | --- | --- |

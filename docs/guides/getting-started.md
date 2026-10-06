@@ -143,7 +143,7 @@ The recipe creates the selected skills directory and updates existing skill file
 
 Ensure Cargo's install directory is on your `PATH` (normally `~/.cargo/bin`, as described in the [Rust installation notes](https://rust-lang.org/tools/install/)). Only `control-tower` needs to be installed; database preparation remains explicit through its `db` subcommands.
 
-You can use an absolute workflow path while the invocation current directory is the Workspace root:
+The invocation current directory identifies the Workspace. Run workflow-scoped commands from that Workspace root and pass `--workflow` to select a Workflow:
 
 ```sh
 cd "$example"
