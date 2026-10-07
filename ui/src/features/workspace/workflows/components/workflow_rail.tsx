@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Group,
   Loader,
@@ -45,9 +44,6 @@ export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggle
         {collapsed ? null : (
           <>
             <Title order={2}>Workflows</Title>
-            <Badge color="violet" variant="light">
-              {model.workspace?.workflows.length ?? '—'}
-            </Badge>
           </>
         )}
         <Tooltip label={collapsed ? 'Expand workflow rail' : 'Collapse workflow rail'}>
@@ -63,11 +59,16 @@ export const WorkflowRail: FC<WorkflowRailProps> = ({ model, collapsed, onToggle
       <Stack gap="xs" className={styles.scroll} p={collapsed ? 8 : 12}>
         {!collapsed ? (
           <TextInput
-            label="Search workflows"
+            aria-label="Search workflows"
             placeholder="Search workflows"
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
+        ) : null}
+        {!collapsed ? (
+          <Text size="xs" c="dimmed">
+            <span>{model.workspace?.workflows.length ?? '—'}</span> {workflows.length === 1 ? 'workflow' : 'workflows'}
+          </Text>
         ) : null}
         {shouldShowLoading ? (
           <Group>

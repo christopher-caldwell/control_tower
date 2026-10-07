@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@mantine/core'
-import { Button, Group, Stack, Text, Tooltip } from '@mantine/core'
+import { Button, Stack, Text, Tooltip } from '@mantine/core'
 import { IconArrowBackUp, IconArrowRight } from '@tabler/icons-react'
 import type { FC } from 'react'
 
@@ -20,14 +20,16 @@ export const MovementDock: FC<MovementDockProps> = ({ model, unavailableLabel })
   return (
     <Stack className={styles.dock} gap="sm">
       <MovementFeedback issue={model.movementIssue} />
-      <Group justify="flex-end" gap="sm">
-        {alternate ? <MovementButton action={alternate} model={model} isSecondary /> : null}
+      <div className={styles.dockActions}>
+        <div className={styles.secondaryActions}>
+          {alternate ? <MovementButton action={alternate} model={model} isSecondary /> : null}
+          {model.forward.to ? <MovementButton action={model.forward.to} model={model} /> : null}
+          {model.forward.all ? <MovementButton action={model.forward.all} model={model} /> : null}
+        </div>
         {model.forward.next ? <MovementButton action={model.forward.next} model={model} /> : null}
-        {model.forward.to ? <MovementButton action={model.forward.to} model={model} /> : null}
-        {model.forward.all ? <MovementButton action={model.forward.all} model={model} /> : null}
         {defaultPrimaryAction ? <MovementButton action={defaultPrimaryAction} model={model} /> : null}
         {hasPrimaryAction ? null : <Text c="dimmed">{unavailableLabel}</Text>}
-      </Group>
+      </div>
     </Stack>
   )
 }
@@ -42,9 +44,11 @@ const MovementButton: FC<MovementButtonProps> = ({ action, model, isSecondary = 
   const isLoading = model.pendingMovement?.label === action.label
   const canMove = model.canSubmitMovement && model.workflow?.checkpoint !== null
   return (
-    <Tooltip label={action.label} disabled={action.label.length <= 60} multiline maw={360}>
+    <Tooltip label={action.label} disabled={isPrimaryAction} multiline maw={360}>
       <Button
         size="sm"
+        className={isPrimaryAction || action === model.forward.all ? styles.fixedButton : styles.movementButton}
+        classNames={{ label: styles.movementLabel }}
         maw="100%"
         variant={variant}
         loading={isLoading}

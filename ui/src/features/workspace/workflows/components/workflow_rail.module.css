@@ -17,9 +17,9 @@
   min-height: 0;
   overflow: auto;
 }
-.workflow {
+.workflow.workflow {
   width: 100%;
-  padding: 12px;
+  padding: 8px 16px;
   border-radius: var(--mantine-radius-sm);
   overflow-wrap: anywhere;
 }

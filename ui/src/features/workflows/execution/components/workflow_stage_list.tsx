@@ -43,15 +43,12 @@ const WorkflowStageItem: FC<WorkflowStageItemProps> = ({ stage, workflow, isSele
   const isActiveStage = workflow.observation?.active_role?.stage.number === stage.number
   const activeRole = isActiveStage ? (workflow.observation?.active_role?.role ?? null) : null
   const stateLabel = getStageStateLabel(stage)
-  const stateColor = getStageStateColor(stage)
   return (
     <UnstyledButton className={styles.stage} data-selected={isSelected} aria-pressed={isSelected} onClick={onSelect}>
-      <Group wrap="nowrap" align="flex-start">
-        <Badge color={stateColor} variant="light" h={32} miw={40} radius="xl">
-          <Text size="xs" fw={700}>
-            {stage.number}
-          </Text>
-        </Badge>
+      <Group wrap="nowrap" align="center">
+        <Text size="sm" fw={700} className={styles.stageNumber}>
+          {stage.number}
+        </Text>
         <Stack gap={4} className={styles.stageCopy}>
           <Group gap={6}>
             <Text size="xs" c={stage.state === 'pending' ? 'yellow.3' : 'dimmed'}>
@@ -83,10 +80,4 @@ const getStageStateLabel = (stage: StageView): string => {
   if (stage.state === 'accepted') return 'Applied'
   if (stage.state === 'pending') return 'Pending transition'
   return 'Not applied'
-}
-
-const getStageStateColor = (stage: StageView): string => {
-  if (stage.state === 'accepted') return 'green'
-  if (stage.state === 'pending') return 'yellow'
-  return 'gray'
 }

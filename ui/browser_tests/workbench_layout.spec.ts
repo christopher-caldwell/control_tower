@@ -332,6 +332,15 @@ test('forward dock emphasis and no-action status use the selected presentation',
   await page.getByText('verify', { exact: true }).click()
   await expect(page.getByRole('button', { name: /Run to/ })).toHaveAttribute('data-variant', 'light')
   await expect(page.getByRole('button', { name: 'Run all' })).toHaveAttribute('data-variant', 'light')
+  const dock = page.locator('[class*="dockActions"]')
+  const buttons = await dock.getByRole('button').all()
+  const boxes = await Promise.all(buttons.map((button) => button.boundingBox()))
+  const nextBox = boxes.at(-1)!
+  for (const box of boxes.slice(0, -1)) {
+    expect(box!.y).toBe(nextBox.y)
+    expect(box!.x + box!.width).toBeLessThan(nextBox.x)
+  }
+  await expect(buttons.at(-1)!).toHaveText('Run next')
 })
 
 test('long forward targets stay discoverable through hover and keyboard focus', async ({ page }) => {
@@ -383,7 +392,7 @@ test('inspector width resizes by pointer and keyboard and restores from width-on
     await page
       .getByRole('button', { name: new RegExp(longStageName) })
       .evaluate((element) => getComputedStyle(element).paddingTop),
-  ).toBe('0px')
+  ).toBe('12px')
   expect(await api.movementRequests()).toBe(0)
 
   await separator.focus()
@@ -581,10 +590,10 @@ test('workflow search filters inventory without changing selection or issuing in
     await page
       .getByRole('button', { name: 'Alpha Workflow', exact: true })
       .evaluate((el) => getComputedStyle(el).padding),
-  ).toBe('0px')
+  ).toBe('8px 16px')
   expect(
     await page.getByRole('button', { name: /Not applied finish/ }).evaluate((el) => getComputedStyle(el).padding),
-  ).toBe('0px')
+  ).toBe('12px 14px')
   expect(
     await page
       .getByRole('button', { name: 'Alpha Workflow', exact: true })

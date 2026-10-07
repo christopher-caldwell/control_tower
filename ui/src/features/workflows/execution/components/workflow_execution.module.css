@@ -16,9 +16,9 @@
   background: var(--mantine-color-dark-7);
   flex-shrink: 0;
 }
-.stage {
+.stage.stage {
   width: 100%;
-  padding: 16px 14px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--mantine-color-dark-5);
 }
 .stage:hover {
@@ -36,4 +36,33 @@
 .longText {
   overflow-wrap: anywhere;
   min-width: 0;
+}
+
+.stageNumber {
+  min-width: 26px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.dockActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.secondaryActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.movementButton {
+  min-width: 0;
+  flex-shrink: 1;
+}
+.fixedButton {
+  flex-shrink: 0;
+}
+.movementLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
