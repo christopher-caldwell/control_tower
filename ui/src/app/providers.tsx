@@ -1,9 +1,23 @@
 import '@mantine/core/styles.css'
+import '@mantine/code-highlight/styles.css'
+import 'highlight.js/styles/github-dark.css'
 
+import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight'
 import { createTheme, MantineProvider } from '@mantine/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
+import javascript from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import typescript from 'highlight.js/lib/languages/typescript'
 import type { FC, PropsWithChildren } from 'react'
 import { useState } from 'react'
+
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('typescript', typescript)
+const codeAdapter = createHighlightJsAdapter(hljs)
 
 const theme = createTheme({
   primaryColor: 'violet',
@@ -55,7 +69,7 @@ export const AppProviders: FC<AppProvidersProps> = ({ children }) => {
           dark: {},
         })}
       >
-        {children}
+        <CodeHighlightAdapterProvider adapter={codeAdapter}>{children}</CodeHighlightAdapterProvider>
       </MantineProvider>
     </QueryClientProvider>
   )

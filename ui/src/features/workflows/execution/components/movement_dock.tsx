@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@mantine/core'
-import { Button, Stack, Text, Tooltip } from '@mantine/core'
+import { Button, Stack, Text } from '@mantine/core'
 import { IconArrowBackUp, IconArrowRight } from '@tabler/icons-react'
 import type { FC } from 'react'
 
@@ -44,20 +44,18 @@ const MovementButton: FC<MovementButtonProps> = ({ action, model, isSecondary = 
   const isLoading = model.pendingMovement?.label === action.label
   const canMove = model.canSubmitMovement && model.workflow?.checkpoint !== null
   return (
-    <Tooltip label={action.label} disabled={isPrimaryAction} multiline maw={360}>
-      <Button
-        size="sm"
-        className={isPrimaryAction || action === model.forward.all ? styles.fixedButton : styles.movementButton}
-        classNames={{ label: styles.movementLabel }}
-        maw="100%"
-        variant={variant}
-        loading={isLoading}
-        disabled={!canMove}
-        onClick={() => void model.run(action)}
-        rightSection={isSecondary ? <IconArrowBackUp size={16} /> : <IconArrowRight size={16} />}
-      >
-        {action.label}
-      </Button>
-    </Tooltip>
+    <Button
+      size="sm"
+      className={isPrimaryAction || action === model.forward.all ? styles.fixedButton : styles.movementButton}
+      classNames={{ label: styles.movementLabel }}
+      maw="100%"
+      variant={variant}
+      loading={isLoading}
+      disabled={!canMove}
+      onClick={() => void model.run(action)}
+      rightSection={isSecondary ? <IconArrowBackUp size={16} /> : <IconArrowRight size={16} />}
+    >
+      {action.label}
+    </Button>
   )
 }

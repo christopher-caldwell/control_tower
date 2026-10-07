@@ -1,3 +1,4 @@
+import { CodeHighlight } from '@mantine/code-highlight'
 import { Accordion, Alert, Button, Group, Loader, Text } from '@mantine/core'
 import type { FC } from 'react'
 
@@ -42,10 +43,24 @@ export const ExecutableDefinitions: FC<ExecutableDefinitionsProps> = ({ definiti
               {item.issue}
             </Text>
           ) : (
-            <pre className={styles.code}>{item.contents}</pre>
+            <CodeHighlight
+              code={item.contents ?? ''}
+              language={sourceLanguage(item.contents ?? '', item.path)}
+              className={styles.sourceCode}
+              expanded
+            />
           )}
         </div>
       ))}
     </Accordion.Panel>
   </Accordion.Item>
 )
+
+const sourceLanguage = (contents: string, path: string): string => {
+  const interpreter = contents.split('\n', 1)[0]
+  if (/\.(tsx?|mts|cts)$/.test(path) || /\btsx\b|\bts-node\b/.test(interpreter)) return 'typescript'
+  if (/\.(mjs|cjs|jsx?)$/.test(path) || /\bnode\b/.test(interpreter)) return 'javascript'
+  if (/\.py$/.test(path) || /\bpython[\d.]*\b/.test(interpreter)) return 'python'
+  if (/\.sh$/.test(path) || /\b(bash|sh|zsh)\b/.test(interpreter)) return 'bash'
+  return 'plaintext'
+}

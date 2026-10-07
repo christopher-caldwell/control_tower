@@ -21,7 +21,7 @@ export const WorkflowSummary: FC<WorkflowSummaryProps> = ({ model, selectedWorkf
       ? 'Connection lost. Reconnecting to the live view…'
       : 'Waiting for a fresh workflow snapshot…'
   return (
-    <>
+    <div className={styles.summary}>
       <Group justify="space-between" align="flex-start" mb="xl">
         <Stack gap={4} style={{ flex: '1 1 180px', minWidth: 0 }}>
           <Text size="xs" c="dimmed">
@@ -60,7 +60,7 @@ export const WorkflowSummary: FC<WorkflowSummaryProps> = ({ model, selectedWorkf
           </Button>
         </Group>
       ) : null}
-    </>
+    </div>
   )
 }
 

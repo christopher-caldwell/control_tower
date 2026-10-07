@@ -13,23 +13,25 @@ export const WorkflowStageList: FC<WorkflowStageListProps> = ({ model }) => {
   if (!workflow?.checkpoint) return null
   const countLabel = workflow.stages.length === 1 ? 'stage' : 'stages'
   return (
-    <>
+    <section className={styles.stageSection} aria-label="Workflow stages">
       <Group justify="space-between" mb="sm">
         <Title order={2}>Stages</Title>
         <Text size="xs" c="dimmed">
           {workflow.stages.length} {countLabel}
         </Text>
       </Group>
-      {workflow.stages.map((stage) => (
-        <WorkflowStageItem
-          key={stage.number}
-          stage={stage}
-          isSelected={stage.number === model.selectedStageNumber}
-          workflow={workflow}
-          onSelect={() => model.chooseStage(stage.number)}
-        />
-      ))}
-    </>
+      <div className={styles.stageScroll}>
+        {workflow.stages.map((stage) => (
+          <WorkflowStageItem
+            key={stage.number}
+            stage={stage}
+            isSelected={stage.number === model.selectedStageNumber}
+            workflow={workflow}
+            onSelect={() => model.chooseStage(stage.number)}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -42,6 +44,19 @@ type WorkflowStageItemProps = {
 const WorkflowStageItem: FC<WorkflowStageItemProps> = ({ stage, workflow, isSelected, onSelect }) => {
   const isActiveStage = workflow.observation?.active_role?.stage.number === stage.number
   const activeRole = isActiveStage ? (workflow.observation?.active_role?.role ?? null) : null
+  const failure = workflow.observation?.failure
+  const failedRoles = new Set(
+    workflow.observation?.role_results
+      .filter(
+        (result) =>
+          result.stage.number === stage.number && (result.state === 'failed' || result.state === 'launch_failed'),
+      )
+      .map((result) => result.role),
+  )
+  if (failure?.stage?.number === stage.number && failure.role) failedRoles.add(failure.role)
+  let stateColor = 'dimmed'
+  if (stage.state === 'accepted') stateColor = 'green.4'
+  if (stage.state === 'pending') stateColor = 'yellow.3'
   const stateLabel = getStageStateLabel(stage)
   return (
     <UnstyledButton className={styles.stage} data-selected={isSelected} aria-pressed={isSelected} onClick={onSelect}>
@@ -51,7 +66,7 @@ const WorkflowStageItem: FC<WorkflowStageItemProps> = ({ stage, workflow, isSele
         </Text>
         <Stack gap={4} className={styles.stageCopy}>
           <Group gap={6}>
-            <Text size="xs" c={stage.state === 'pending' ? 'yellow.3' : 'dimmed'}>
+            <Text size="xs" c={stateColor}>
               {stateLabel}
             </Text>
             {stage.is_accepted_checkpoint ? (
@@ -59,6 +74,11 @@ const WorkflowStageItem: FC<WorkflowStageItemProps> = ({ stage, workflow, isSele
                 Checkpoint
               </Badge>
             ) : null}
+            {Array.from(failedRoles).map((role) => (
+              <Badge key={role} color="red" size="xs">
+                {role} – failed
+              </Badge>
+            ))}
             {activeRole ? (
               <Badge color="teal" size="xs">
                 Running {activeRole}

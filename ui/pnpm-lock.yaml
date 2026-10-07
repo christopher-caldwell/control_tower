@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@mantine/code-highlight':
+        specifier: 8.3.18
+        version: 8.3.18(@mantine/core@8.3.18(@mantine/hooks@8.3.18(react@19.3.0))(@types/react@19.2.14)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@8.3.18(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@mantine/core':
         specifier: ^8.3.0
         version: 8.3.18(@mantine/hooks@8.3.18(react@19.3.0))(@types/react@19.2.14)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -23,6 +26,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.1.1
         version: 6.1.1(vite@8.3.2(@types/node@22.20.5))
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -224,6 +230,14 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@mantine/code-highlight@8.3.18':
+    resolution: {integrity: sha512-/KAxx+H9YfzKK8jv10XB/tJNV8IWCY3axbTmyij4VnLp1ivAInU7GLv9NzdXPHTx4JazIGxMwrrVANQD4QaQjA==}
+    peerDependencies:
+      '@mantine/core': 8.3.18
+      '@mantine/hooks': 8.3.18
+      react: ^18.x || ^19.x
+      react-dom: ^18.x || ^19.x
 
   '@mantine/core@8.3.18':
     resolution: {integrity: sha512-9tph1lTVogKPjTx02eUxDUOdXacPzK62UuSqb4TdGliI54/Xgxftq0Dfqu6XuhCxn9J5MDJaNiLDvL/1KRkYqA==}
@@ -895,6 +909,10 @@ packages:
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
@@ -1671,6 +1689,14 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  '@mantine/code-highlight@8.3.18(@mantine/core@8.3.18(@mantine/hooks@8.3.18(react@19.3.0))(@types/react@19.2.14)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@mantine/hooks@8.3.18(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+    dependencies:
+      '@mantine/core': 8.3.18(@mantine/hooks@8.3.18(react@19.3.0))(@types/react@19.2.14)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@mantine/hooks': 8.3.18(react@19.3.0)
+      clsx: 2.1.1
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
+
   '@mantine/core@8.3.18(@mantine/hooks@8.3.18(react@19.3.0))(@types/react@19.2.14)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@floating-ui/react': 0.27.20(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2222,6 +2248,8 @@ snapshots:
   globals@14.0.0: {}
 
   has-flag@4.0.0: {}
+
+  highlight.js@11.12.0: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:

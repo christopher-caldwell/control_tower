@@ -22,7 +22,7 @@ export const WorkflowExecution: FC<WorkflowExecutionProps> = ({
   unavailableLabel,
 }) => (
   <main className={styles.center} aria-label="Ordered stages">
-    <div className={styles.stageScroll}>
+    <div className={styles.executionBody}>
       <WorkflowSummary model={model} selectedWorkflow={selectedWorkflow} />
       <WorkflowStageList model={model} />
       {emptyStateMessage ? <EmptyWorkflowState message={emptyStateMessage} /> : null}

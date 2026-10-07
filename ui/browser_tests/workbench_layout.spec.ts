@@ -343,7 +343,7 @@ test('forward dock emphasis and no-action status use the selected presentation',
   await expect(buttons.at(-1)!).toHaveText('Run next')
 })
 
-test('long forward targets stay discoverable through hover and keyboard focus', async ({ page }) => {
+test('long forward targets retain accessible labels without tooltips', async ({ page }) => {
   const api = await installFixtures(page, false, undefined, workflowWithLongTarget)
   await page.getByText(longTargetName, { exact: true }).click()
   const label = 'Run to Stage 500 · ' + longTargetName
@@ -351,7 +351,7 @@ test('long forward targets stay discoverable through hover and keyboard focus', 
   await expect(runTo).toBeVisible()
   await expect(runTo).toHaveAttribute('data-variant', 'light')
   await runTo.hover()
-  await expect(page.getByRole('tooltip')).toHaveText(label)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
 
   const runNext = page.getByRole('button', { name: 'Run next' })
   await runNext.hover()
@@ -720,4 +720,67 @@ test('a lost movement response is reported without automatic resubmission', asyn
   await expect(page.getByText(/Movement response was not confirmed/)).toBeVisible()
   await page.waitForTimeout(250)
   expect(api.movementRequests()).toBe(1)
+})
+
+test('stage failures stay visible, stages scroll independently, and output expands into a modal', async ({ page }) => {
+  const failedWorkflow: WorkflowView = {
+    ...workflow,
+    stages: [
+      ...workflow.stages,
+      ...Array.from({ length: 20 }, (_, index) => ({
+        ...workflow.stages[2],
+        number: 600 + index,
+        name: `Later stage ${index}`,
+      })),
+    ],
+    observation: {
+      direction: 'up',
+      target_stage: 200,
+      state: 'stopped',
+      active_role: null,
+      role_results: [
+        {
+          stage: { number: 200, name: 'finish' },
+          role: 'up',
+          state: 'failed',
+          exit_code: 1,
+          message: null,
+          stdout: 'Starting stage',
+          stderr: longOutput,
+        },
+      ],
+      failure: {
+        kind: 'role_failed',
+        message: 'stage 200 up exited with status 1',
+        stage: { number: 200, name: 'finish' },
+        role: 'up',
+      },
+      verification_choices: null,
+    },
+  }
+  await installFixtures(page, false, undefined, failedWorkflow)
+  const failedStage = page.getByRole('button', { name: /Not applied up – failed finish/ })
+  await failedStage.click()
+  await expect(failedStage.getByText('up – failed')).toBeVisible()
+  await expect(page.getByText('Applied', { exact: true }).first()).toHaveCSS('color', 'rgb(105, 219, 124)')
+  const heading = page.getByRole('heading', { name: 'fixture', exact: true })
+  const originalHeading = await heading.boundingBox()
+  const stageScroll = page.locator('[class*="stageScroll"]')
+  await stageScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect.poll(() => stageScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(await heading.boundingBox()).toEqual(originalHeading)
+  await expect(page.getByRole('main').getByText('stage 200 up exited with status 1')).toBeVisible()
+  const expand = page.getByRole('button', { name: 'Expand output for Stage 200 · Stage Action up' })
+  await expand.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Exit 1', { exact: true })).toBeVisible()
+  await expect(dialog.locator('pre[aria-label="stdout"]')).toHaveText('Starting stage')
+  await expect(dialog.locator('pre[aria-label="stderr"]')).toHaveText(longOutput)
+  await expect(dialog.locator('pre[aria-label="stderr"]')).toHaveCSS('max-height', 'none')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(expand).toBeFocused()
 })
