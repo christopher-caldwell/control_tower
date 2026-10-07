@@ -51,8 +51,3 @@ def require_success(result):
     if result.returncode != 0:
         raise AssertionError(f"Operation failed ({result.returncode}): {result.stderr}")
     return result
-
-
-def require_equal(actual, expected, label="value"):
-    if actual != expected:
-        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")

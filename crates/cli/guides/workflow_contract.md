@@ -42,6 +42,8 @@ The UUID is a run token, not a generated-output channel. Control Tower does not 
 
 The optional [common patterns example](../../../examples/common_patterns/README.md) demonstrates shared generated values, ordinary command-result capture, and reusable checks through author-owned libraries; those libraries are example code, not a supported SDK.
 
+Use the project's existing assertion libraries and tools for deep equality, dates, serialization, and domain comparisons. Normalize representation differences with ordinary application or test utilities rather than adding generic comparison logic to Workflow helpers. Control Tower does not supply an assertion framework.
+
 ## What validation covers
 
 `control-tower validate --workflow PATH` checks the selected workflow from the Workspace root. It checks Workspace configuration and inventory, discovers stages and reads/checks saved checkpoint state, and parses Workspace `.env` when present. It does not run `up`, `down`, `verify-up`, or `verify-down`, probe application/runtime prerequisites, and does not bootstrap, migrate, repair, or write checkpoint state.

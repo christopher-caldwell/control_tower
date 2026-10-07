@@ -23,7 +23,7 @@ export async function saveValue(key, value) {
 
 export async function loadValue(key) {
   const state = JSON.parse(await readFile(stateFile(), "utf8"));
-  if (!(key in state)) throw new Error(`Missing saved value: ${key}`);
+  if (!Object.hasOwn(state, key)) throw new Error(`Missing saved value: ${key}`);
   return state[key];
 }
 
@@ -54,8 +54,4 @@ export function capture(command, ...args) {
 export function requireSuccess(result) {
   if (result.code !== 0) throw new Error(`Operation failed (${result.code}): ${result.stderr}`);
   return result;
-}
-
-export function requireEqual(actual, expected, label = "value") {
-  if (actual !== expected) throw new Error(`${label}: expected ${expected}, got ${actual}`);
 }

@@ -4,7 +4,7 @@ title: CLI reference
 type: reference
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-06'
+updated: '2026-10-07'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -61,11 +61,17 @@ behavior as `validate`; the database operations do not load `.env`. Use the
 individual commands when you need to prepare or inspect storage separately.
 
 `control-tower guide` prints the embedded routing index and does not require a
-workflow. Its only actions are `create_workflow`, `edit_workflow`,
-`workflow_contract`, `operate_workflow`, and `recover_workflow`; each prints
+Workspace or workflow. Its only actions are `create_workspace`, `create_workflow`,
+`edit_workflow`, `workflow_contract`, `operate_workflow`, and `recover_workflow`; each prints
 its compile-time embedded Markdown. The shipped zero-guidance agent Skill is
 [`skills/control-tower/SKILL.md`](../../skills/control-tower/SKILL.md) and
 dispatches to this CLI guidance.
+
+`create_workspace` explains how to write the minimum Workspace configuration
+(`control-tower.toml` with a nonempty `[workspace].label`) and create `workflows/`,
+then hands off to `create_workflow`. A Workspace root `.env` is optional. The guide
+prints instructions only; it does not scaffold files. Use `create_workflow` in an
+existing Workspace and `edit_workflow` for an existing Workflow.
 
 `control-tower validate --workflow PATH` checks the selected workflow under the
 current Workspace root. It validates Workspace configuration and inventory,

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+import assert from "node:assert/strict";
+import { loadValue } from "../../../../lib/node/index.mjs";
 
 const saved = await loadValue("generated");
-requireEqual(typeof saved.id, "string", "generated id type");
-requireEqual(JSON.parse(saved.captured_stdout).id, saved.id, "captured evidence");
+assert.equal(typeof saved.id, "string", "generated id type");
+assert.equal(JSON.parse(saved.captured_stdout).id, saved.id, "captured evidence");

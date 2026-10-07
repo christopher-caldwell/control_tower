@@ -2,10 +2,13 @@
 import os
 import sys
 from pathlib import Path
+from unittest import TestCase
 
 sys.path.insert(0, str(Path(os.environ["CONTROL_TOWER_WORKFLOW"]).parents[1] / "lib/python"))
-from patterns import delete_value, load_value, require_equal
+from patterns import delete_value, load_value
+
+check = TestCase()
 
 saved = load_value("generated")
-require_equal(isinstance(saved["id"], str) and bool(saved["id"]), True, "generated id")
+check.assertTrue(isinstance(saved["id"], str) and bool(saved["id"]), "generated id")
 delete_value("verified")

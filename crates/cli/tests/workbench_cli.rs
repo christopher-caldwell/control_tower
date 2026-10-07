@@ -1207,6 +1207,7 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
     let workflow = Workflow::from_fixture();
     let cwd = workflow.path().join("not-a-workflow");
     fs::create_dir(&cwd).unwrap();
+    fs::write(cwd.join("TEST_PLAN.md"), "Existing project plan\n").unwrap();
     let index = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .arg("guide")
         .current_dir(&cwd)
@@ -1225,6 +1226,7 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
     assert_eq!(
         actions,
         [
+            "create_workspace",
             "create_workflow",
             "edit_workflow",
             "workflow_contract",
@@ -1235,6 +1237,7 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
     assert!(!cwd.join(".control_tower").exists());
 
     for (action, heading) in [
+        ("create_workspace", "# Create a Workspace"),
         ("create_workflow", "# Create a workflow"),
         ("edit_workflow", "# Edit an existing workflow"),
         ("workflow_contract", "# Workflow and executable contract"),
@@ -1257,12 +1260,35 @@ fn guide_index_and_exact_embedded_actions_work_without_a_workflow() {
         );
     }
 
+    let workspace = Command::new(env!("CARGO_BIN_EXE_control-tower"))
+        .args(["guide", "create_workspace"])
+        .current_dir(&cwd)
+        .output()
+        .unwrap();
+    let workspace = String::from_utf8(workspace.stdout).unwrap();
+    assert!(workspace.contains("control-tower.toml"));
+    assert!(workspace.contains("[workspace]\n   label = \"My project\""));
+    assert!(workspace.contains("workflows/"));
+    assert!(workspace.contains("nonempty string label"));
+    assert!(workspace.contains("`.env` is optional"));
+    assert!(workspace.contains("Workspace creation establishes the root configuration"));
+    assert!(workspace.contains("Workflow creation authors an individual scenario"));
+    assert!(workspace.contains("control-tower guide create_workflow"));
+    assert!(workspace.contains("control-tower init --workflow workflows/NAME"));
+    assert!(workspace.contains("control-tower guide operate_workflow"));
+    assert_eq!(fs::read_dir(&cwd).unwrap().count(), 1);
+    assert_eq!(
+        fs::read_to_string(cwd.join("TEST_PLAN.md")).unwrap(),
+        "Existing project plan\n"
+    );
+
     let create = Command::new(env!("CARGO_BIN_EXE_control-tower"))
         .args(["guide", "create_workflow"])
         .current_dir(&cwd)
         .output()
         .unwrap();
     let create = String::from_utf8(create.stdout).unwrap();
+    assert!(create.contains("control-tower guide create_workspace"));
     assert!(create.contains("control-tower init --workflow workflows/NAME"));
     assert!(create.contains("bootstrap, migrate, verify, and validate operations"));
     assert!(create.contains("stops at the first failure"));

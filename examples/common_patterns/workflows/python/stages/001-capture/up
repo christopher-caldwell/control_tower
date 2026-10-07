@@ -3,11 +3,14 @@ import json
 import os
 import sys
 from pathlib import Path
+from unittest import TestCase
 
 sys.path.insert(0, str(Path(os.environ["CONTROL_TOWER_WORKFLOW"]).parents[1] / "lib/python"))
-from patterns import capture, require_equal, require_success, save_value
+from patterns import capture, require_success, save_value
+
+check = TestCase()
 
 result = require_success(capture(sys.executable, "-c", "import json, uuid; print(json.dumps({'id': str(uuid.uuid4())}))"))
 value = json.loads(result.stdout)
-require_equal(isinstance(value["id"], str) and bool(value["id"]), True, "generated id")
+check.assertTrue(isinstance(value["id"], str) and bool(value["id"]), "generated id")
 save_value("generated", {"id": value["id"], "captured_stdout": result.stdout})
