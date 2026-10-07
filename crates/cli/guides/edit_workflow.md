@@ -10,6 +10,8 @@ Use this guide when changing a workflow that already exists. For a new workflow,
 
 Only the Workspace-root `.env` is loaded for stage executables. Its values are defaults, inherited shell values override them, and Control Tower's `CONTROL_TOWER_*` values are authoritative. Missing `.env` is valid; a malformed or unreadable file blocks validation and movement.
 
+When editing verifiers, prefer the project's existing assertion, serialization, date, and domain libraries. Use normal project tools for deep equality and representation normalization instead of adding generic comparison helpers to the Workflow.
+
 Exit codes: 0 means success or a valid no-op, 1 means an operational or mutation failure, 2 means invalid CLI usage, and 3 means a verifier returned a nonzero exit status and rejected the transition. A verifier that cannot start or terminates without a normal exit status returns 1. On exit 3, inspect author-owned effects before retrying the check or reversing the active stage. The movement summary reports Control Tower's resulting position, pending verification and failed Stage Action when known; the child's exit status is separate from Control Tower's exit code.
 
 Do not delete or recreate `.control_tower/state.sqlite3` as a shortcut for reconciling scripts with external state. Check `control-tower guide recover_workflow` before retrying or reversing a failed or pending movement.

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { capture, requireEqual, requireSuccess, saveValue } from "../../../../lib/node/index.mjs";
+import assert from "node:assert/strict";
+import { capture, requireSuccess, saveValue } from "../../../../lib/node/index.mjs";
 
 const result = requireSuccess(await capture(process.execPath, "-e", "process.stdout.write(JSON.stringify({id: require('node:crypto').randomUUID()}))"));
 const value = JSON.parse(result.stdout);
-requireEqual(typeof value.id, "string", "generated id type");
-if (!value.id) throw new Error("generated id must not be empty");
+assert.equal(typeof value.id, "string", "generated id type");
+assert.ok(value.id, "generated id must not be empty");
 await saveValue("generated", { id: value.id, captured_stdout: result.stdout });

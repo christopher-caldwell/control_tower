@@ -4,7 +4,7 @@ title: Create a workflow
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-06'
+updated: '2026-10-07'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -20,6 +20,10 @@ For the complete first-use path, including installation, Workspace setup, databa
 
 A **Workspace** has a `control-tower.toml` with a nonempty `[workspace].label` and a `workflows/` directory. A **Workflow** is a directory beneath `workflows/` with ordered stages and its own Control Tower checkpoint database. Workflow-scoped commands run from the Workspace root and require `--workflow`.
 
+If your directory is not yet a Workspace, follow `control-tower guide create_workspace`
+to establish that configuration and directory, then use `control-tower guide create_workflow`.
+Use `control-tower guide edit_workflow` to change an existing Workflow.
+
 ## Design meaningful stages and Stage Actions
 
 Before creating files, identify the proposed stage boundaries. A Stage is a meaningful user-defined state transition: a state worth reaching, inspecting, verifying, and where appropriate reversing as a unit. One Stage Action may run multiple commands or application operations, and stage boundaries are not one-command or one-infrastructure-operation boundaries. Combine implementation operations that produce one useful state rather than splitting at command boundaries. Control Tower does not make separate Stage Actions transactional. If several operations must be atomic, the author implements that atomicity inside one Stage Action. The [UUID-file example](../../examples/simple/workflows/uuid-file/README.md) shows three meaningful states: create an empty file, write `hello`, then append ` to you`.
@@ -29,6 +33,11 @@ Before creating files, identify the proposed stage boundaries. A Stage is a mean
 Use numbered directories under `stages/`. Stage Action filenames are the exact protocol: `up`, `down`, `verify-up`, and `verify-down`, with no extension. `up` performs the forward mutation; `down` returns to the prior state or applies an appropriate compensation. `verify-up` and `verify-down` independently observe those outcomes and exit 0 only when accepted. Verifiers are optional and must match an existing mutation. If no compensating action is needed, include an executable `down` that exits 0 without changing state; this explicit no-op lets backward traversal pass the stage.
 
 A Stage Action may be any directly executable file supported by the system. Its shebang selects the interpreter/runtime. Supply a valid shebang, execute permission, and the runtime/dependencies yourself. Stage Actions run with the stage directory as their working directory. Use `CONTROL_TOWER_WORKFLOW` for paths shared across stages. The [executable reference](../reference/stage-executables.md) documents numbering, environment values, and process behavior.
+
+Prefer existing project or runtime assertion libraries in verifiers. Deep equality,
+dates, serialization, and domain comparisons belong in ordinary application or test
+tools. The [common patterns example](../../examples/common_patterns/README.md)
+shows persistence and process capture helpers alongside runtime assertions.
 
 ## Prepare and validate
 

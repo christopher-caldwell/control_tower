@@ -170,6 +170,31 @@ def test_common_pattern_verify_down_rejects_remaining_verified_value(
     assert json.loads(state_file.read_text()) == before, "the verifier must observe, not repair, state"
 
 
+@pytest.mark.family_common_patterns
+def test_node_saved_values_require_own_properties(tmp_path, cli_environment):
+    require_tools("node")
+    sandbox, workflow = materialize_workflow(tmp_path, "common_patterns", "node")
+    env = dict(cli_environment, CONTROL_TOWER_WORKFLOW=str(workflow))
+    run([
+        "node", "--input-type=module", "-e", """
+        import assert from 'node:assert/strict';
+        import { saveValue, loadValue } from './lib/node/index.mjs';
+
+        await saveValue('generated', { id: 'example-id' });
+        assert.deepEqual(await loadValue('generated'), { id: 'example-id' });
+        for (const key of ['missing', 'toString', 'constructor']) {
+            await assert.rejects(loadValue(key), { message: `Missing saved value: ${key}` });
+        }
+        for (const [key, value] of Object.entries({ empty: '', zero: 0, flag: false, nil: null })) {
+            await saveValue(key, value);
+            assert.equal(await loadValue(key), value);
+        }
+        await saveValue('toString', 'saved explicitly');
+        assert.equal(await loadValue('toString'), 'saved explicitly');
+        """,
+    ], cwd=sandbox, env=env)
+
+
 @pytest.mark.family_simple
 def test_isolated_stage_uses_schema_and_rejects_stale_lock(tmp_path, cli_environment):
     env = cli_environment

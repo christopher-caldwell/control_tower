@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { loadValue, requireAbsentValue, requireEqual } from "../../../../lib/node/index.mjs";
+import assert from "node:assert/strict";
+import { loadValue, requireAbsentValue } from "../../../../lib/node/index.mjs";
 
 const generated = await loadValue("generated");
-requireEqual(typeof generated.id, "string", "generated id type");
-if (!generated.id) throw new Error("generated id must not be empty");
-requireEqual(JSON.parse(generated.captured_stdout).id, generated.id, "captured evidence");
+assert.equal(typeof generated.id, "string", "generated id type");
+assert.ok(generated.id, "generated id must not be empty");
+assert.equal(JSON.parse(generated.captured_stdout).id, generated.id, "captured evidence");
 await requireAbsentValue("verified");

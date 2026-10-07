@@ -1,6 +1,6 @@
 # Create a workflow
 
-Use this guide for a new workflow. It assumes the current directory is already the intended Workspace root. For changes to an existing workflow, use `control-tower guide edit_workflow` instead.
+Use this guide for a new workflow. It assumes the current directory is already the intended Workspace root. If the directory is not yet a Workspace, first follow `control-tower guide create_workspace`, then return here. For changes to an existing workflow, use `control-tower guide edit_workflow` instead.
 
 The Workspace must contain a parseable `control-tower.toml` with a nonempty `[workspace].label`, plus a `workflows/` directory. Create the new workflow under `workflows/`; do not create or repair Workspace configuration as part of creating an individual workflow. A Workspace-root `.env` is optional. Its values are defaults for stage executables, shell values take precedence, and Control Tower's `CONTROL_TOWER_*` values take precedence over both.
 
@@ -16,3 +16,5 @@ Workflow-scoped commands require `--workflow`; paths are resolved from the Works
 The first `up` movement can run every earlier unapplied stage in numeric order. A target is a stage number, not an instruction to run only that one script. Read `control-tower guide operate_workflow` before operating the workflow.
 
 For a complete first-use path with equal UI and CLI branches, use the [canonical human walkthrough](../../../docs/guides/getting-started.md). The existing [UUID-file Workflow](../../../examples/simple/workflows/uuid-file/README.md) is the small reference example; do not create a parallel quickstart fixture. For shared generated values, ordinary command-result capture, and reusable checks through optional author-owned libraries, see [common patterns](../../../examples/common_patterns/README.md); its libraries are example code, not a supported SDK.
+
+Prefer the project's existing assertion, serialization, date, and domain libraries over implementing generic comparisons in Workflow helpers. A verifier can use Node's `node:assert/strict`, an existing Vitest/Jest/Chai assertion library, or the equivalent in its runtime. Use existing deep equality, date utilities, and domain comparison or normalization helpers where available. If a Date and serialized JSON represent the same value differently, normalize that representation with ordinary application or test utilities; a verifier does not need Control Tower specific deep equality.

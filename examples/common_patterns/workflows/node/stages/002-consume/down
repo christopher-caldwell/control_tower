@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { deleteValue, loadValue, requireEqual } from "../../../../lib/node/index.mjs";
+import assert from "node:assert/strict";
+import { deleteValue, loadValue } from "../../../../lib/node/index.mjs";
 
 const saved = await loadValue("generated");
-requireEqual(typeof saved.id, "string", "generated id type");
+assert.equal(typeof saved.id, "string", "generated id type");
 await deleteValue("verified");

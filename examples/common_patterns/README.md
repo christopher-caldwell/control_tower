@@ -11,7 +11,7 @@ library.
 
 | Workflow | Prerequisites | Lesson |
 | --- | --- | --- |
-| [node](workflows/node/README.md) | Node.js | Reuse capture, JSON state, and check helpers from `lib/node/`. |
+| [node](workflows/node/README.md) | Node.js | Reuse capture and JSON state helpers from `lib/node/`; assert with `node:assert/strict`. |
 | [python](workflows/python/README.md) | Python 3 | Reuse the same pattern from `lib/python/`. |
 
 `lib/` is an ordinary directory of author-owned project code. Control Tower
@@ -19,6 +19,21 @@ does not discover, load, or manage it; each Stage Action imports it explicitly.
 Replace these helpers with any implementation that fits your project. They are
 examples of reusable project infrastructure, not a supported Control Tower SDK
 or a promise of SDK compatibility.
+
+Prefer the project's existing assertion, serialization, date, and domain
+libraries over writing generic comparison helpers. The Node Workflow uses
+`node:assert/strict`; the Python Workflow uses `unittest.TestCase` assertions.
+In a project that already uses Vitest, Jest, or Chai, use those assertions.
+Use existing tools for deep equality (such as Lodash where already used),
+dates (Day.js, date-fns, Temporal, or project date utilities), serialization,
+and domain comparisons or normalization. If a Date is compared to serialized
+JSON, normalize the representation with ordinary application or test utilities.
+A verifier does not need Control Tower specific deep equality.
+
+These helpers focus on saving, loading, and deleting values across Stage Actions,
+capturing process results, and checking process success. They are not an assertion
+framework, a deep equality library, a date or serialization framework, or a
+mandatory SDK.
 
 ## Copy and run
 

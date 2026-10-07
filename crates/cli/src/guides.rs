@@ -1,6 +1,7 @@
 use clap::ValueEnum;
 
 const INDEX: &str = include_str!("../guides/index.md");
+const CREATE_WORKSPACE: &str = include_str!("../guides/create_workspace.md");
 const CREATE_WORKFLOW: &str = include_str!("../guides/create_workflow.md");
 const EDIT_WORKFLOW: &str = include_str!("../guides/edit_workflow.md");
 const WORKFLOW_CONTRACT: &str = include_str!("../guides/workflow_contract.md");
@@ -9,6 +10,8 @@ const RECOVER_WORKFLOW: &str = include_str!("../guides/recover_workflow.md");
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub(super) enum GuideAction {
+    #[value(name = "create_workspace")]
+    CreateWorkspace,
     #[value(name = "create_workflow")]
     CreateWorkflow,
     #[value(name = "edit_workflow")]
@@ -24,6 +27,7 @@ pub(super) enum GuideAction {
 pub(super) fn print(action: Option<GuideAction>) {
     let guide = match action {
         None => INDEX,
+        Some(GuideAction::CreateWorkspace) => CREATE_WORKSPACE,
         Some(GuideAction::CreateWorkflow) => CREATE_WORKFLOW,
         Some(GuideAction::EditWorkflow) => EDIT_WORKFLOW,
         Some(GuideAction::WorkflowContract) => WORKFLOW_CONTRACT,
