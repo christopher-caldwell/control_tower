@@ -42,6 +42,11 @@ build:
 dev-ui:
     pnpm --dir ui dev
 
+# Rebuild embedded assets, bump the CLI version, and build the release executable.
+[positional-arguments]
+publish bump="patch":
+    ./publish.sh "$1"
+
 # Install the CLI and skills into ~/.agents/skills (or ~/.claude/skills).
 [positional-arguments]
 install-cli skills-dir="agents":
