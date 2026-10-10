@@ -4,7 +4,7 @@ title: Navigate and retry verification
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-06'
+updated: '2026-10-09'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -21,6 +21,49 @@ A **completed stage** is Control Tower's last accepted, recorded position. A **p
 Movement shows the workflow/target, then a flushed start and captured result for each actual Stage Action before the next starts. Its final completed stage, UUID and pending check use the same meaning as `status`. Output is buffered for one Stage Action, so the start identity may be the only output during a long operation. Success of a Stage Action does not by itself confirm the following checkpoint write.
 
 Run CLI commands from the Workspace root and select the workflow with `--workflow`. Control Tower returns 0 for success/no-op, 1 for operational or mutation failure (including a verifier that cannot start), 2 for CLI usage errors, and 3 only when a verifier ran and rejected the transition. The child's own exit status is shown separately. Each movement ends with a factual summary of requested target, resulting position, and known pending/failed Stage Action details. On exit 3, inspect author-owned effects before retrying or reversing.
+
+## Visual model
+
+```mermaid
+flowchart TD
+    Workspace[Workspace] --> Workflow[Workflow: ordered scenario]
+    Workflow --> Stage[Stage: meaningful state transition]
+    Stage --> Up[Stage Action: up]
+    Stage --> Down[Stage Action: down]
+    Stage --> VerifyUp[Stage Action: verify-up, optional]
+    Stage --> VerifyDown[Stage Action: verify-down, optional]
+```
+
+Each directional movement uses this lifecycle. The destination depends on the
+direction: forward accepts a higher position; reverse accepts a lower one.
+The diagram assumes checkpoint writes succeed. A save failure stops movement
+with exit 1; inspect the last confirmed checkpoint and external effects as
+described under [mutation and save failures](#a-mutation-failure-is-not-a-verifier-failure).
+
+```mermaid
+flowchart TD
+    Settled[Settled: recorded completed position] -->|Request up or down| Mutation[Run authored directional mutation]
+    Mutation -->|Nonzero exit| Failed[Stop: mutation failure, exit 1]
+    Failed --> Inspect[Inspect effects: no new pending transition; earlier pending may remain]
+    Mutation -->|Success, no verifier| Accepted[Accept destination: settled, exit 0]
+    Mutation -->|Success, verifier exists| Pending[Pending: mutation succeeded; destination unaccepted]
+    Pending --> Verify[Run matching verifier]
+    Verify -->|Success| Accepted
+    Verify -->|Nonzero exit| Rejected[Stop: verifier rejection, exit 3; still pending]
+    Rejected -->|Same direction: retry only verifier| Verify
+    Rejected -->|Opposite direction: reverse active stage| Mutation
+```
+
+Reversal runs the authored opposite mutation and its optional verifier; it uses
+the same failure and acceptance paths. A verifier that cannot start or has no
+normal exit status is an operational failure (exit 1), and its transition remains
+pending. Checkpoints are recorded metadata, not proof of current external state.
+Cleanup is author-defined, not an automatic transaction. There is no standalone
+verify command. These diagrams describe the shipped contract; the version-matched
+CLI guides remain the agent source of truth. They were checked against
+`operate_workflow` (CLI; Results and recovery) and `recover_workflow` (Pending
+verification; Mutation or verifier process failure; Checkpoint save failure or
+interruption).
 
 ## Move to a target
 
@@ -68,75 +111,99 @@ Asking for `down --stage 1` first resolves stage 3's reversal, then reverses sta
 
 ## Try a verification failure
 
-Use a **fresh disposable copy**, not a workflow containing valuable test state. These commands start from the repository root after building the CLI:
+This single shell-only walkthrough reaches stage 2, rejects stage 3's verifier,
+repairs and retries only the verifier, then reverses to baseline. A wrapper counts
+stage 3's mutation so the retry proves that it ran only once. No backend, Python,
+production data, or model subscription is needed to run the walkthrough.
+
+Use a **fresh disposable copy**, not a workflow containing valuable test state.
+Build with `cargo build --locked --workspace`, then run these blocks in order in
+one Unix shell from the repository root. The temporary copy can be removed after
+inspection; the wrapper and counter are disposable author-owned evidence outside
+the fixture's `data/` directory.
 
 ```sh
-example="$(mktemp -d)/simple"
+set -eu
+example="$(mktemp -d "${TMPDIR:-/tmp}/control-tower-uuid.XXXXXX")/simple"
 cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
 binary="$PWD/target/debug/control-tower"
 ct() { (cd "$example" && "$binary" "$@"); }
-ct db bootstrap-local --workflow workflows/uuid-file
-ct db migrate-local --workflow workflows/uuid-file
-ct db verify-local --workflow workflows/uuid-file
+printf 'Walkthrough workflow: %s\n' "$workflow"
+ct init --workflow workflows/uuid-file
+ct up --workflow workflows/uuid-file --stage 2
+ct status --workflow workflows/uuid-file
+test "$(cat "$workflow"/data/*)" = 'hello'
 
-check="$workflow/stages/003-add-to-you/verify-up"
+stage="$workflow/stages/003-add-to-you"
+cp "$stage/up" "$workflow/up.original"
+cat > "$stage/up" <<'SH'
+#!/bin/sh
+set -eu
+printf '%s %s\n' "$CONTROL_TOWER_STAGE" "$CONTROL_TOWER_ROLE" >> "$CONTROL_TOWER_WORKFLOW/mutation-calls"
+exec "$CONTROL_TOWER_WORKFLOW/up.original"
+SH
+chmod +x "$stage/up" "$workflow/up.original"
+check="$stage/verify-up"
 cp "$check" "$workflow/verify-up.original"
 printf '#!/bin/sh\nexit 23\n' > "$check"
 chmod +x "$check"
 ```
 
-Now deliberately run a command that fails. Exit 3 here means the verifier ran and rejected the transition; the child's exit status is 23. This is the expected result, not failed setup:
+Now deliberately reject verification. The conditional captures the expected
+Control Tower exit 3 without stopping a shell using `set -e`; the child's exit
+status is 23. Any other outcome fails the assertion:
 
 ```sh
-ct up --workflow workflows/uuid-file --stage 3
-```
-
-Run status separately even though the preceding command failed:
-
-```sh
+if ct up --workflow workflows/uuid-file --stage 3; then
+    rejected=0
+else
+    rejected=$?
+fi
+test "$rejected" -eq 3
 ct status --workflow workflows/uuid-file
 cat "$workflow"/data/*
 printf '\n'
+test "$(cat "$workflow"/data/*)" = 'hello to you'
+test "$(cat "$workflow/mutation-calls")" = '3 up'
+cat "$workflow/mutation-calls"
+before="$(cat "$workflow"/data/*)"
 ```
 
-The file should contain `hello to you`, but completed position remains 2 with pending up verification for stage 3.
-
-### Back out and exercise the mutation again
-
-```sh
-ct down --workflow workflows/uuid-file --stage 2
-cat "$workflow"/data/*
-printf '\n'
-
-cp "$workflow/verify-up.original" "$check"
-chmod +x "$check"
-ct up --workflow workflows/uuid-file --stage 3
-ct status --workflow workflows/uuid-file
-```
-
-After down, the file contains `hello`. After the repaired forward run it contains `hello to you`, with no pending verification.
-
-### Alternative: retry only the verifier
-
-Use this **instead of** the preceding back-out block while stage 3/up is still pending:
+The file contains `hello to you`, but completed position remains 2 with pending
+up verification for stage 3. The counter contains exactly one `3 up` line.
+Repair the verifier and request the same target:
 
 ```sh
 cp "$workflow/verify-up.original" "$check"
 chmod +x "$check"
 ct up --workflow workflows/uuid-file --stage 3
+test "$(cat "$workflow/mutation-calls")" = '3 up'
+test "$(cat "$workflow"/data/*)" = "$before"
+cat "$workflow/mutation-calls"
+ct status --workflow workflows/uuid-file
 ```
 
-Only stage 3/verify-up should appear in this invocation's Stage Action results. There is no standalone `verify` subcommand.
+Only stage 3/verify-up starts on retry. The count and fixture remain unchanged;
+status now reports completed stage 3 with no pending verification.
 
 Checks are optional and discovered afresh. Editing/removing a pending verifier changes what the next invocation runs; removing it can accept without a check or mutation replay. Preserve the check when you intend a verifier-only retry. An already settled target runs no Stage Actions and says so; it does not reverify external state.
 
-When finished with either path:
+Reverse to baseline:
 
 ```sh
 ct down --workflow workflows/uuid-file --stage 0
 ct status --workflow workflows/uuid-file
+test -z "$(ls -A "$workflow/data")"
+test "$(cat "$workflow/mutation-calls")" = '3 up'
 ```
+
+The data directory is empty and status reports baseline (0) and `UUID: not
+created`. The checkpoint database and disposable counter remain. To back out
+while verification is still pending instead, request
+`ct down --workflow workflows/uuid-file --stage 2`: stage 3/down and its optional
+verify-down restore `hello`, then a downward request to 0 reverses the earlier
+stages. The [retry/backout table](#understand-a-failure) describes this path.
 
 ## Downward and reverse verification
 
@@ -168,4 +235,4 @@ A Rust-process crash or SQLite failure likewise carries no external-state reconc
 
 ## Evidence
 
-The [Application semantics tests](../../crates/application/tests/run_semantics.rs) check ordering and stored-position timing. The [CLI integrations](../../crates/cli/tests/workbench_cli.rs) cover the example and verifier retries/reversals across real processes with SQLite. The [run-semantics validation](../research/run-semantics-validation.md) records executed tests and manual runs, with toolchain/platform limits.
+The [Application semantics tests](../../crates/application/tests/run_semantics.rs) check ordering and stored-position timing. The [CLI integrations](../../crates/cli/tests/workbench_cli.rs) cover the example and verifier retries/reversals across real processes with SQLite. The [example harness](../../examples/tests/test_ordinary_workflows.py) executes the shell blocks in the walkthrough above verbatim using a PATH without Python, asserts the rejected exit code, pending status, single mutation, unchanged fixture, and final baseline/UUID, and runs with `./examples/test --family simple`. The harness itself uses Python/pytest; the walkthrough does not. The [run-semantics validation](../research/run-semantics-validation.md) records executed tests and manual runs, with toolchain/platform limits.

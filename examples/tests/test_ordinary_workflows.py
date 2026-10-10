@@ -1,12 +1,13 @@
 """Copies complete examples outside the repository and walks their real stages."""
 import json
 from pathlib import Path
+import re
 import sqlite3
 
 import pytest
 
 from common import (
-    RESULT, RECORD, NODE_INSPECTION, PYTHON_INSPECTION, assert_node_owner,
+    RESULT, RECORD, NODE_INSPECTION, PYTHON_INSPECTION, REPOSITORY, assert_node_owner,
     initialize, lock_contents, materialize_workflow, prepare_workflow, move, native_environment,
     python_environment, require_tools, run, status,
 )
@@ -22,6 +23,58 @@ WORKFLOWS = [
     pytest.param("common_patterns", "node", 2, marks=pytest.mark.family_common_patterns),
     pytest.param("common_patterns", "python", 2, marks=pytest.mark.family_common_patterns),
 ]
+
+
+@pytest.mark.family_simple
+def test_documented_uuid_file_recovery_walkthrough(tmp_path, cli_environment):
+    # Execute the guide itself so its shell commands cannot drift from the test.
+    guide = (REPOSITORY / "docs/guides/verification-and-navigation.md").read_text()
+    walkthrough = guide.split("## Try a verification failure\n", 1)[1].split(
+        "## Downward and reverse verification\n", 1
+    )[0]
+    blocks = re.findall(r"^```sh\n(.*?)^```", walkthrough, flags=re.MULTILINE | re.DOTALL)
+    assert blocks, "the recovery walkthrough must contain executable shell commands"
+    temporary = tmp_path / "copy with spaces and 'quotes'"
+    temporary.mkdir()
+    env = native_environment(
+        tmp_path, cli_environment, "sh", "mktemp", "cp", "chmod", "cat", "ls", "mkdir", "rm"
+    )
+    env["TMPDIR"] = str(temporary)
+    # Python runs this harness, but is unavailable to the walkthrough and actions.
+    result = run(
+        ["/bin/sh", "-eu"], cwd=REPOSITORY, env=env, input_text="\n".join(blocks)
+    )
+    assert "Failed Stage Action: stage 3 verify-up; child exit status 23" in result.stdout
+    checkpoints = re.findall(
+        r"^Completed stage: (.+)\nUUID: (.+)\n"
+        r"(?:Pending verification: (.+)\n)?Discovered stages: (\d+)$",
+        result.stdout, flags=re.MULTILINE,
+    )
+    assert checkpoints, "the walkthrough must report checkpoints"
+    run_id = checkpoints[0][1]
+    assert run_id != "not created"
+    # Each movement and its following status must report the same checkpoint.
+    expected = [
+        ("2 (write-hello)", run_id, "", "3"),
+        ("2 (write-hello)", run_id, "up 3 (add-to-you)", "3"),
+        ("3 (add-to-you)", run_id, "", "3"),
+        ("baseline (0)", "not created", "", "3"),
+    ]
+    assert checkpoints == [checkpoint for checkpoint in expected for _ in range(2)]
+    started = re.findall(r"^\[stage (\d+) ([\w-]+) \([^\n]+\)\] starting$", result.stdout, re.MULTILINE)
+    assert started == [
+        ("1", "up"), ("1", "verify-up"),
+        ("2", "up"), ("2", "verify-up"),
+        ("3", "up"), ("3", "verify-up"),
+        ("3", "verify-up"),  # Corrected retry runs only the verifier.
+        ("3", "down"), ("3", "verify-down"),
+        ("2", "down"), ("2", "verify-down"),
+        ("1", "down"), ("1", "verify-down"),
+    ]
+    workflow = Path(re.search(r"^Walkthrough workflow: (.+)$", result.stdout, re.MULTILINE)[1])
+    assert workflow.resolve().is_relative_to(temporary.resolve())
+    assert (workflow / "mutation-calls").read_text() == "3 up\n"
+    assert list((workflow / "data").iterdir()) == []
 
 
 def assert_artifacts(workflow, name, completed):

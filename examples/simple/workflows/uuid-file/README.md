@@ -88,7 +88,7 @@ The database and directories remain. They are not deleted by stage 1/down. Anoth
 
 ## Try failed verification
 
-The [navigation guide](https://github.com/christopher-caldwell/control_tower/blob/main/docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, then demonstrates retry or same-stage backout. It does not modify these checked-in scripts.
+The [visual recovery walkthrough](../../../../docs/guides/verification-and-navigation.md#try-a-verification-failure) intentionally breaks a verifier in a temporary copy, proves that a corrected retry leaves the mutation count unchanged, then reverses to baseline. Its hierarchy and lifecycle diagrams explain the recorded positions. The [example harness](../../../tests/test_ordinary_workflows.py) executes those documented shell commands and checks the checkpoint sequence, UUID continuity, verifier-only retry, and cleanup. The exercise does not modify these checked-in scripts.
 
 ## Evidence and limits
 

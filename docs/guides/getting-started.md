@@ -4,7 +4,7 @@ title: Get started with Control Tower
 type: guide
 status: maintained
 created: '2026-10-01'
-updated: '2026-10-06'
+updated: '2026-10-09'
 owner: christopher-caldwell
 authored_by: assistant
 sources:
@@ -158,7 +158,7 @@ Then inspect the data directory from the shell, whichever surface you used:
 ls -A "$workflow/data"
 ```
 
-The data directory is empty and the UI/CLI status reports baseline with no active UUID. The prepared database remains, so you can run the Workflow again. A verifier failure leaves a transition pending; inspect the resulting state before retrying the check or backing out. The [navigation guide](verification-and-navigation.md) explains retry and recovery behavior.
+The data directory is empty and the UI/CLI status reports baseline with no active UUID. The prepared database remains, so you can run the Workflow again. Next, follow the [visual recovery walkthrough](verification-and-navigation.md#try-a-verification-failure) in a fresh disposable copy: deliberately reject a verifier, prove that retry leaves the mutation count unchanged, then reverse to baseline. Its [hierarchy and lifecycle diagrams](verification-and-navigation.md#visual-model) show how settled and pending positions relate. A verifier failure leaves a transition pending; inspect the resulting state before retrying the check or backing out.
 
 ## 8. Keep working safely
 
