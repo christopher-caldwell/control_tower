@@ -1,12 +1,13 @@
 """Copies complete examples outside the repository and walks their real stages."""
 import json
 from pathlib import Path
+import re
 import sqlite3
 
 import pytest
 
 from common import (
-    RESULT, RECORD, NODE_INSPECTION, PYTHON_INSPECTION, assert_node_owner,
+    RESULT, RECORD, NODE_INSPECTION, PYTHON_INSPECTION, REPOSITORY, assert_node_owner,
     initialize, lock_contents, materialize_workflow, prepare_workflow, move, native_environment,
     python_environment, require_tools, run, status,
 )
@@ -22,6 +23,38 @@ WORKFLOWS = [
     pytest.param("common_patterns", "node", 2, marks=pytest.mark.family_common_patterns),
     pytest.param("common_patterns", "python", 2, marks=pytest.mark.family_common_patterns),
 ]
+
+
+@pytest.mark.family_simple
+def test_documented_uuid_file_recovery_walkthrough(tmp_path, cli_environment):
+    # Execute the guide itself so its shell commands cannot drift from the test.
+    guide = (REPOSITORY / "docs/guides/verification-and-navigation.md").read_text()
+    walkthrough = guide.split("## Try a verification failure\n", 1)[1].split(
+        "## Downward and reverse verification\n", 1
+    )[0]
+    blocks = re.findall(r"^```sh\n(.*?)^```", walkthrough, flags=re.MULTILINE | re.DOTALL)
+    assert blocks, "the recovery walkthrough must contain executable shell commands"
+    temporary = tmp_path / "copy with spaces and 'quotes'"
+    temporary.mkdir()
+    env = native_environment(
+        tmp_path, cli_environment, "sh", "mktemp", "cp", "chmod", "cat", "ls", "mkdir", "rm"
+    )
+    env["TMPDIR"] = str(temporary)
+    # Python runs this harness, but is unavailable to the walkthrough and actions.
+    result = run(
+        ["/bin/sh", "-eu"], cwd=REPOSITORY, env=env, input_text="\n".join(blocks)
+    )
+    assert "Completed stage: 2 (write-hello)" in result.stdout
+    assert "Pending verification: up 3 (add-to-you)" in result.stdout
+    assert "Failed Stage Action: stage 3 verify-up; child exit status 23" in result.stdout
+    assert "Completed stage: 3 (add-to-you)" in result.stdout
+    final_status = result.stdout.rsplit("Completed stage: ", 1)[1]
+    assert final_status.startswith("baseline (0)\nUUID: not created\n")
+    assert "Pending verification:" not in final_status
+    workflow = Path(re.search(r"^Walkthrough workflow: (.+)$", result.stdout, re.MULTILINE)[1])
+    assert workflow.resolve().is_relative_to(temporary.resolve())
+    assert (workflow / "mutation-calls").read_text() == "3 up\n"
+    assert list((workflow / "data").iterdir()) == []
 
 
 def assert_artifacts(workflow, name, completed):
