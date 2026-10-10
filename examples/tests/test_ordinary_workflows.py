@@ -44,13 +44,33 @@ def test_documented_uuid_file_recovery_walkthrough(tmp_path, cli_environment):
     result = run(
         ["/bin/sh", "-eu"], cwd=REPOSITORY, env=env, input_text="\n".join(blocks)
     )
-    assert "Completed stage: 2 (write-hello)" in result.stdout
-    assert "Pending verification: up 3 (add-to-you)" in result.stdout
     assert "Failed Stage Action: stage 3 verify-up; child exit status 23" in result.stdout
-    assert "Completed stage: 3 (add-to-you)" in result.stdout
-    final_status = result.stdout.rsplit("Completed stage: ", 1)[1]
-    assert final_status.startswith("baseline (0)\nUUID: not created\n")
-    assert "Pending verification:" not in final_status
+    checkpoints = re.findall(
+        r"^Completed stage: (.+)\nUUID: (.+)\n"
+        r"(?:Pending verification: (.+)\n)?Discovered stages: (\d+)$",
+        result.stdout, flags=re.MULTILINE,
+    )
+    assert checkpoints, "the walkthrough must report checkpoints"
+    run_id = checkpoints[0][1]
+    assert run_id != "not created"
+    # Each movement and its following status must report the same checkpoint.
+    expected = [
+        ("2 (write-hello)", run_id, "", "3"),
+        ("2 (write-hello)", run_id, "up 3 (add-to-you)", "3"),
+        ("3 (add-to-you)", run_id, "", "3"),
+        ("baseline (0)", "not created", "", "3"),
+    ]
+    assert checkpoints == [checkpoint for checkpoint in expected for _ in range(2)]
+    started = re.findall(r"^\[stage (\d+) ([\w-]+) \([^\n]+\)\] starting$", result.stdout, re.MULTILINE)
+    assert started == [
+        ("1", "up"), ("1", "verify-up"),
+        ("2", "up"), ("2", "verify-up"),
+        ("3", "up"), ("3", "verify-up"),
+        ("3", "verify-up"),  # Corrected retry runs only the verifier.
+        ("3", "down"), ("3", "verify-down"),
+        ("2", "down"), ("2", "verify-down"),
+        ("1", "down"), ("1", "verify-down"),
+    ]
     workflow = Path(re.search(r"^Walkthrough workflow: (.+)$", result.stdout, re.MULTILINE)[1])
     assert workflow.resolve().is_relative_to(temporary.resolve())
     assert (workflow / "mutation-calls").read_text() == "3 up\n"

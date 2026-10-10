@@ -36,6 +36,9 @@ flowchart TD
 
 Each directional movement uses this lifecycle. The destination depends on the
 direction: forward accepts a higher position; reverse accepts a lower one.
+The diagram assumes checkpoint writes succeed. A save failure stops movement
+with exit 1; inspect the last confirmed checkpoint and external effects as
+described under [mutation and save failures](#a-mutation-failure-is-not-a-verifier-failure).
 
 ```mermaid
 flowchart TD
@@ -120,6 +123,7 @@ inspection; the wrapper and counter are disposable author-owned evidence outside
 the fixture's `data/` directory.
 
 ```sh
+set -eu
 example="$(mktemp -d "${TMPDIR:-/tmp}/control-tower-uuid.XXXXXX")/simple"
 cp -R examples/simple "$example"
 workflow="$example/workflows/uuid-file"
